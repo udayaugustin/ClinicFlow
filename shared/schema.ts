@@ -59,7 +59,7 @@ export const insertClinicSchema = createInsertSchema(clinics);
 export const insertAppointmentSchema = createInsertSchema(appointments, {
   date: z.string().transform((str) => new Date(str)),
   status: z.enum(["scheduled", "completed", "cancelled"]).default("scheduled"),
-});
+}).omit({ tokenNumber: true });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
