@@ -10,8 +10,17 @@ import DoctorPage from "@/pages/doctor-page";
 import BookingPage from "@/pages/booking-page";
 import BookingHistoryPage from "@/pages/booking-history";
 import AttenderDashboard from "@/pages/attender-dashboard";
+import { useAuth } from "./hooks/use-auth";
 
 function Router() {
+  const { user } = useAuth();
+
+  // Redirect attenders to their dashboard
+  if (user?.role === "attender" && window.location.pathname === "/") {
+    window.location.href = "/attender-dashboard";
+    return null;
+  }
+
   return (
     <Switch>
       <Route path="/auth" component={AuthPage} />

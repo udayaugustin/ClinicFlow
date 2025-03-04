@@ -35,7 +35,8 @@ export default function AuthPage() {
   const { user } = useAuth();
 
   if (user) {
-    navigate("/");
+    // Redirect attenders to their dashboard, others to home
+    navigate(user.role === "attender" ? "/attender-dashboard" : "/");
     return null;
   }
 
