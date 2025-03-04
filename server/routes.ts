@@ -32,6 +32,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/doctors/:id", async (req, res) => {
+    try {
+      const doctor = await storage.getUser(parseInt(req.params.id));
+      if (!doctor || doctor.role !== 'doctor') {
+        return res.status(404).json({ message: 'Doctor not found' });
+      }
+      res.json(doctor);
+    } catch (error) {
+      console.error('Error fetching doctor:', error);
+      res.status(500).json({ message: 'Failed to fetch doctor' });
+    }
+  });
+
   app.get("/api/appointments", async (req, res) => {
     if (!req.user) return res.sendStatus(401);
     const appointments = await storage.getAppointments(req.user.id);

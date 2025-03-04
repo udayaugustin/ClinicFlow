@@ -10,11 +10,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 export default function DoctorPage() {
   const { id } = useParams();
 
-  const { data: doctors, isLoading } = useQuery<User[]>({
-    queryKey: ["/api/doctors"],
+  const { data: doctor, isLoading } = useQuery<User>({
+    queryKey: [`/api/doctors/${id}`],
   });
-
-  const doctor = doctors?.find(d => d.id === Number(id));
 
   if (isLoading) {
     return (
@@ -49,7 +47,6 @@ export default function DoctorPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <NavHeader />
-
       <main className="container mx-auto px-4 py-8">
         <div className="grid md:grid-cols-3 gap-8">
           <div className="md:col-span-2">

@@ -38,10 +38,10 @@ export function DoctorCard({ doctor }: DoctorCardProps) {
           </div>
         </div>
         <div className="mt-6 flex gap-2">
-          <Button asChild className="flex-1">
+          <Button asChild variant="outline" className="flex-1">
             <Link href={`/doctors/${doctor.id}`}>View Profile</Link>
           </Button>
-          <Button variant="secondary" asChild className="flex-1">
+          <Button asChild className="flex-1">
             <Link href={`/book/${doctor.id}`}>
               <CalendarDays className="mr-2 h-4 w-4" />
               Book
