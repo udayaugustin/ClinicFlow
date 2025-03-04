@@ -1,4 +1,4 @@
-import { InsertUser, User, Clinic, Appointment } from "@shared/schema";
+import { InsertUser, User, Clinic, Appointment, attenderDoctors, AttenderDoctor } from "@shared/schema";
 import { users, clinics, appointments } from "@shared/schema";
 import { eq, or, and, sql } from "drizzle-orm";
 import { db } from "./db";
@@ -21,6 +21,11 @@ export interface IStorage {
   createAppointment(appointment: Omit<Appointment, "id" | "tokenNumber">): Promise<Appointment>;
   getNextTokenNumber(doctorId: number, clinicId: number, date: Date): Promise<number>;
   sessionStore: session.Store;
+
+  getAttenderDoctors(attenderId: number): Promise<(AttenderDoctor & { doctor: User })[]>;
+  addDoctorToAttender(attenderId: number, doctorId: number, clinicId: number): Promise<AttenderDoctor>;
+  removeDoctorFromAttender(attenderId: number, doctorId: number): Promise<void>;
+  getAttendersByClinic(clinicId: number): Promise<User[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -157,14 +162,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getNextTokenNumber(doctorId: number, clinicId: number, date: Date): Promise<number> {
-    // Get the start and end of the day for the given date
     const startOfDay = new Date(date);
     startOfDay.setHours(0, 0, 0, 0);
 
     const endOfDay = new Date(date);
     endOfDay.setHours(23, 59, 59, 999);
 
-    // Get the highest token number for this doctor and clinic on the given date
     const [result] = await db
       .select({
         maxToken: sql<number>`COALESCE(MAX(token_number), 0)`,
@@ -178,19 +181,16 @@ export class DatabaseStorage implements IStorage {
         )
       );
 
-    // Return the next token number (current max + 1)
     return (result?.maxToken || 0) + 1;
   }
 
   async createAppointment(appointment: Omit<Appointment, "id" | "tokenNumber">): Promise<Appointment> {
-    // Get the next token number for this doctor and clinic
     const tokenNumber = await this.getNextTokenNumber(
       appointment.doctorId,
       appointment.clinicId,
       appointment.date
     );
 
-    // Create the appointment with the generated token number
     const [created] = await db
       .insert(appointments)
       .values({
@@ -201,6 +201,91 @@ export class DatabaseStorage implements IStorage {
       .returning();
 
     return created;
+  }
+
+  async getAttenderDoctors(attenderId: number): Promise<(AttenderDoctor & { doctor: User })[]> {
+    const results = await db
+      .select({
+        id: attenderDoctors.id,
+        attenderId: attenderDoctors.attenderId,
+        doctorId: attenderDoctors.doctorId,
+        clinicId: attenderDoctors.clinicId,
+        doctor: {
+          id: users.id,
+          username: users.username,
+          password: users.password,
+          name: users.name,
+          role: users.role,
+          specialty: users.specialty,
+          bio: users.bio,
+          imageUrl: users.imageUrl,
+          address: users.address,
+          city: users.city,
+          state: users.state,
+          zipCode: users.zipCode,
+          latitude: users.latitude,
+          longitude: users.longitude,
+          clinicId: users.clinicId,
+        },
+      })
+      .from(attenderDoctors)
+      .leftJoin(users, eq(attenderDoctors.doctorId, users.id))
+      .where(eq(attenderDoctors.attenderId, attenderId));
+
+    return results;
+  }
+
+  async addDoctorToAttender(attenderId: number, doctorId: number, clinicId: number): Promise<AttenderDoctor> {
+    const [attender, doctor] = await Promise.all([
+      this.getUser(attenderId),
+      this.getUser(doctorId),
+    ]);
+
+    if (!attender || attender.role !== "attender") {
+      throw new Error("Invalid attender");
+    }
+
+    if (!doctor || doctor.role !== "doctor") {
+      throw new Error("Invalid doctor");
+    }
+
+    if (attender.clinicId !== clinicId || doctor.clinicId !== clinicId) {
+      throw new Error("Attender and doctor must belong to the same clinic");
+    }
+
+    const [relation] = await db
+      .insert(attenderDoctors)
+      .values({
+        attenderId,
+        doctorId,
+        clinicId,
+      })
+      .returning();
+
+    return relation;
+  }
+
+  async removeDoctorFromAttender(attenderId: number, doctorId: number): Promise<void> {
+    await db
+      .delete(attenderDoctors)
+      .where(
+        and(
+          eq(attenderDoctors.attenderId, attenderId),
+          eq(attenderDoctors.doctorId, doctorId)
+        )
+      );
+  }
+
+  async getAttendersByClinic(clinicId: number): Promise<User[]> {
+    return await db
+      .select()
+      .from(users)
+      .where(
+        and(
+          eq(users.clinicId, clinicId),
+          eq(users.role, "attender")
+        )
+      );
   }
 }
 
