@@ -94,17 +94,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Doctor specific routes
+  app.get("/api/doctor/appointments", async (req, res) => {
+    if (!req.user) return res.sendStatus(401);
+    if (req.user.role !== "doctor") return res.sendStatus(403);
+
+    try {
+      const appointments = await storage.getAppointments(req.user.id);
+      res.json(appointments);
+    } catch (error) {
+      console.error('Error fetching doctor appointments:', error);
+      res.status(500).json({ message: 'Failed to fetch appointments' });
+    }
+  });
+
   app.patch("/api/doctors/:id/availability", async (req, res) => {
-    if (!req.user || req.user.role !== "attender") return res.sendStatus(403);
+    if (!req.user) return res.sendStatus(401);
+    if (req.user.role !== "doctor" && req.user.role !== "attender") return res.sendStatus(403);
+    if (req.user.role === "doctor" && req.user.id !== parseInt(req.params.id)) return res.sendStatus(403);
+
     try {
       const doctorId = parseInt(req.params.id);
-      const { isAvailable, currentToken } = req.body;
+      const { isAvailable, date } = req.body;
 
       const availability = await storage.updateDoctorAvailability(
         doctorId,
-        new Date(),
-        isAvailable,
-        currentToken
+        new Date(date),
+        isAvailable
       );
       res.json(availability);
     } catch (error) {
