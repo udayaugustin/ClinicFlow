@@ -83,8 +83,7 @@ export function setupAuth(app: Express) {
 
   app.post("/api/register", async (req, res, next) => {
     try {
-      // Ensure role is set to patient
-      const data = { ...req.body, role: "patient" };
+      const data = { ...req.body };
       const parsed = insertUserSchema.parse(data);
 
       const existingUser = await storage.getUserByUsername(parsed.username);
