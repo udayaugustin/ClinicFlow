@@ -498,19 +498,17 @@ export class DatabaseStorage implements IStorage {
 
       // Get appointments for each doctor
       const doctorsWithAppointments = await Promise.all(
-        doctorRelations.map(async ({ doctor }) => {
-          if (!doctor) {
-            console.error('Missing doctor data in relation');
-            return null;
-          }
+        doctorRelations.map(async (relation) => {
+          const { doctor } = relation;
 
-          const appointments = await db
+          // Get appointments for this doctor
+          const appointmentsForDoctor = await db
             .select()
             .from(appointments)
             .where(eq(appointments.doctorId, doctor.id));
 
           // Get patient data for these appointments
-          const patientIds = [...new Set(appointments.map(apt => apt.patientId))];
+          const patientIds = [...new Set(appointmentsForDoctor.map(apt => apt.patientId))];
           const patients = await db
             .select()
             .from(users)
@@ -518,21 +516,21 @@ export class DatabaseStorage implements IStorage {
 
           const patientsMap = new Map(patients.map(p => [p.id, p]));
 
-          const appointmentsWithPatients = appointments.map(apt => ({
+          // Add patient data to appointments
+          const appointmentsWithPatients = appointmentsForDoctor.map(apt => ({
             ...apt,
             patient: patientsMap.get(apt.patientId),
           }));
 
           return {
-            ...doctorRelations.find(rel => rel.doctorId === doctor.id)!,
+            ...relation,
             doctor,
             appointments: appointmentsWithPatients,
           };
         })
       );
 
-      // Filter out any null entries from failed doctor lookups
-      return doctorsWithAppointments.filter(Boolean);
+      return doctorsWithAppointments;
     } catch (error) {
       console.error('Error in getAttenderDoctorsAppointments:', error);
       throw error;
