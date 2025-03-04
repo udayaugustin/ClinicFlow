@@ -63,6 +63,9 @@ export function setupAuth(app: Express) {
   passport.deserializeUser(async (id: number, done) => {
     try {
       const user = await storage.getUser(id);
+      if (!user) {
+        return done(new Error('User not found'), null);
+      }
       done(null, user);
     } catch (err) {
       done(err);
@@ -80,12 +83,10 @@ export function setupAuth(app: Express) {
         return res.status(400).json({ message: "Username already exists" });
       }
 
+      const hashedPassword = await hashPassword(parsed.password);
       const user = await storage.createUser({
         ...parsed,
-        password: await hashPassword(parsed.password),
-        specialty: null,
-        bio: null,
-        imageUrl: null,
+        password: hashedPassword,
       });
 
       req.login(user, (err) => {
