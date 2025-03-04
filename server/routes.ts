@@ -142,9 +142,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const doctorsWithAppointments = await Promise.all(
         doctorRelations.map(async ({ doctor }) => {
           const appointments = await storage.getAppointments(doctor.id);
+          // Filter appointments by doctor and include patient data
+          const doctorAppointments = appointments.filter(
+            (apt) => apt.doctorId === doctor.id
+          );
           return {
             doctor,
-            appointments,
+            appointments: doctorAppointments,
           };
         })
       );

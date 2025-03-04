@@ -7,6 +7,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AlertCircle } from "lucide-react";
 
 type DoctorWithAppointments = {
   doctor: User;
@@ -16,8 +18,9 @@ type DoctorWithAppointments = {
 export default function AttenderDashboard() {
   const { user } = useAuth();
 
-  const { data: managedDoctors, isLoading } = useQuery<DoctorWithAppointments[]>({
+  const { data: managedDoctors, isLoading, error } = useQuery<DoctorWithAppointments[]>({
     queryKey: [`/api/attender/${user?.id}/doctors/appointments`],
+    enabled: !!user?.id,
   });
 
   if (isLoading) {
@@ -31,22 +34,55 @@ export default function AttenderDashboard() {
     );
   }
 
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <NavHeader />
+        <main className="container mx-auto px-4 py-8">
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              Failed to load appointments. Please try again later.
+            </AlertDescription>
+          </Alert>
+        </main>
+      </div>
+    );
+  }
+
+  if (!managedDoctors?.length) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <NavHeader />
+        <main className="container mx-auto px-4 py-8">
+          <Card>
+            <CardContent className="p-6">
+              <p className="text-center text-muted-foreground">
+                No doctors assigned to manage. Please contact your administrator.
+              </p>
+            </CardContent>
+          </Card>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <NavHeader />
       <main className="container mx-auto px-4 py-8">
         <h1 className="text-2xl font-bold mb-6">Doctor Appointments Dashboard</h1>
-        
-        <Tabs defaultValue={managedDoctors?.[0]?.doctor.id.toString()}>
+
+        <Tabs defaultValue={managedDoctors[0].doctor.id.toString()}>
           <TabsList className="mb-4">
-            {managedDoctors?.map((item) => (
+            {managedDoctors.map((item) => (
               <TabsTrigger key={item.doctor.id} value={item.doctor.id.toString()}>
                 {item.doctor.name}
               </TabsTrigger>
             ))}
           </TabsList>
 
-          {managedDoctors?.map((item) => (
+          {managedDoctors.map((item) => (
             <TabsContent key={item.doctor.id} value={item.doctor.id.toString()}>
               <Card>
                 <CardContent className="p-6">
