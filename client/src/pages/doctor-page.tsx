@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { CalendarDays, Clock, MapPin, Building2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TokenProgress } from "@/components/token-progress";
 
 type DoctorWithClinic = User & { clinic?: Clinic };
 
@@ -86,11 +85,6 @@ export default function DoctorPage() {
                 <div className="mt-8">
                   <h2 className="text-xl font-semibold mb-4">About</h2>
                   <p className="text-muted-foreground">{doctor.bio || "No bio available."}</p>
-                </div>
-
-                <div className="mt-8">
-                  <h2 className="text-xl font-semibold mb-4">Current Queue Status</h2>
-                  <TokenProgress doctorId={doctor.id} />
                 </div>
               </CardContent>
             </Card>

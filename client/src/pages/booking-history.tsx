@@ -5,7 +5,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
-import { TokenProgress } from "@/components/token-progress";
 
 type AppointmentWithDoctor = Appointment & {
   doctor: User;
@@ -27,38 +26,11 @@ export default function BookingHistoryPage() {
     );
   }
 
-  const activeAppointments = appointments?.filter(
-    apt => apt.status === "scheduled" || apt.status === "in_progress"
-  );
-
   return (
     <div className="min-h-screen bg-gray-50">
       <NavHeader />
       <main className="container mx-auto px-4 py-8">
         <h1 className="text-2xl font-bold mb-6">My Appointments</h1>
-
-        {activeAppointments && activeAppointments.length > 0 && (
-          <div className="mb-8 space-y-4">
-            <h2 className="text-lg font-semibold">Active Appointments</h2>
-            <div className="grid md:grid-cols-2 gap-4">
-              {activeAppointments.map((appointment) => (
-                <Card key={appointment.id}>
-                  <CardContent className="p-4">
-                    <div className="mb-4">
-                      <h3 className="font-medium">{appointment.doctor.name}</h3>
-                      <p className="text-sm text-muted-foreground">{appointment.doctor.specialty}</p>
-                    </div>
-                    <TokenProgress 
-                      doctorId={appointment.doctor.id} 
-                      patientToken={appointment.tokenNumber}
-                    />
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-        )}
-
         <Card>
           <CardContent className="p-6">
             {appointments?.length === 0 ? (
@@ -100,8 +72,6 @@ export default function BookingHistoryPage() {
                                 ? "default"
                                 : appointment.status === "completed"
                                 ? "outline"
-                                : appointment.status === "in_progress"
-                                ? "secondary"
                                 : "destructive"
                             }
                           >
