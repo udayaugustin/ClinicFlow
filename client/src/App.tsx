@@ -9,6 +9,7 @@ import HomePage from "@/pages/home-page";
 import DoctorPage from "@/pages/doctor-page";
 import BookingPage from "@/pages/booking-page";
 import BookingHistoryPage from "@/pages/booking-history";
+import AttenderDashboard from "@/pages/attender-dashboard";
 
 function Router() {
   return (
@@ -18,6 +19,7 @@ function Router() {
       <Route path="/doctors/:id" component={DoctorPage} />
       <Route path="/book/:doctorId" component={BookingPage} />
       <Route path="/appointments" component={BookingHistoryPage} />
+      <Route path="/attender-dashboard" component={AttenderDashboard} />
       <Route component={NotFound} />
     </Switch>
   );

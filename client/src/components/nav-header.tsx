@@ -46,12 +46,19 @@ export function NavHeader() {
                     <span>{user.name}</span>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link href="/appointments" className="gap-2 md:hidden">
-                      <Calendar size={16} />
-                      <span>My Appointments</span>
-                    </Link>
+                    {user.role === "attender" ? (
+                      <Link href="/attender-dashboard" className="gap-2">
+                        <Calendar size={16} />
+                        <span>Doctor Dashboard</span>
+                      </Link>
+                    ) : (
+                      <Link href="/appointments" className="gap-2">
+                        <Calendar size={16} />
+                        <span>My Appointments</span>
+                      </Link>
+                    )}
                   </DropdownMenuItem>
-                  <DropdownMenuItem 
+                  <DropdownMenuItem
                     className="gap-2 text-red-600"
                     onClick={() => logoutMutation.mutate()}
                   >

@@ -132,6 +132,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Add new endpoint for attender appointments
+  app.get("/api/attender/:id/doctors/appointments", async (req, res) => {
+    if (!req.user) return res.sendStatus(401);
+    if (req.user.role !== "attender") return res.sendStatus(403);
+
+    try {
+      const doctorRelations = await storage.getAttenderDoctors(parseInt(req.params.id));
+      const doctorsWithAppointments = await Promise.all(
+        doctorRelations.map(async ({ doctor }) => {
+          const appointments = await storage.getAppointments(doctor.id);
+          return {
+            doctor,
+            appointments,
+          };
+        })
+      );
+      res.json(doctorsWithAppointments);
+    } catch (error) {
+      console.error('Error fetching attender doctor appointments:', error);
+      res.status(500).json({ message: 'Failed to fetch appointments' });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
