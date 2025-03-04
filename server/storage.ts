@@ -97,7 +97,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createAppointment(appointment: Omit<Appointment, "id">): Promise<Appointment> {
-    const [created] = await db.insert(appointments).values(appointment).returning();
+    const [created] = await db
+      .insert(appointments)
+      .values({
+        ...appointment,
+        status: appointment.status || "scheduled"
+      })
+      .returning();
     return created;
   }
 }

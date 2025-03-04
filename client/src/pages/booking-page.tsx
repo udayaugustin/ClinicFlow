@@ -38,23 +38,22 @@ export default function BookingPage() {
 
       const res = await apiRequest("POST", "/api/appointments", {
         doctorId: parseInt(doctorId),
-        clinicId: 1, // Using default clinic for now
         date: date.toISOString(),
-        tokenNumber: Math.floor(Math.random() * 100) + 1,
+        status: "scheduled",
       });
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
       toast({
-        title: "Appointment Booked",
-        description: "Your appointment has been successfully scheduled.",
+        title: "Success",
+        description: "Your appointment has been booked successfully.",
       });
       navigate("/");
     },
     onError: (error: Error) => {
       toast({
-        title: "Booking Failed",
+        title: "Error",
         description: error.message,
         variant: "destructive",
       });
@@ -66,7 +65,7 @@ export default function BookingPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <NavHeader />
-      
+
       <main className="container mx-auto px-4 py-8">
         <div className="max-w-3xl mx-auto">
           <Card>
