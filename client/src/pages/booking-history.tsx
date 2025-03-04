@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { Progress } from "@/components/ui/progress";
-import { Clock, ArrowRight } from "lucide-react";
+import { Clock, ArrowRight, Users } from "lucide-react";
 
 type AppointmentWithDoctor = Appointment & {
   doctor: User;
@@ -113,9 +113,19 @@ export default function BookingHistoryPage() {
                                 {availability && (
                                   <div className="space-y-2">
                                     <div className="flex items-center justify-between text-sm">
-                                      <span>Current Token: #{String(availability.currentToken).padStart(3, '0')}</span>
+                                      <div className="flex items-center gap-1">
+                                        <span>Current:</span>
+                                        <span className="font-medium">
+                                          #{String(availability.currentToken).padStart(3, '0')}
+                                        </span>
+                                      </div>
                                       <ArrowRight className="h-4 w-4" />
-                                      <span>Your Token: #{String(appointment.tokenNumber).padStart(3, '0')}</span>
+                                      <div className="flex items-center gap-1">
+                                        <span>Your Token:</span>
+                                        <span className="font-medium">
+                                          #{String(appointment.tokenNumber).padStart(3, '0')}
+                                        </span>
+                                      </div>
                                     </div>
                                     <Progress 
                                       value={
@@ -123,11 +133,20 @@ export default function BookingHistoryPage() {
                                           ? 100
                                           : (availability.currentToken / appointment.tokenNumber) * 100
                                       } 
+                                      className="h-2"
                                     />
                                     {tokensAhead !== null && tokensAhead > 0 && (
-                                      <p className="text-sm text-muted-foreground text-center mt-2">
-                                        {tokensAhead} {tokensAhead === 1 ? 'patient' : 'patients'} ahead of you
-                                      </p>
+                                      <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground mt-2">
+                                        <Users className="h-4 w-4" />
+                                        <span>
+                                          {tokensAhead} {tokensAhead === 1 ? 'patient' : 'patients'} ahead of you
+                                        </span>
+                                      </div>
+                                    )}
+                                    {tokensAhead === 0 && (
+                                      <div className="text-sm text-center text-primary font-medium mt-2">
+                                        You're next! Please be ready.
+                                      </div>
                                     )}
                                   </div>
                                 )}
