@@ -166,9 +166,17 @@ export default function AttenderDashboard() {
                 </TabsList>
 
                 {managedDoctors?.map((item) => {
-                  const filteredAppointments = item.appointments.filter(
-                    (apt) => isSameDay(new Date(apt.date), selectedDate)
-                  );
+                  const filteredAppointments = item.appointments
+                    .filter((apt) => isSameDay(new Date(apt.date), selectedDate))
+                    .sort((a, b) => {
+                      // Sort by status: in_progress first, then scheduled, then completed
+                      if (a.status === "in_progress") return -1;
+                      if (b.status === "in_progress") return 1;
+                      if (a.status === "scheduled" && b.status !== "scheduled") return -1;
+                      if (b.status === "scheduled" && a.status !== "scheduled") return 1;
+                      // If same status, sort by token number
+                      return a.tokenNumber - b.tokenNumber;
+                    });
 
                   return (
                     <TabsContent 
@@ -210,7 +218,12 @@ export default function AttenderDashboard() {
                               </tr>
                             ) : (
                               filteredAppointments.map((appointment) => (
-                                <tr key={appointment.id} className="border-b">
+                                <tr 
+                                  key={appointment.id} 
+                                  className={`border-b ${
+                                    appointment.status === "in_progress" ? "bg-secondary/10" : ""
+                                  }`}
+                                >
                                   <td className="py-4 px-4">
                                     {String(appointment.tokenNumber).padStart(3, '0')}
                                   </td>
