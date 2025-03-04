@@ -115,7 +115,7 @@ function LoginForm() {
 
 const registerSchema = insertUserSchema.extend({
   role: z.enum(["patient", "doctor"]),
-  specialty: z.string().optional().nullable(),
+  specialty: z.string().optional(),
 }).refine(
   (data) => {
     if (data.role === "doctor" && !data.specialty) {
@@ -140,11 +140,13 @@ function RegisterForm() {
       password: "",
       name: "",
       role: "patient",
-      specialty: null,
+      specialty: undefined,
       bio: null,
       imageUrl: null,
     },
   });
+
+  const role = form.watch("role");
 
   return (
     <Form {...form}>
@@ -194,7 +196,7 @@ function RegisterForm() {
           render={({ field }) => (
             <FormItem>
               <FormLabel>Role</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value}>
+              <Select onValueChange={field.onChange} value={field.value}>
                 <FormControl>
                   <SelectTrigger>
                     <SelectValue placeholder="Select role" />
@@ -209,14 +211,14 @@ function RegisterForm() {
             </FormItem>
           )}
         />
-        {form.watch("role") === "doctor" && (
+        {role === "doctor" && (
           <FormField
             control={form.control}
             name="specialty"
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Specialty</FormLabel>
-                <Select onValueChange={field.onChange} defaultValue={field.value ?? undefined}>
+                <Select onValueChange={field.onChange} value={field.value}>
                   <FormControl>
                     <SelectTrigger>
                       <SelectValue placeholder="Select specialty" />
