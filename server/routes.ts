@@ -174,6 +174,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/doctors/:id/availability", async (req, res) => {
+    try {
+      const doctorId = parseInt(req.params.id);
+      const date = req.query.date ? new Date(req.query.date as string) : new Date();
+
+      const availability = await storage.getDoctorAvailability(doctorId, date);
+
+      // If no availability record exists, return a default structure
+      if (!availability) {
+        return res.json({
+          doctorId,
+          date: date.toISOString(),
+          isAvailable: false,
+          currentToken: 0
+        });
+      }
+
+      res.json(availability);
+    } catch (error) {
+      console.error('Error fetching doctor availability:', error);
+      res.status(500).json({ message: 'Failed to fetch doctor availability' });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

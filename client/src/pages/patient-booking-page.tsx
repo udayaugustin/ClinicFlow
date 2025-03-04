@@ -28,7 +28,7 @@ export default function PatientBookingPage() {
   });
 
   const { data: availability } = useQuery({
-    queryKey: [`/api/doctors/${doctorId}/availability`, selectedDate],
+    queryKey: [`/api/doctors/${doctorId}/availability`, selectedDate.toISOString()],
     enabled: !!doctorId,
   });
 
@@ -138,9 +138,14 @@ export default function PatientBookingPage() {
 
               {availability?.isAvailable ? (
                 <div className="space-y-4">
-                  <p className="text-sm text-muted-foreground">
-                    Current token number: {availability.currentToken}
-                  </p>
+                  <div className="bg-muted p-4 rounded-lg">
+                    <p className="text-sm mb-2">
+                      Current Token: #{String(availability.currentToken || 0).padStart(3, '0')}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Book your appointment for {format(selectedDate, "PPP")}
+                    </p>
+                  </div>
                   <Button 
                     onClick={handleBookAppointment}
                     disabled={bookAppointmentMutation.isPending}
@@ -152,7 +157,7 @@ export default function PatientBookingPage() {
                 <Alert>
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>
-                    No available slots for the selected date.
+                    No available slots for {format(selectedDate, "PPP")}.
                   </AlertDescription>
                 </Alert>
               )}
