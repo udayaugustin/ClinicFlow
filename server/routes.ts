@@ -132,19 +132,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Add new endpoint for attender appointments
+  // Update the attender appointments endpoint to ensure complete data
   app.get("/api/attender/:id/doctors/appointments", async (req, res) => {
     if (!req.user) return res.sendStatus(401);
     if (req.user.role !== "attender") return res.sendStatus(403);
 
     try {
       const doctorRelations = await storage.getAttenderDoctors(parseInt(req.params.id));
+      if (!doctorRelations.length) {
+        return res.json([]);
+      }
+
       const doctorsWithAppointments = await Promise.all(
         doctorRelations.map(async ({ doctor }) => {
+          if (!doctor) {
+            console.error('Missing doctor data in relation');
+            return null;
+          }
+
           const appointments = await storage.getAppointments(doctor.id);
           // Filter appointments by doctor and include patient data
           const doctorAppointments = appointments.filter(
-            (apt) => apt.doctorId === doctor.id
+            (apt) => apt.doctorId === doctor.id && apt.patient // Ensure patient data exists
           );
           return {
             doctor,
@@ -152,7 +161,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           };
         })
       );
-      res.json(doctorsWithAppointments);
+
+      // Filter out any null entries from failed doctor lookups
+      const validData = doctorsWithAppointments.filter(Boolean);
+      res.json(validData);
     } catch (error) {
       console.error('Error fetching attender doctor appointments:', error);
       res.status(500).json({ message: 'Failed to fetch appointments' });

@@ -12,7 +12,7 @@ import { AlertCircle } from "lucide-react";
 
 type DoctorWithAppointments = {
   doctor: User;
-  appointments: (Appointment & { patient: User })[];
+  appointments: (Appointment & { patient?: User })[];
 };
 
 export default function AttenderDashboard() {
@@ -22,6 +22,22 @@ export default function AttenderDashboard() {
     queryKey: [`/api/attender/${user?.id}/doctors/appointments`],
     enabled: !!user?.id,
   });
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <NavHeader />
+        <main className="container mx-auto px-4 py-8">
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              Please log in to access the dashboard.
+            </AlertDescription>
+          </Alert>
+        </main>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -50,7 +66,7 @@ export default function AttenderDashboard() {
     );
   }
 
-  if (!managedDoctors?.length) {
+  if (!managedDoctors || managedDoctors.length === 0) {
     return (
       <div className="min-h-screen bg-gray-50">
         <NavHeader />
@@ -73,17 +89,23 @@ export default function AttenderDashboard() {
       <main className="container mx-auto px-4 py-8">
         <h1 className="text-2xl font-bold mb-6">Doctor Appointments Dashboard</h1>
 
-        <Tabs defaultValue={managedDoctors[0].doctor.id.toString()}>
+        <Tabs defaultValue={managedDoctors[0]?.doctor?.id?.toString()}>
           <TabsList className="mb-4">
             {managedDoctors.map((item) => (
-              <TabsTrigger key={item.doctor.id} value={item.doctor.id.toString()}>
+              <TabsTrigger 
+                key={item.doctor.id} 
+                value={item.doctor.id.toString()}
+              >
                 {item.doctor.name}
               </TabsTrigger>
             ))}
           </TabsList>
 
           {managedDoctors.map((item) => (
-            <TabsContent key={item.doctor.id} value={item.doctor.id.toString()}>
+            <TabsContent 
+              key={item.doctor.id} 
+              value={item.doctor.id.toString()}
+            >
               <Card>
                 <CardContent className="p-6">
                   <div className="flex justify-between items-center mb-6">
@@ -117,7 +139,7 @@ export default function AttenderDashboard() {
                                 {String(appointment.tokenNumber).padStart(3, '0')}
                               </td>
                               <td className="py-4 px-4">
-                                {appointment.patient.name}
+                                {appointment.patient?.name || 'Unknown Patient'}
                               </td>
                               <td className="py-4 px-4">
                                 {format(new Date(appointment.date), "PPP p")}
@@ -132,7 +154,8 @@ export default function AttenderDashboard() {
                                       : "destructive"
                                   }
                                 >
-                                  {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
+                                  {appointment.status.charAt(0).toUpperCase() + 
+                                    appointment.status.slice(1)}
                                 </Badge>
                               </td>
                             </tr>
