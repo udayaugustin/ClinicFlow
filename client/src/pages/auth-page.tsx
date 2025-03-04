@@ -8,13 +8,11 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { specialties } from "@shared/schema";
 import { z } from "zod";
 
-const loginSchema = insertUserSchema.pick({ 
-  username: true, 
-  password: true 
+const loginSchema = insertUserSchema.pick({
+  username: true,
+  password: true,
 });
 
 type LoginData = z.infer<typeof loginSchema>;
@@ -113,21 +111,14 @@ function LoginForm() {
   );
 }
 
-const registerSchema = insertUserSchema.extend({
-  role: z.enum(["patient", "doctor"]),
-  specialty: z.string().optional(),
-}).refine(
-  (data) => {
-    if (data.role === "doctor" && !data.specialty) {
-      return false;
-    }
-    return true;
-  },
-  {
-    message: "Specialty is required for doctors",
-    path: ["specialty"],
-  }
-);
+const registerSchema = insertUserSchema
+  .extend({
+    confirmPassword: z.string(),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords don't match",
+    path: ["confirmPassword"],
+  });
 
 type RegisterData = z.infer<typeof registerSchema>;
 
@@ -138,15 +129,14 @@ function RegisterForm() {
     defaultValues: {
       username: "",
       password: "",
+      confirmPassword: "",
       name: "",
-      role: "patient",
+      role: "patient", // Always set role as patient
       specialty: undefined,
       bio: null,
       imageUrl: null,
     },
   });
-
-  const role = form.watch("role");
 
   return (
     <Form {...form}>
@@ -157,6 +147,19 @@ function RegisterForm() {
           render={({ field }) => (
             <FormItem>
               <FormLabel>Username</FormLabel>
+              <FormControl>
+                <Input {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="name"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Full Name</FormLabel>
               <FormControl>
                 <Input {...field} />
               </FormControl>
@@ -179,64 +182,17 @@ function RegisterForm() {
         />
         <FormField
           control={form.control}
-          name="name"
+          name="confirmPassword"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Full Name</FormLabel>
+              <FormLabel>Confirm Password</FormLabel>
               <FormControl>
-                <Input {...field} />
+                <Input type="password" {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
-        <FormField
-          control={form.control}
-          name="role"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Role</FormLabel>
-              <Select onValueChange={field.onChange} value={field.value}>
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select role" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  <SelectItem value="patient">Patient</SelectItem>
-                  <SelectItem value="doctor">Doctor</SelectItem>
-                </SelectContent>
-              </Select>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        {role === "doctor" && (
-          <FormField
-            control={form.control}
-            name="specialty"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Specialty</FormLabel>
-                <Select onValueChange={field.onChange} value={field.value}>
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select specialty" />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    {specialties.map((specialty) => (
-                      <SelectItem key={specialty} value={specialty}>
-                        {specialty}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        )}
         <Button type="submit" className="w-full" disabled={registerMutation.isPending}>
           Register
         </Button>
