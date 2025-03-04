@@ -1,8 +1,12 @@
 import { InsertUser, User, Clinic, Appointment } from "@shared/schema";
+import { users, clinics, appointments } from "@shared/schema";
+import { eq } from "drizzle-orm";
+import { db } from "./db";
 import session from "express-session";
-import createMemoryStore from "memorystore";
+import connectPg from "connect-pg-simple";
+import { pool } from "./db";
 
-const MemoryStore = createMemoryStore(session);
+const PostgresStore = connectPg(session);
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
@@ -16,96 +20,55 @@ export interface IStorage {
   sessionStore: session.Store;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<number, User>;
-  private clinics: Map<number, Clinic>;
-  private appointments: Map<number, Appointment>;
+export class DatabaseStorage implements IStorage {
   sessionStore: session.Store;
-  currentId: number;
 
   constructor() {
-    this.users = new Map();
-    this.clinics = new Map();
-    this.appointments = new Map();
-    this.currentId = 1;
-    this.sessionStore = new MemoryStore({
-      checkPeriod: 86400000,
-    });
-
-    // Add some sample doctors
-    this.createUser({
-      username: "dr.smith",
-      password: "password",
-      name: "Dr. Smith",
-      role: "doctor",
-      specialty: "Cardiologist",
-      bio: "Experienced cardiologist with 15 years of practice",
-      imageUrl: "https://images.unsplash.com/photo-1612276529731-4b21494e6d71",
-    });
-
-    this.createUser({
-      username: "dr.jones",
-      password: "password",
-      name: "Dr. Jones",
-      role: "doctor",
-      specialty: "Pediatrician",
-      bio: "Caring pediatrician focused on child wellness",
-      imageUrl: "https://images.unsplash.com/photo-1612349317150-e413f6a5b16d",
+    this.sessionStore = new PostgresStore({
+      pool,
+      createTableIfMissing: true,
     });
   }
 
   async getUser(id: number): Promise<User | undefined> {
-    return this.users.get(id);
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const id = this.currentId++;
-    const user: User = {
-      id,
-      username: insertUser.username,
-      password: insertUser.password,
-      name: insertUser.name,
-      role: insertUser.role,
-      specialty: insertUser.specialty ?? null,
-      bio: insertUser.bio ?? null,
-      imageUrl: insertUser.imageUrl ?? null,
-    };
-    this.users.set(id, user);
+    const [user] = await db.insert(users).values(insertUser).returning();
     return user;
   }
 
   async getDoctors(): Promise<User[]> {
-    return Array.from(this.users.values()).filter(user => user.role === "doctor");
+    return await db.select().from(users).where(eq(users.role, "doctor"));
   }
 
   async getDoctorsBySpecialty(specialty: string): Promise<User[]> {
-    return Array.from(this.users.values()).filter(
-      user => user.role === "doctor" && user.specialty === specialty
-    );
+    return await db.select().from(users).where(eq(users.specialty, specialty));
   }
 
   async getClinics(): Promise<Clinic[]> {
-    return Array.from(this.clinics.values());
+    return await db.select().from(clinics);
   }
 
   async getAppointments(userId: number): Promise<Appointment[]> {
-    return Array.from(this.appointments.values()).filter(
-      apt => apt.patientId === userId || apt.doctorId === userId
-    );
+    return await db
+      .select()
+      .from(appointments)
+      .where(eq(appointments.patientId, userId))
+      .orWhere(eq(appointments.doctorId, userId));
   }
 
   async createAppointment(appointment: Omit<Appointment, "id">): Promise<Appointment> {
-    const id = this.currentId++;
-    const apt: Appointment = { ...appointment, id };
-    this.appointments.set(id, apt);
-    return apt;
+    const [created] = await db.insert(appointments).values(appointment).returning();
+    return created;
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
