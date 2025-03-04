@@ -1,7 +1,12 @@
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { specialties } from "@shared/schema";
 
 interface SearchFiltersProps {
@@ -11,11 +16,11 @@ interface SearchFiltersProps {
   onSpecialtyChange: (value: string) => void;
 }
 
-export function SearchFilters({ 
-  searchTerm, 
-  onSearchChange, 
-  specialty, 
-  onSpecialtyChange 
+export function SearchFilters({
+  searchTerm,
+  onSearchChange,
+  specialty,
+  onSpecialtyChange,
 }: SearchFiltersProps) {
   return (
     <div className="bg-white shadow-sm border-b">
@@ -30,14 +35,16 @@ export function SearchFilters({
               className="pl-9"
             />
           </div>
-          <Select value={specialty} onValueChange={onSpecialtyChange}>
+          <Select value={specialty || "all"} onValueChange={onSpecialtyChange}>
             <SelectTrigger className="w-full md:w-[200px]">
               <SelectValue placeholder="All Specialties" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All Specialties</SelectItem>
+              <SelectItem value="all">All Specialties</SelectItem>
               {specialties.map((s) => (
-                <SelectItem key={s} value={s}>{s}</SelectItem>
+                <SelectItem key={s} value={s}>
+                  {s}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
