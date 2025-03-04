@@ -118,24 +118,19 @@ export default function BookingHistoryPage() {
                                     <Clock className="h-4 w-4" />
                                     <span>{format(new Date(appointment.date), "p")}</span>
                                   </div>
-                                  <div className="flex items-center gap-2 justify-end">
-                                    <Ticket className="h-4 w-4" />
-                                    <span>
-                                      Total Tokens: {maxTokenNumber}
-                                    </span>
-                                  </div>
+                                  {availability && (
+                                    <div className="flex items-center gap-2 justify-end">
+                                      <Ticket className="h-4 w-4" />
+                                      <span className="font-medium">
+                                        Token {availability.currentToken}/{maxTokenNumber}
+                                      </span>
+                                    </div>
+                                  )}
                                 </div>
 
                                 {availability && (
-                                  <div className="space-y-2">
+                                  <div className="space-y-3">
                                     <div className="flex items-center justify-between text-sm">
-                                      <div className="flex items-center gap-1">
-                                        <span>Processing:</span>
-                                        <span className="font-medium">
-                                          #{String(availability.currentToken).padStart(3, '0')}
-                                        </span>
-                                      </div>
-                                      <ArrowRight className="h-4 w-4" />
                                       <div className="flex items-center gap-1">
                                         <span>Your Token:</span>
                                         <span className="font-medium">
@@ -145,9 +140,7 @@ export default function BookingHistoryPage() {
                                     </div>
                                     <Progress 
                                       value={
-                                        availability.currentToken >= appointment.tokenNumber
-                                          ? 100
-                                          : (availability.currentToken / appointment.tokenNumber) * 100
+                                        ((availability.currentToken) / maxTokenNumber) * 100
                                       } 
                                       className="h-2"
                                     />
