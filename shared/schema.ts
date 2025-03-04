@@ -9,7 +9,7 @@ export const users = pgTable("users", {
   name: text("name").notNull(),
   role: text("role", { enum: ["patient", "doctor"] }).notNull(),
   specialty: text("specialty"),
-  bio: text("text"),
+  bio: text("bio"),
   imageUrl: text("image_url"),
 });
 
