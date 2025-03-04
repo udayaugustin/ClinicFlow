@@ -179,14 +179,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const doctorId = parseInt(req.params.id);
       const date = req.query.date ? new Date(req.query.date as string) : new Date();
 
-      const availability = await storage.getDoctorAvailability(doctorId, date);
+      // Round date to start of day for consistency
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
+
+      const availability = await storage.getDoctorAvailability(doctorId, startOfDay);
 
       // If no availability record exists, return a default structure
       if (!availability) {
         return res.json({
           doctorId,
-          date: date.toISOString(),
-          isAvailable: false,
+          date: startOfDay.toISOString(),
+          isAvailable: true, // Default to true since we're not using this for slot management
           currentToken: 0
         });
       }

@@ -27,7 +27,6 @@ export default function BookingHistoryPage() {
     refetchInterval: 30000
   });
 
-  // Fetch availability for each doctor with today's appointments
   const todayAppointments = appointments?.filter(
     apt => format(new Date(apt.date), "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd")
   ) || [];
@@ -35,7 +34,7 @@ export default function BookingHistoryPage() {
   const doctorIds = [...new Set(todayAppointments.map(apt => apt.doctorId))];
 
   const { data: doctorAvailabilities } = useQuery<DoctorAvailability[]>({
-    queryKey: ["/api/doctors/availability", doctorIds],
+    queryKey: ["/api/doctors/availability", doctorIds.join(",")],
     enabled: doctorIds.length > 0,
     // Refresh every 30 seconds to keep token status current
     refetchInterval: 30000
@@ -73,18 +72,19 @@ export default function BookingHistoryPage() {
                         const availability = doctorAvailabilities?.find(
                           a => a.doctorId === appointment.doctorId
                         );
-                        const tokensAhead = availability 
-                          ? appointment.tokenNumber - availability.currentToken - 1
-                          : null;
 
-                        // Get all appointments for this doctor today to calculate total tokens
+                        // Get all appointments for this doctor today
                         const doctorTodayAppointments = todayAppointments.filter(
                           apt => apt.doctorId === appointment.doctorId
                         );
-                        const totalTokens = doctorTodayAppointments.length;
+
                         const maxTokenNumber = Math.max(
                           ...doctorTodayAppointments.map(apt => apt.tokenNumber)
                         );
+
+                        const tokensAhead = availability?.currentToken !== undefined
+                          ? Math.max(0, appointment.tokenNumber - availability.currentToken - 1)
+                          : null;
 
                         return (
                           <Card key={appointment.id} className="overflow-hidden">
@@ -118,49 +118,47 @@ export default function BookingHistoryPage() {
                                     <Clock className="h-4 w-4" />
                                     <span>{format(new Date(appointment.date), "p")}</span>
                                   </div>
-                                  {availability && (
-                                    <div className="flex items-center gap-2 justify-end">
-                                      <Ticket className="h-4 w-4" />
+                                  <div className="flex items-center gap-2 justify-end">
+                                    <Ticket className="h-4 w-4" />
+                                    <span className="font-medium">
+                                      Token {String(availability?.currentToken || 0).padStart(3, '0')}/{String(maxTokenNumber).padStart(3, '0')}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="space-y-3">
+                                  <div className="flex items-center justify-between text-sm">
+                                    <div className="flex items-center gap-1">
+                                      <span>Your Token:</span>
                                       <span className="font-medium">
-                                        Token {String(availability.currentToken).padStart(3, '0')}/{String(maxTokenNumber).padStart(3, '0')}
+                                        #{String(appointment.tokenNumber).padStart(3, '0')}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <Progress 
+                                    value={
+                                      maxTokenNumber > 0 && availability?.currentToken !== undefined
+                                        ? (availability.currentToken / maxTokenNumber) * 100
+                                        : 0
+                                    } 
+                                    className="h-2"
+                                  />
+
+                                  {tokensAhead !== null && tokensAhead > 0 && (
+                                    <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground mt-2">
+                                      <Users className="h-4 w-4" />
+                                      <span>
+                                        {tokensAhead} {tokensAhead === 1 ? 'patient' : 'patients'} ahead of you
                                       </span>
                                     </div>
                                   )}
-                                </div>
-
-                                {availability && (
-                                  <div className="space-y-3">
-                                    <div className="flex items-center justify-between text-sm">
-                                      <div className="flex items-center gap-1">
-                                        <span>Your Token:</span>
-                                        <span className="font-medium">
-                                          #{String(appointment.tokenNumber).padStart(3, '0')}
-                                        </span>
-                                      </div>
+                                  {tokensAhead === 0 && (
+                                    <div className="text-sm text-center text-primary font-medium mt-2">
+                                      You're next! Please be ready.
                                     </div>
-                                    <Progress 
-                                      value={
-                                        maxTokenNumber > 0
-                                          ? ((availability.currentToken) / maxTokenNumber) * 100
-                                          : 0
-                                      } 
-                                      className="h-2"
-                                    />
-                                    {tokensAhead !== null && tokensAhead > 0 && (
-                                      <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground mt-2">
-                                        <Users className="h-4 w-4" />
-                                        <span>
-                                          {tokensAhead} {tokensAhead === 1 ? 'patient' : 'patients'} ahead of you
-                                        </span>
-                                      </div>
-                                    )}
-                                    {tokensAhead === 0 && (
-                                      <div className="text-sm text-center text-primary font-medium mt-2">
-                                        You're next! Please be ready.
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
+                                  )}
+                                </div>
                               </div>
                             </CardContent>
                           </Card>
