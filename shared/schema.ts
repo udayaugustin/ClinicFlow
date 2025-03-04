@@ -37,6 +37,7 @@ export const appointments = pgTable("appointments", {
   doctorId: integer("doctor_id").notNull(),
   clinicId: integer("clinic_id").notNull(),
   date: timestamp("date").notNull(),
+  tokenNumber: integer("token_number").notNull(),
   status: text("status", { enum: ["scheduled", "completed", "cancelled"] }).notNull(),
 });
 

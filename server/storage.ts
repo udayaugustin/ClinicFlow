@@ -18,7 +18,8 @@ export interface IStorage {
   getDoctorsNearLocation(lat: number, lng: number, radiusInMiles?: number): Promise<User[]>;
   getClinics(): Promise<Clinic[]>;
   getAppointments(userId: number): Promise<(Appointment & { doctor: User })[]>;
-  createAppointment(appointment: Omit<Appointment, "id">): Promise<Appointment>;
+  createAppointment(appointment: Omit<Appointment, "id" | "tokenNumber">): Promise<Appointment>;
+  getNextTokenNumber(doctorId: number, clinicId: number, date: Date): Promise<number>;
   sessionStore: session.Store;
 }
 
@@ -122,6 +123,7 @@ export class DatabaseStorage implements IStorage {
         doctorId: appointments.doctorId,
         clinicId: appointments.clinicId,
         date: appointments.date,
+        tokenNumber: appointments.tokenNumber,
         status: appointments.status,
         doctor: {
           id: users.id,
@@ -148,19 +150,56 @@ export class DatabaseStorage implements IStorage {
           eq(appointments.doctorId, userId)
         )
       )
-      .leftJoin(users, eq(appointments.doctorId, users.id));
+      .leftJoin(users, eq(appointments.doctorId, users.id))
+      .orderBy(appointments.date);
 
     return results;
   }
 
-  async createAppointment(appointment: Omit<Appointment, "id">): Promise<Appointment> {
+  async getNextTokenNumber(doctorId: number, clinicId: number, date: Date): Promise<number> {
+    // Get the start and end of the day for the given date
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    // Get the highest token number for this doctor and clinic on the given date
+    const [result] = await db
+      .select({
+        maxToken: sql<number>`COALESCE(MAX(token_number), 0)`,
+      })
+      .from(appointments)
+      .where(
+        and(
+          eq(appointments.doctorId, doctorId),
+          eq(appointments.clinicId, clinicId),
+          sql`date >= ${startOfDay} AND date < ${endOfDay}`
+        )
+      );
+
+    // Return the next token number (current max + 1)
+    return (result?.maxToken || 0) + 1;
+  }
+
+  async createAppointment(appointment: Omit<Appointment, "id" | "tokenNumber">): Promise<Appointment> {
+    // Get the next token number for this doctor and clinic
+    const tokenNumber = await this.getNextTokenNumber(
+      appointment.doctorId,
+      appointment.clinicId,
+      appointment.date
+    );
+
+    // Create the appointment with the generated token number
     const [created] = await db
       .insert(appointments)
       .values({
         ...appointment,
+        tokenNumber,
         status: appointment.status || "scheduled"
       })
       .returning();
+
     return created;
   }
 }

@@ -49,10 +49,10 @@ export default function BookingHistoryPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {appointments?.map((appointment, index) => (
+                    {appointments?.map((appointment) => (
                       <tr key={appointment.id} className="border-b">
                         <td className="py-4 px-4">
-                          {String(appointment.id).padStart(4, '0')}
+                          {String(appointment.tokenNumber).padStart(3, '0')}
                         </td>
                         <td className="py-4 px-4">
                           <div>
@@ -71,7 +71,7 @@ export default function BookingHistoryPage() {
                               appointment.status === "scheduled"
                                 ? "default"
                                 : appointment.status === "completed"
-                                ? "success"
+                                ? "outline"
                                 : "destructive"
                             }
                           >
