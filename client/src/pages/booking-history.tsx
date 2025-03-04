@@ -122,7 +122,7 @@ export default function BookingHistoryPage() {
                                     <div className="flex items-center gap-2 justify-end">
                                       <Ticket className="h-4 w-4" />
                                       <span className="font-medium">
-                                        Token {availability.currentToken}/{maxTokenNumber}
+                                        Token {String(availability.currentToken).padStart(3, '0')}/{String(maxTokenNumber).padStart(3, '0')}
                                       </span>
                                     </div>
                                   )}
@@ -140,7 +140,9 @@ export default function BookingHistoryPage() {
                                     </div>
                                     <Progress 
                                       value={
-                                        ((availability.currentToken) / maxTokenNumber) * 100
+                                        maxTokenNumber > 0
+                                          ? ((availability.currentToken) / maxTokenNumber) * 100
+                                          : 0
                                       } 
                                       className="h-2"
                                     />
