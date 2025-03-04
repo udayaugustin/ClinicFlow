@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { Progress } from "@/components/ui/progress";
-import { Clock, ArrowRight, Users } from "lucide-react";
+import { Clock, ArrowRight, Users, Ticket } from "lucide-react";
 
 type AppointmentWithDoctor = Appointment & {
   doctor: User;
@@ -77,6 +77,15 @@ export default function BookingHistoryPage() {
                           ? appointment.tokenNumber - availability.currentToken - 1
                           : null;
 
+                        // Get all appointments for this doctor today to calculate total tokens
+                        const doctorTodayAppointments = todayAppointments.filter(
+                          apt => apt.doctorId === appointment.doctorId
+                        );
+                        const totalTokens = doctorTodayAppointments.length;
+                        const maxTokenNumber = Math.max(
+                          ...doctorTodayAppointments.map(apt => apt.tokenNumber)
+                        );
+
                         return (
                           <Card key={appointment.id} className="overflow-hidden">
                             <CardContent className="p-4">
@@ -104,13 +113,16 @@ export default function BookingHistoryPage() {
                               </div>
 
                               <div className="bg-muted p-4 rounded-lg">
-                                <div className="flex items-center justify-between mb-2">
+                                <div className="grid grid-cols-2 gap-4 mb-4">
                                   <div className="flex items-center gap-2">
                                     <Clock className="h-4 w-4" />
                                     <span>{format(new Date(appointment.date), "p")}</span>
                                   </div>
-                                  <div className="text-sm">
-                                    Token: #{String(appointment.tokenNumber).padStart(3, '0')}
+                                  <div className="flex items-center gap-2 justify-end">
+                                    <Ticket className="h-4 w-4" />
+                                    <span>
+                                      Total Tokens: {maxTokenNumber}
+                                    </span>
                                   </div>
                                 </div>
 
@@ -118,7 +130,7 @@ export default function BookingHistoryPage() {
                                   <div className="space-y-2">
                                     <div className="flex items-center justify-between text-sm">
                                       <div className="flex items-center gap-1">
-                                        <span>Current:</span>
+                                        <span>Processing:</span>
                                         <span className="font-medium">
                                           #{String(availability.currentToken).padStart(3, '0')}
                                         </span>
