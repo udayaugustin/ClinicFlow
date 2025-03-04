@@ -13,17 +13,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       let doctors;
       if (lat && lng) {
-        // If location is provided, use location-based search
         doctors = await storage.getDoctorsNearLocation(
           parseFloat(lat as string),
           parseFloat(lng as string),
           radius ? parseFloat(radius as string) : undefined
         );
       } else if (specialty) {
-        // If only specialty is provided, filter by specialty
         doctors = await storage.getDoctorsBySpecialty(specialty as string);
       } else {
-        // Otherwise, get all doctors
         doctors = await storage.getDoctors();
       }
       res.json(doctors);
@@ -35,7 +32,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/doctors/:id", async (req, res) => {
     try {
-      const doctor = await storage.getUser(parseInt(req.params.id));
+      const doctor = await storage.getDoctorWithClinic(parseInt(req.params.id));
       if (!doctor || doctor.role !== 'doctor') {
         return res.status(404).json({ message: 'Doctor not found' });
       }
@@ -60,10 +57,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/appointments", async (req, res) => {
     if (!req.user) return res.sendStatus(401);
     try {
-      // Validate and transform the appointment data
+      const doctor = await storage.getUser(Number(req.body.doctorId));
+      if (!doctor || !doctor.clinicId) {
+        return res.status(400).json({ message: 'Invalid doctor or clinic' });
+      }
+
       const appointmentData = insertAppointmentSchema.parse({
         ...req.body,
         patientId: req.user.id,
+        clinicId: doctor.clinicId,
       });
 
       const appointment = await storage.createAppointment(appointmentData);

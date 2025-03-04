@@ -1,16 +1,18 @@
 import { useQuery } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
-import { User } from "@shared/schema";
+import { User, Clinic } from "@shared/schema";
 import { NavHeader } from "@/components/nav-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { CalendarDays, Clock, MapPin } from "lucide-react";
+import { CalendarDays, Clock, MapPin, Building2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+
+type DoctorWithClinic = User & { clinic?: Clinic };
 
 export default function DoctorPage() {
   const { id } = useParams();
 
-  const { data: doctor, isLoading } = useQuery<User>({
+  const { data: doctor, isLoading } = useQuery<DoctorWithClinic>({
     queryKey: [`/api/doctors/${id}`],
   });
 
@@ -65,10 +67,16 @@ export default function DoctorPage() {
                       <Clock className="h-4 w-4" />
                       <span>Available Mon-Fri, 9:00 AM - 5:00 PM</span>
                     </div>
-                    {doctor.address && (
+                    {doctor.clinic && (
+                      <div className="mt-2 flex items-center gap-2 text-muted-foreground">
+                        <Building2 className="h-4 w-4" />
+                        <span>{doctor.clinic.name}</span>
+                      </div>
+                    )}
+                    {doctor.clinic && (
                       <div className="mt-2 flex items-center gap-2 text-muted-foreground">
                         <MapPin className="h-4 w-4" />
-                        <span>{doctor.address}</span>
+                        <span>{doctor.clinic.address}, {doctor.clinic.city}, {doctor.clinic.state} {doctor.clinic.zipCode}</span>
                       </div>
                     )}
                   </div>

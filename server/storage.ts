@@ -14,6 +14,7 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
   getDoctors(): Promise<User[]>;
   getDoctorsBySpecialty(specialty: string): Promise<User[]>;
+  getDoctorWithClinic(id: number): Promise<(User & { clinic?: Clinic }) | undefined>;
   getDoctorsNearLocation(lat: number, lng: number, radiusInMiles?: number): Promise<User[]>;
   getClinics(): Promise<Clinic[]>;
   getAppointments(userId: number): Promise<Appointment[]>;
@@ -54,8 +55,26 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(users).where(eq(users.specialty, specialty));
   }
 
+  async getDoctorWithClinic(id: number): Promise<(User & { clinic?: Clinic }) | undefined> {
+    const [result] = await db
+      .select({
+        ...users,
+        clinic: clinics,
+      })
+      .from(users)
+      .leftJoin(clinics, eq(users.clinicId, clinics.id))
+      .where(eq(users.id, id));
+
+    if (!result) return undefined;
+
+    const { clinic, ...user } = result;
+    return {
+      ...user,
+      clinic: clinic || undefined,
+    };
+  }
+
   async getDoctorsNearLocation(lat: number, lng: number, radiusInMiles: number = 10): Promise<User[]> {
-    // Haversine formula to calculate distance between two points on Earth
     const haversineDistance = sql`
       69.0 * DEGREES(ACOS(
         COS(RADIANS(${lat})) * 
