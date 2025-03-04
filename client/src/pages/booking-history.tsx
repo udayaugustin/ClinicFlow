@@ -23,6 +23,8 @@ type DoctorAvailability = {
 export default function BookingHistoryPage() {
   const { data: appointments, isLoading } = useQuery<AppointmentWithDoctor[]>({
     queryKey: ["/api/patient/appointments"],
+    // Refresh every 30 seconds to keep token status current
+    refetchInterval: 30000
   });
 
   // Fetch availability for each doctor with today's appointments
@@ -35,6 +37,8 @@ export default function BookingHistoryPage() {
   const { data: doctorAvailabilities } = useQuery<DoctorAvailability[]>({
     queryKey: ["/api/doctors/availability", doctorIds],
     enabled: doctorIds.length > 0,
+    // Refresh every 30 seconds to keep token status current
+    refetchInterval: 30000
   });
 
   if (isLoading) {
@@ -74,7 +78,7 @@ export default function BookingHistoryPage() {
                           : null;
 
                         return (
-                          <Card key={appointment.id}>
+                          <Card key={appointment.id} className="overflow-hidden">
                             <CardContent className="p-4">
                               <div className="flex items-center justify-between mb-4">
                                 <div>
