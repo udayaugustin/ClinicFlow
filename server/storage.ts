@@ -17,7 +17,7 @@ export interface IStorage {
   getDoctorWithClinic(id: number): Promise<(User & { clinic?: Clinic }) | undefined>;
   getDoctorsNearLocation(lat: number, lng: number, radiusInMiles?: number): Promise<User[]>;
   getClinics(): Promise<Clinic[]>;
-  getAppointments(userId: number): Promise<(Appointment & { doctor: User })[]>;
+  getAppointments(userId: number): Promise<(Appointment & { doctor: User; patient?: User })[]>;
   createAppointment(appointment: Omit<Appointment, "id" | "tokenNumber">): Promise<Appointment>;
   getNextTokenNumber(doctorId: number, clinicId: number, date: Date): Promise<number>;
   sessionStore: session.Store;
@@ -120,7 +120,7 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(clinics);
   }
 
-  async getAppointments(userId: number): Promise<(Appointment & { doctor: User })[]> {
+  async getAppointments(userId: number): Promise<(Appointment & { doctor: User; patient?: User })[]> {
     const results = await db
       .select({
         id: appointments.id,
@@ -147,6 +147,23 @@ export class DatabaseStorage implements IStorage {
           longitude: users.longitude,
           clinicId: users.clinicId,
         },
+        patient: {
+          id: patientUsers.id,
+          username: patientUsers.username,
+          password: patientUsers.password,
+          name: patientUsers.name,
+          role: patientUsers.role,
+          specialty: patientUsers.specialty,
+          bio: patientUsers.bio,
+          imageUrl: patientUsers.imageUrl,
+          address: patientUsers.address,
+          city: patientUsers.city,
+          state: patientUsers.state,
+          zipCode: patientUsers.zipCode,
+          latitude: patientUsers.latitude,
+          longitude: patientUsers.longitude,
+          clinicId: patientUsers.clinicId,
+        },
       })
       .from(appointments)
       .where(
@@ -156,6 +173,7 @@ export class DatabaseStorage implements IStorage {
         )
       )
       .leftJoin(users, eq(appointments.doctorId, users.id))
+      .leftJoin(users as typeof users, eq(appointments.patientId, sql`${users}.id`)).as('patientUsers')
       .orderBy(appointments.date);
 
     return results;
