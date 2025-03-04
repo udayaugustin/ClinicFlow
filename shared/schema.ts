@@ -11,6 +11,12 @@ export const users = pgTable("users", {
   specialty: text("specialty"),
   bio: text("bio"),
   imageUrl: text("image_url"),
+  address: text("address"),
+  city: text("city"),
+  state: text("state"),
+  zipCode: text("zip_code"),
+  latitude: text("latitude"),
+  longitude: text("longitude"),
 });
 
 export const clinics = pgTable("clinics", {
@@ -30,15 +36,7 @@ export const appointments = pgTable("appointments", {
   tokenNumber: integer("token_number").notNull(),
 });
 
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
-  name: true,
-  role: true,
-  specialty: true,
-  bio: true,
-  imageUrl: true,
-});
+export const insertUserSchema = createInsertSchema(users);
 
 export const insertClinicSchema = createInsertSchema(clinics);
 export const insertAppointmentSchema = createInsertSchema(appointments);

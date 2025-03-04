@@ -1,6 +1,6 @@
 import { InsertUser, User, Clinic, Appointment } from "@shared/schema";
 import { users, clinics, appointments } from "@shared/schema";
-import { eq, or } from "drizzle-orm";
+import { eq, or, and, sql } from "drizzle-orm";
 import { db } from "./db";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
@@ -14,6 +14,7 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
   getDoctors(): Promise<User[]>;
   getDoctorsBySpecialty(specialty: string): Promise<User[]>;
+  getDoctorsNearLocation(lat: number, lng: number, radiusInMiles?: number): Promise<User[]>;
   getClinics(): Promise<Clinic[]>;
   getAppointments(userId: number): Promise<Appointment[]>;
   createAppointment(appointment: Omit<Appointment, "id">): Promise<Appointment>;
@@ -51,6 +52,32 @@ export class DatabaseStorage implements IStorage {
 
   async getDoctorsBySpecialty(specialty: string): Promise<User[]> {
     return await db.select().from(users).where(eq(users.specialty, specialty));
+  }
+
+  async getDoctorsNearLocation(lat: number, lng: number, radiusInMiles: number = 10): Promise<User[]> {
+    // Haversine formula to calculate distance between two points on Earth
+    const haversineDistance = sql`
+      69.0 * DEGREES(ACOS(
+        COS(RADIANS(${lat})) * 
+        COS(RADIANS(CAST(latitude AS FLOAT))) * 
+        COS(RADIANS(CAST(longitude AS FLOAT)) - RADIANS(${lng})) + 
+        SIN(RADIANS(${lat})) * 
+        SIN(RADIANS(CAST(latitude AS FLOAT)))
+      ))`;
+
+    return await db
+      .select({
+        ...users,
+        distance: haversineDistance,
+      })
+      .from(users)
+      .where(
+        and(
+          eq(users.role, "doctor"),
+          sql`${haversineDistance} <= ${radiusInMiles}`
+        )
+      )
+      .orderBy(haversineDistance);
   }
 
   async getClinics(): Promise<Clinic[]> {
