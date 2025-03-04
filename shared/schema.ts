@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
@@ -31,7 +31,14 @@ export const users = pgTable("users", {
   clinicId: integer("clinic_id").references(() => clinics.id),
 });
 
-// New table for attender-doctor relationships
+export const doctorAvailability = pgTable("doctor_availability", {
+  id: serial("id").primaryKey(),
+  doctorId: integer("doctor_id").notNull().references(() => users.id),
+  date: timestamp("date").notNull(),
+  isAvailable: boolean("is_available").notNull().default(false),
+  currentToken: integer("current_token").notNull().default(0),
+});
+
 export const attenderDoctors = pgTable("attender_doctors", {
   id: serial("id").primaryKey(),
   attenderId: integer("attender_id").notNull().references(() => users.id),
@@ -46,7 +53,7 @@ export const appointments = pgTable("appointments", {
   clinicId: integer("clinic_id").notNull(),
   date: timestamp("date").notNull(),
   tokenNumber: integer("token_number").notNull(),
-  status: text("status", { enum: ["scheduled", "completed", "cancelled"] }).notNull(),
+  status: text("status", { enum: ["scheduled", "completed", "cancelled", "in_progress"] }).notNull(),
 });
 
 // Define relations
@@ -96,13 +103,20 @@ export const attenderDoctorsRelations = relations(attenderDoctors, ({ one }) => 
   }),
 }));
 
-// Create schemas with proper validation
+export const doctorAvailabilityRelations = relations(doctorAvailability, ({ one }) => ({
+  doctor: one(users, {
+    fields: [doctorAvailability.doctorId],
+    references: [users.id],
+  }),
+}));
+
+
 export const insertUserSchema = createInsertSchema(users);
 export const insertClinicSchema = createInsertSchema(clinics);
 export const insertAttenderDoctorSchema = createInsertSchema(attenderDoctors);
 export const insertAppointmentSchema = createInsertSchema(appointments, {
   date: z.string().transform((str) => new Date(str)),
-  status: z.enum(["scheduled", "completed", "cancelled"]).default("scheduled"),
+  status: z.enum(["scheduled", "completed", "cancelled", "in_progress"]).default("scheduled"),
 }).omit({ tokenNumber: true });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;

@@ -1,5 +1,5 @@
 import { InsertUser, User, Clinic, Appointment, attenderDoctors, AttenderDoctor } from "@shared/schema";
-import { users, clinics, appointments } from "@shared/schema";
+import { users, clinics, appointments, doctorAvailability } from "@shared/schema"; // Added doctorAvailability import
 import { eq, or, and, sql, inArray } from "drizzle-orm";
 import { db } from "./db";
 import session from "express-session";
@@ -26,6 +26,14 @@ export interface IStorage {
   addDoctorToAttender(attenderId: number, doctorId: number, clinicId: number): Promise<AttenderDoctor>;
   removeDoctorFromAttender(attenderId: number, doctorId: number): Promise<void>;
   getAttendersByClinic(clinicId: number): Promise<User[]>;
+  updateAppointmentStatus(appointmentId: number, status: string): Promise<Appointment>;
+  updateDoctorAvailability(
+    doctorId: number,
+    date: Date,
+    isAvailable: boolean,
+    currentToken?: number
+  ): Promise<typeof doctorAvailability.$inferSelect>;
+  getDoctorAvailability(doctorId: number, date: Date): Promise<typeof doctorAvailability.$inferSelect | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -309,6 +317,102 @@ export class DatabaseStorage implements IStorage {
           eq(users.role, "attender")
         )
       );
+  }
+
+  async updateAppointmentStatus(appointmentId: number, status: string): Promise<Appointment> {
+    try {
+      const [updated] = await db
+        .update(appointments)
+        .set({ status })
+        .where(eq(appointments.id, appointmentId))
+        .returning();
+
+      if (!updated) {
+        throw new Error('Appointment not found');
+      }
+
+      return updated;
+    } catch (error) {
+      console.error('Error updating appointment status:', error);
+      throw error;
+    }
+  }
+
+  async updateDoctorAvailability(
+    doctorId: number,
+    date: Date,
+    isAvailable: boolean,
+    currentToken?: number
+  ): Promise<typeof doctorAvailability.$inferSelect> {
+    try {
+      // Round date to start of day for consistency
+      const dayStart = new Date(date);
+      dayStart.setHours(0, 0, 0, 0);
+
+      // Try to update existing record first
+      const [existing] = await db
+        .select()
+        .from(doctorAvailability)
+        .where(
+          and(
+            eq(doctorAvailability.doctorId, doctorId),
+            eq(doctorAvailability.date, dayStart)
+          )
+        );
+
+      if (existing) {
+        const [updated] = await db
+          .update(doctorAvailability)
+          .set({
+            isAvailable,
+            ...(currentToken !== undefined ? { currentToken } : {}),
+          })
+          .where(eq(doctorAvailability.id, existing.id))
+          .returning();
+        return updated;
+      }
+
+      // Create new record if none exists
+      const [created] = await db
+        .insert(doctorAvailability)
+        .values({
+          doctorId,
+          date: dayStart,
+          isAvailable,
+          currentToken: currentToken || 0,
+        })
+        .returning();
+
+      return created;
+    } catch (error) {
+      console.error('Error updating doctor availability:', error);
+      throw error;
+    }
+  }
+
+  async getDoctorAvailability(
+    doctorId: number,
+    date: Date
+  ): Promise<typeof doctorAvailability.$inferSelect | undefined> {
+    try {
+      const dayStart = new Date(date);
+      dayStart.setHours(0, 0, 0, 0);
+
+      const [availability] = await db
+        .select()
+        .from(doctorAvailability)
+        .where(
+          and(
+            eq(doctorAvailability.doctorId, doctorId),
+            eq(doctorAvailability.date, dayStart)
+          )
+        );
+
+      return availability;
+    } catch (error) {
+      console.error('Error getting doctor availability:', error);
+      throw error;
+    }
   }
 }
 

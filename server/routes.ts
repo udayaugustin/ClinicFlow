@@ -76,6 +76,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // New route for updating appointment status
+  app.patch("/api/appointments/:id/status", async (req, res) => {
+    if (!req.user || req.user.role !== "attender") return res.sendStatus(403);
+    try {
+      const appointmentId = parseInt(req.params.id);
+      const { status } = req.body;
+
+      if (!["scheduled", "completed", "in_progress"].includes(status)) {
+        return res.status(400).json({ message: "Invalid status" });
+      }
+
+      const appointment = await storage.updateAppointmentStatus(appointmentId, status);
+      res.json(appointment);
+    } catch (error) {
+      console.error('Error updating appointment status:', error);
+      res.status(500).json({ message: 'Failed to update appointment status' });
+    }
+  });
+
+  // New route for updating doctor availability
+  app.patch("/api/doctors/:id/availability", async (req, res) => {
+    if (!req.user || req.user.role !== "attender") return res.sendStatus(403);
+    try {
+      const doctorId = parseInt(req.params.id);
+      const { isAvailable, currentToken } = req.body;
+
+      const availability = await storage.updateDoctorAvailability(
+        doctorId,
+        new Date(),
+        isAvailable,
+        currentToken
+      );
+      res.json(availability);
+    } catch (error) {
+      console.error('Error updating doctor availability:', error);
+      res.status(500).json({ message: 'Failed to update doctor availability' });
+    }
+  });
+
   // New routes for attender management
   app.get("/api/attenders/:clinicId", async (req, res) => {
     try {
