@@ -8,6 +8,7 @@ import AuthPage from "@/pages/auth-page";
 import HomePage from "@/pages/home-page";
 import DoctorPage from "@/pages/doctor-page";
 import BookingPage from "@/pages/booking-page";
+import BookingHistoryPage from "@/pages/booking-history";
 
 function Router() {
   return (
@@ -16,6 +17,7 @@ function Router() {
       <Route path="/" component={HomePage} />
       <Route path="/doctors/:id" component={DoctorPage} />
       <Route path="/book/:doctorId" component={BookingPage} />
+      <Route path="/appointments" component={BookingHistoryPage} />
       <Route component={NotFound} />
     </Switch>
   );

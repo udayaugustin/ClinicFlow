@@ -17,7 +17,7 @@ export interface IStorage {
   getDoctorWithClinic(id: number): Promise<(User & { clinic?: Clinic }) | undefined>;
   getDoctorsNearLocation(lat: number, lng: number, radiusInMiles?: number): Promise<User[]>;
   getClinics(): Promise<Clinic[]>;
-  getAppointments(userId: number): Promise<Appointment[]>;
+  getAppointments(userId: number): Promise<(Appointment & { doctor: User })[]>;
   createAppointment(appointment: Omit<Appointment, "id">): Promise<Appointment>;
   sessionStore: session.Store;
 }
@@ -103,16 +103,25 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(clinics);
   }
 
-  async getAppointments(userId: number): Promise<Appointment[]> {
-    return await db
-      .select()
+  async getAppointments(userId: number): Promise<(Appointment & { doctor: User })[]> {
+    const appointments = await db
+      .select({
+        ...appointments,
+        doctor: users,
+      })
       .from(appointments)
       .where(
         or(
           eq(appointments.patientId, userId),
           eq(appointments.doctorId, userId)
         )
-      );
+      )
+      .leftJoin(users, eq(appointments.doctorId, users.id));
+
+    return appointments.map(({ doctor, ...appointment }) => ({
+      ...appointment,
+      doctor,
+    }));
   }
 
   async createAppointment(appointment: Omit<Appointment, "id">): Promise<Appointment> {

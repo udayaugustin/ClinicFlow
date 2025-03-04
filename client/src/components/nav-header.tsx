@@ -8,7 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, User } from "lucide-react";
+import { LogOut, User, Calendar } from "lucide-react";
 
 export function NavHeader() {
   const { user, logoutMutation } = useAuth();
@@ -22,31 +22,45 @@ export function NavHeader() {
 
         <div className="flex items-center gap-4">
           {user ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="relative h-10 w-10 rounded-full">
-                  <Avatar className="h-10 w-10">
-                    <AvatarImage src={user.imageUrl} alt={user.name} />
-                    <AvatarFallback>
-                      {user.name.split(" ").map(n => n[0]).join("")}
-                    </AvatarFallback>
-                  </Avatar>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem className="gap-2">
-                  <User size={16} />
-                  <span>{user.name}</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem 
-                  className="gap-2 text-red-600"
-                  onClick={() => logoutMutation.mutate()}
-                >
-                  <LogOut size={16} />
-                  <span>Logout</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <>
+              <Button variant="ghost" asChild className="hidden md:flex">
+                <Link href="/appointments">
+                  <Calendar className="mr-2 h-4 w-4" />
+                  My Appointments
+                </Link>
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="relative h-10 w-10 rounded-full">
+                    <Avatar className="h-10 w-10">
+                      <AvatarImage src={user.imageUrl} alt={user.name} />
+                      <AvatarFallback>
+                        {user.name.split(" ").map(n => n[0]).join("")}
+                      </AvatarFallback>
+                    </Avatar>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem className="gap-2">
+                    <User size={16} />
+                    <span>{user.name}</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/appointments" className="gap-2 md:hidden">
+                      <Calendar size={16} />
+                      <span>My Appointments</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    className="gap-2 text-red-600"
+                    onClick={() => logoutMutation.mutate()}
+                  >
+                    <LogOut size={16} />
+                    <span>Logout</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
           ) : (
             <div className="flex items-center gap-2">
               <Button variant="ghost" asChild>
