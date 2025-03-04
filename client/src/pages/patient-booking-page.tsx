@@ -9,11 +9,25 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
-import { format, startOfDay } from "date-fns";
+import { format, startOfDay, addMinutes, setHours, setMinutes } from "date-fns";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Clock, UserCheck, UserX } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+
+// Hardcoded time slots (9 AM to 5 PM, 30-minute intervals)
+const generateTimeSlots = (baseDate: Date) => {
+  const slots = [];
+  const startTime = setHours(setMinutes(baseDate, 0), 9); // 9 AM
+  const endTime = setHours(setMinutes(baseDate, 0), 17); // 5 PM
+
+  let currentSlot = startTime;
+  while (currentSlot < endTime) {
+    slots.push(new Date(currentSlot));
+    currentSlot = addMinutes(currentSlot, 30);
+  }
+  return slots;
+};
 
 export default function PatientBookingPage() {
   const { doctorId } = useParams();
@@ -21,6 +35,7 @@ export default function PatientBookingPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [selectedTime, setSelectedTime] = useState<Date | null>(null);
 
   const { data: doctor, isLoading: isLoadingDoctor } = useQuery<User>({
     queryKey: [`/api/doctors/${doctorId}`],
@@ -33,10 +48,13 @@ export default function PatientBookingPage() {
   });
 
   const bookAppointmentMutation = useMutation({
-    mutationFn: async (data: { date: Date }) => {
+    mutationFn: async () => {
+      if (!selectedTime) throw new Error("Please select a time slot");
+
+      const appointmentDate = new Date(selectedTime);
       const res = await apiRequest("POST", "/api/appointments", {
         doctorId: parseInt(doctorId!),
-        date: data.date.toISOString(),
+        date: appointmentDate.toISOString(),
       });
       return res.json();
     },
@@ -57,9 +75,7 @@ export default function PatientBookingPage() {
     },
   });
 
-  const handleBookAppointment = () => {
-    bookAppointmentMutation.mutate({ date: selectedDate });
-  };
+  const timeSlots = generateTimeSlots(selectedDate);
 
   if (!user) {
     return (
@@ -116,13 +132,27 @@ export default function PatientBookingPage() {
               <div className="mb-6">
                 <h2 className="text-lg font-semibold">{doctor.name}</h2>
                 <p className="text-muted-foreground">{doctor.specialty}</p>
+                {availability?.isAvailable ? (
+                  <div className="flex items-center gap-2 text-sm text-green-600 mt-2">
+                    <UserCheck className="h-4 w-4" />
+                    <span>Available today</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-sm text-yellow-600 mt-2">
+                    <UserX className="h-4 w-4" />
+                    <span>May not be available today</span>
+                  </div>
+                )}
               </div>
 
               <h3 className="text-sm font-medium mb-2">Select Date</h3>
               <Calendar
                 mode="single"
                 selected={selectedDate}
-                onSelect={(date) => setSelectedDate(date || new Date())}
+                onSelect={(date) => {
+                  setSelectedDate(date || new Date());
+                  setSelectedTime(null);
+                }}
                 className="rounded-md border"
                 disabled={(date) => {
                   const today = startOfDay(new Date());
@@ -135,31 +165,30 @@ export default function PatientBookingPage() {
           <Card>
             <CardContent className="p-6">
               <h2 className="text-lg font-semibold mb-4">Available Time Slots</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                {timeSlots.map((slot) => (
+                  <Button
+                    key={slot.toISOString()}
+                    variant={selectedTime?.toISOString() === slot.toISOString() ? "default" : "outline"}
+                    className="w-full"
+                    onClick={() => setSelectedTime(slot)}
+                  >
+                    <Clock className="mr-2 h-4 w-4" />
+                    {format(slot, "h:mm a")}
+                  </Button>
+                ))}
+              </div>
 
-              {availability?.isAvailable ? (
-                <div className="space-y-4">
-                  <div className="bg-muted p-4 rounded-lg">
-                    <p className="text-sm mb-2">
-                      Current Token: #{String(availability.currentToken || 0).padStart(3, '0')}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      Book your appointment for {format(selectedDate, "PPP")}
-                    </p>
-                  </div>
-                  <Button 
-                    onClick={handleBookAppointment}
+              {selectedTime && (
+                <div className="mt-6">
+                  <Button
+                    className="w-full"
+                    onClick={() => bookAppointmentMutation.mutate()}
                     disabled={bookAppointmentMutation.isPending}
                   >
-                    Book Appointment
+                    Book for {format(selectedTime, "h:mm a")}
                   </Button>
                 </div>
-              ) : (
-                <Alert>
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>
-                    No available slots for {format(selectedDate, "PPP")}.
-                  </AlertDescription>
-                </Alert>
               )}
             </CardContent>
           </Card>
