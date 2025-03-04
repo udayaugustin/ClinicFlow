@@ -151,13 +151,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
 
           const appointments = await storage.getAppointments(doctor.id);
-          // Filter appointments by doctor and include patient data
-          const doctorAppointments = appointments.filter(
-            (apt) => apt.doctorId === doctor.id && apt.patient // Ensure patient data exists
-          );
           return {
             doctor,
-            appointments: doctorAppointments,
+            appointments,
           };
         })
       );

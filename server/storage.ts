@@ -1,6 +1,6 @@
 import { InsertUser, User, Clinic, Appointment, attenderDoctors, AttenderDoctor } from "@shared/schema";
 import { users, clinics, appointments } from "@shared/schema";
-import { eq, or, and, sql } from "drizzle-orm";
+import { eq, or, and, sql, inArray } from "drizzle-orm";
 import { db } from "./db";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
@@ -121,62 +121,67 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAppointments(userId: number): Promise<(Appointment & { doctor: User; patient?: User })[]> {
-    const results = await db
-      .select({
-        id: appointments.id,
-        patientId: appointments.patientId,
-        doctorId: appointments.doctorId,
-        clinicId: appointments.clinicId,
-        date: appointments.date,
-        tokenNumber: appointments.tokenNumber,
-        status: appointments.status,
-        doctor: {
-          id: sql`doctorUser.id`,
-          username: sql`doctorUser.username`,
-          password: sql`doctorUser.password`,
-          name: sql`doctorUser.name`,
-          role: sql`doctorUser.role`,
-          specialty: sql`doctorUser.specialty`,
-          bio: sql`doctorUser.bio`,
-          imageUrl: sql`doctorUser.imageUrl`,
-          address: sql`doctorUser.address`,
-          city: sql`doctorUser.city`,
-          state: sql`doctorUser.state`,
-          zipCode: sql`doctorUser.zipCode`,
-          latitude: sql`doctorUser.latitude`,
-          longitude: sql`doctorUser.longitude`,
-          clinicId: sql`doctorUser.clinicId`,
-        },
-        patient: {
-          id: sql`patientUser.id`,
-          username: sql`patientUser.username`,
-          password: sql`patientUser.password`,
-          name: sql`patientUser.name`,
-          role: sql`patientUser.role`,
-          specialty: sql`patientUser.specialty`,
-          bio: sql`patientUser.bio`,
-          imageUrl: sql`patientUser.imageUrl`,
-          address: sql`patientUser.address`,
-          city: sql`patientUser.city`,
-          state: sql`patientUser.state`,
-          zipCode: sql`patientUser.zipCode`,
-          latitude: sql`patientUser.latitude`,
-          longitude: sql`patientUser.longitude`,
-          clinicId: sql`patientUser.clinicId`,
-        },
-      })
-      .from(appointments)
-      .where(
-        or(
-          eq(appointments.patientId, userId),
-          eq(appointments.doctorId, userId)
-        )
-      )
-      .leftJoin(users.as('doctorUser'), eq(appointments.doctorId, sql`doctorUser.id`))
-      .leftJoin(users.as('patientUser'), eq(appointments.patientId, sql`patientUser.id`))
-      .orderBy(appointments.date);
+    try {
+      console.log('Getting appointments for doctor:', userId);
 
-    return results;
+      // Step 1: Get basic appointments
+      const appointmentsResult = await db
+        .select()
+        .from(appointments)
+        .where(eq(appointments.doctorId, userId));
+
+      console.log('Basic appointments query result:', JSON.stringify(appointmentsResult, null, 2));
+
+      if (!appointmentsResult.length) {
+        console.log('No appointments found for doctor:', userId);
+        return [];
+      }
+
+      // Step 2: Get doctor data
+      const doctorResult = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, userId));
+
+      if (!doctorResult.length) {
+        console.error(`Doctor not found: ${userId}`);
+        throw new Error('Doctor not found');
+      }
+
+      const doctor = doctorResult[0];
+      console.log('Doctor data:', JSON.stringify(doctor, null, 2));
+
+      // Step 3: Get all unique patient IDs
+      const patientIds = appointmentsResult.map(apt => apt.patientId);
+      console.log('Patient IDs to fetch:', patientIds);
+
+      // Step 4: Get all patients in one query
+      const patients = await db
+        .select()
+        .from(users)
+        .where(inArray(users.id, patientIds));
+
+      console.log('Patients data:', JSON.stringify(patients, null, 2));
+
+      const patientsMap = new Map(patients.map(p => [p.id, p]));
+
+      // Step 5: Combine the data
+      const fullAppointments = appointmentsResult.map(appointment => ({
+        ...appointment,
+        doctor,
+        patient: patientsMap.get(appointment.patientId)
+      }));
+
+      console.log('Final appointments data:', JSON.stringify(fullAppointments, null, 2));
+      return fullAppointments;
+    } catch (error) {
+      console.error('Error in getAppointments:', error);
+      if (error instanceof Error) {
+        console.error('Error message:', error.message);
+        console.error('Error stack:', error.stack);
+      }
+      throw error;
+    }
   }
 
   async getNextTokenNumber(doctorId: number, clinicId: number, date: Date): Promise<number> {
@@ -222,65 +227,65 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAttenderDoctors(attenderId: number): Promise<(AttenderDoctor & { doctor: User })[]> {
-    const results = await db
-      .select({
-        id: attenderDoctors.id,
-        attenderId: attenderDoctors.attenderId,
-        doctorId: attenderDoctors.doctorId,
-        clinicId: attenderDoctors.clinicId,
-        doctor: {
-          id: users.id,
-          username: users.username,
-          password: users.password,
-          name: users.name,
-          role: users.role,
-          specialty: users.specialty,
-          bio: users.bio,
-          imageUrl: users.imageUrl,
-          address: users.address,
-          city: users.city,
-          state: users.state,
-          zipCode: users.zipCode,
-          latitude: users.latitude,
-          longitude: users.longitude,
-          clinicId: users.clinicId,
-        },
-      })
-      .from(attenderDoctors)
-      .leftJoin(users, eq(attenderDoctors.doctorId, users.id))
-      .where(eq(attenderDoctors.attenderId, attenderId));
+    try {
+      console.log('Getting doctors for attender:', attenderId);
 
-    return results;
-  }
+      // Step 1: Get attender-doctor relationships
+      const relations = await db
+        .select()
+        .from(attenderDoctors)
+        .where(eq(attenderDoctors.attenderId, attenderId));
 
-  async addDoctorToAttender(attenderId: number, doctorId: number, clinicId: number): Promise<AttenderDoctor> {
-    const [attender, doctor] = await Promise.all([
-      this.getUser(attenderId),
-      this.getUser(doctorId),
-    ]);
+      console.log('Attender-doctor relations:', JSON.stringify(relations, null, 2));
 
-    if (!attender || attender.role !== "attender") {
-      throw new Error("Invalid attender");
+      if (!relations.length) {
+        console.log(`No doctor relations found for attender: ${attenderId}`);
+        return [];
+      }
+
+      // Step 2: Get all doctors in one query
+      const doctorIds = relations.map(r => r.doctorId);
+      console.log('Doctor IDs to fetch:', doctorIds);
+
+      const doctors = await db
+        .select()
+        .from(users)
+        .where(
+          and(
+            inArray(users.id, doctorIds),
+            eq(users.role, "doctor")
+          )
+        );
+
+      console.log('Doctors data:', JSON.stringify(doctors, null, 2));
+
+      const doctorsMap = new Map(doctors.map(d => [d.id, d]));
+
+      // Step 3: Combine the data
+      const fullRelations = relations
+        .map(relation => {
+          const doctor = doctorsMap.get(relation.doctorId);
+          if (!doctor) {
+            console.error(`Doctor not found for relation: ${relation.id}`);
+            return null;
+          }
+          return {
+            ...relation,
+            doctor
+          };
+        })
+        .filter((rel): rel is (AttenderDoctor & { doctor: User }) => rel !== null);
+
+      console.log('Final attender-doctor data:', JSON.stringify(fullRelations, null, 2));
+      return fullRelations;
+    } catch (error) {
+      console.error('Error in getAttenderDoctors:', error);
+      if (error instanceof Error) {
+        console.error('Error message:', error.message);
+        console.error('Error stack:', error.stack);
+      }
+      throw error;
     }
-
-    if (!doctor || doctor.role !== "doctor") {
-      throw new Error("Invalid doctor");
-    }
-
-    if (attender.clinicId !== clinicId || doctor.clinicId !== clinicId) {
-      throw new Error("Attender and doctor must belong to the same clinic");
-    }
-
-    const [relation] = await db
-      .insert(attenderDoctors)
-      .values({
-        attenderId,
-        doctorId,
-        clinicId,
-      })
-      .returning();
-
-    return relation;
   }
 
   async removeDoctorFromAttender(attenderId: number, doctorId: number): Promise<void> {
