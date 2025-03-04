@@ -8,6 +8,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent } from "@/components/ui/card";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import { Loader2 } from "lucide-react";
 
 const timeSlots = [
@@ -19,6 +20,7 @@ export default function BookingPage() {
   const { doctorId } = useParams();
   const [_, navigate] = useLocation();
   const { toast } = useToast();
+  const { user } = useAuth();
   const [selectedDate, setSelectedDate] = useState<Date>();
   const [selectedTime, setSelectedTime] = useState<string>();
 
@@ -30,7 +32,7 @@ export default function BookingPage() {
 
   const bookingMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedDate || !selectedTime || !doctorId) {
+      if (!selectedDate || !selectedTime || !doctorId || !user) {
         throw new Error("Please select a date and time");
       }
 
@@ -40,6 +42,7 @@ export default function BookingPage() {
 
       const res = await apiRequest("POST", "/api/appointments", {
         doctorId: Number(doctorId),
+        patientId: user.id,
         date: date.toISOString(),
         status: "scheduled",
       });

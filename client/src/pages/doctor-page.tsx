@@ -9,14 +9,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function DoctorPage() {
   const { id } = useParams();
-  
-  const { data: doctors } = useQuery<User[]>({
+
+  const { data: doctors, isLoading } = useQuery<User[]>({
     queryKey: ["/api/doctors"],
   });
 
-  const doctor = doctors?.find(d => d.id === parseInt(id));
+  const doctor = doctors?.find(d => d.id === Number(id));
 
-  if (!doctor) {
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50">
         <NavHeader />
@@ -27,10 +27,29 @@ export default function DoctorPage() {
     );
   }
 
+  if (!doctor) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <NavHeader />
+        <main className="container mx-auto px-4 py-8">
+          <Card>
+            <CardContent className="p-6">
+              <h1 className="text-2xl font-bold text-red-600">Doctor Not Found</h1>
+              <p className="mt-2 text-gray-600">The requested doctor could not be found.</p>
+              <Button className="mt-4" asChild>
+                <Link href="/">Return to Home</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <NavHeader />
-      
+
       <main className="container mx-auto px-4 py-8">
         <div className="grid md:grid-cols-3 gap-8">
           <div className="md:col-span-2">
@@ -49,16 +68,18 @@ export default function DoctorPage() {
                       <Clock className="h-4 w-4" />
                       <span>Available Mon-Fri, 9:00 AM - 5:00 PM</span>
                     </div>
-                    <div className="mt-2 flex items-center gap-2 text-muted-foreground">
-                      <MapPin className="h-4 w-4" />
-                      <span>Main Street Medical Center</span>
-                    </div>
+                    {doctor.address && (
+                      <div className="mt-2 flex items-center gap-2 text-muted-foreground">
+                        <MapPin className="h-4 w-4" />
+                        <span>{doctor.address}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
                 <div className="mt-8">
                   <h2 className="text-xl font-semibold mb-4">About</h2>
-                  <p className="text-muted-foreground">{doctor.bio}</p>
+                  <p className="text-muted-foreground">{doctor.bio || "No bio available."}</p>
                 </div>
               </CardContent>
             </Card>
