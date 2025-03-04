@@ -76,7 +76,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // New route for updating appointment status
   app.patch("/api/appointments/:id/status", async (req, res) => {
     if (!req.user || req.user.role !== "attender") return res.sendStatus(403);
     try {
@@ -95,7 +94,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // New route for updating doctor availability
   app.patch("/api/doctors/:id/availability", async (req, res) => {
     if (!req.user || req.user.role !== "attender") return res.sendStatus(403);
     try {
@@ -115,7 +113,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Add this new route after the existing doctor availability route
   app.get("/api/doctors/availability", async (req, res) => {
     try {
       const doctorIds = (req.query.doctorIds as string || "").split(",").map(Number);
@@ -125,7 +122,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         doctorIds.map(doctorId => storage.getDoctorAvailability(doctorId, date))
       );
 
-      // Filter out any undefined values and return the result
       res.json(availabilities.filter(Boolean));
     } catch (error) {
       console.error('Error fetching doctor availabilities:', error);
@@ -133,61 +129,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // New routes for attender management
-  app.get("/api/attenders/:clinicId", async (req, res) => {
-    try {
-      const attenders = await storage.getAttendersByClinic(parseInt(req.params.clinicId));
-      res.json(attenders);
-    } catch (error) {
-      console.error('Error fetching attenders:', error);
-      res.status(500).json({ message: 'Failed to fetch attenders' });
-    }
-  });
-
-  app.get("/api/attender/:id/doctors", async (req, res) => {
-    try {
-      const doctors = await storage.getAttenderDoctors(parseInt(req.params.id));
-      res.json(doctors);
-    } catch (error) {
-      console.error('Error fetching attender doctors:', error);
-      res.status(500).json({ message: 'Failed to fetch attender doctors' });
-    }
-  });
-
-  app.post("/api/attender/:id/doctors", async (req, res) => {
-    if (!req.user) return res.sendStatus(401);
-    try {
-      const data = insertAttenderDoctorSchema.parse({
-        attenderId: parseInt(req.params.id),
-        doctorId: req.body.doctorId,
-        clinicId: req.body.clinicId,
-      });
-
-      const relation = await storage.addDoctorToAttender(
-        data.attenderId,
-        data.doctorId,
-        data.clinicId
-      );
-      res.status(201).json(relation);
-    } catch (error) {
-      console.error('Error adding doctor to attender:', error);
-      res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid request' });
-    }
-  });
-
-  app.delete("/api/attender/:attenderId/doctors/:doctorId", async (req, res) => {
-    if (!req.user) return res.sendStatus(401);
-    try {
-      await storage.removeDoctorFromAttender(
-        parseInt(req.params.attenderId),
-        parseInt(req.params.doctorId)
-      );
-      res.sendStatus(200);
-    } catch (error) {
-      console.error('Error removing doctor from attender:', error);
-      res.status(500).json({ message: 'Failed to remove doctor from attender' });
-    }
-  });
 
   // Patient appointments route
   app.get("/api/patient/appointments", async (req, res) => {
@@ -203,7 +144,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Attender appointments route
+  // Attender appointments route - Single endpoint for attender appointments
   app.get("/api/attender/:id/doctors/appointments", async (req, res) => {
     if (!req.user) return res.sendStatus(401);
     if (req.user.role !== "attender") return res.sendStatus(403);
@@ -216,42 +157,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: 'Failed to fetch appointments' });
     }
   });
-
-  //This route was already present in the original code.  No changes needed
-  app.get("/api/attender/:id/doctors/appointments", async (req, res) => {
-    if (!req.user) return res.sendStatus(401);
-    if (req.user.role !== "attender") return res.sendStatus(403);
-
-    try {
-      const doctorRelations = await storage.getAttenderDoctors(parseInt(req.params.id));
-      if (!doctorRelations.length) {
-        return res.json([]);
-      }
-
-      const doctorsWithAppointments = await Promise.all(
-        doctorRelations.map(async ({ doctor }) => {
-          if (!doctor) {
-            console.error('Missing doctor data in relation');
-            return null;
-          }
-
-          const appointments = await storage.getAppointments(doctor.id);
-          return {
-            doctor,
-            appointments,
-          };
-        })
-      );
-
-      // Filter out any null entries from failed doctor lookups
-      const validData = doctorsWithAppointments.filter(Boolean);
-      res.json(validData);
-    } catch (error) {
-      console.error('Error fetching attender doctor appointments:', error);
-      res.status(500).json({ message: 'Failed to fetch appointments' });
-    }
-  });
-
 
   const httpServer = createServer(app);
   return httpServer;
