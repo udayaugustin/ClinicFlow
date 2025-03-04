@@ -189,7 +189,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Update the attender appointments endpoint to ensure complete data
+  // Patient appointments route
+  app.get("/api/patient/appointments", async (req, res) => {
+    if (!req.user) return res.sendStatus(401);
+    if (req.user.role !== "patient") return res.sendStatus(403);
+
+    try {
+      const appointments = await storage.getPatientAppointments(req.user.id);
+      res.json(appointments);
+    } catch (error) {
+      console.error('Error fetching patient appointments:', error);
+      res.status(500).json({ message: 'Failed to fetch appointments' });
+    }
+  });
+
+  // Attender appointments route
+  app.get("/api/attender/:id/doctors/appointments", async (req, res) => {
+    if (!req.user) return res.sendStatus(401);
+    if (req.user.role !== "attender") return res.sendStatus(403);
+
+    try {
+      const doctorsWithAppointments = await storage.getAttenderDoctorsAppointments(parseInt(req.params.id));
+      res.json(doctorsWithAppointments);
+    } catch (error) {
+      console.error('Error fetching attender doctor appointments:', error);
+      res.status(500).json({ message: 'Failed to fetch appointments' });
+    }
+  });
+
+  //This route was already present in the original code.  No changes needed
   app.get("/api/attender/:id/doctors/appointments", async (req, res) => {
     if (!req.user) return res.sendStatus(401);
     if (req.user.role !== "attender") return res.sendStatus(403);
@@ -223,6 +251,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: 'Failed to fetch appointments' });
     }
   });
+
 
   const httpServer = createServer(app);
   return httpServer;

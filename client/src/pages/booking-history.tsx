@@ -22,7 +22,7 @@ type DoctorAvailability = {
 
 export default function BookingHistoryPage() {
   const { data: appointments, isLoading } = useQuery<AppointmentWithDoctor[]>({
-    queryKey: ["/api/appointments"],
+    queryKey: ["/api/patient/appointments"],
   });
 
   // Fetch availability for each doctor with today's appointments
@@ -55,7 +55,7 @@ export default function BookingHistoryPage() {
         <h1 className="text-2xl font-bold mb-6">My Appointments</h1>
         <Card>
           <CardContent className="p-6">
-            {appointments?.length === 0 ? (
+            {!appointments?.length ? (
               <p className="text-center text-muted-foreground py-8">
                 No appointments found
               </p>

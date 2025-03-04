@@ -34,6 +34,8 @@ export interface IStorage {
     currentToken?: number
   ): Promise<typeof doctorAvailability.$inferSelect>;
   getDoctorAvailability(doctorId: number, date: Date): Promise<typeof doctorAvailability.$inferSelect | undefined>;
+  getPatientAppointments(patientId: number): Promise<(Appointment & { doctor: User })[]>;
+  getAttenderDoctorsAppointments(attenderId: number): Promise<(AttenderDoctor & { doctor: User, appointments: (Appointment & { patient?: User })[] })[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -208,7 +210,7 @@ export class DatabaseStorage implements IStorage {
       const fullAppointments = appointmentsResult.map(appointment => ({
         ...appointment,
         doctor: doctorsMap.get(appointment.doctorId)!,
-        patient: (user.role === "doctor" || user.role === "attender") 
+        patient: (user.role === "doctor" || user.role === "attender")
           ? patientsMap.get(appointment.patientId)
           : undefined
       }));
@@ -444,6 +446,95 @@ export class DatabaseStorage implements IStorage {
       return availability;
     } catch (error) {
       console.error('Error getting doctor availability:', error);
+      throw error;
+    }
+  }
+
+  async getPatientAppointments(patientId: number): Promise<(Appointment & { doctor: User })[]> {
+    try {
+      console.log('Getting appointments for patient:', patientId);
+
+      // Get patient's appointments
+      const appointmentsResult = await db
+        .select()
+        .from(appointments)
+        .where(eq(appointments.patientId, patientId));
+
+      console.log('Patient appointments:', JSON.stringify(appointmentsResult, null, 2));
+
+      if (!appointmentsResult.length) {
+        return [];
+      }
+
+      // Get all unique doctor IDs
+      const doctorIds = [...new Set(appointmentsResult.map(apt => apt.doctorId))];
+      const doctors = await db
+        .select()
+        .from(users)
+        .where(inArray(users.id, doctorIds));
+
+      const doctorsMap = new Map(doctors.map(d => [d.id, d]));
+
+      // Combine the data
+      return appointmentsResult.map(appointment => ({
+        ...appointment,
+        doctor: doctorsMap.get(appointment.doctorId)!,
+      }));
+    } catch (error) {
+      console.error('Error in getPatientAppointments:', error);
+      throw error;
+    }
+  }
+
+  async getAttenderDoctorsAppointments(attenderId: number): Promise<(AttenderDoctor & { doctor: User, appointments: (Appointment & { patient?: User })[] })[]> {
+    try {
+      console.log('Getting appointments for attender:', attenderId);
+
+      // First get attender-doctor relationships
+      const doctorRelations = await this.getAttenderDoctors(attenderId);
+      if (!doctorRelations.length) {
+        return [];
+      }
+
+      // Get appointments for each doctor
+      const doctorsWithAppointments = await Promise.all(
+        doctorRelations.map(async ({ doctor }) => {
+          if (!doctor) {
+            console.error('Missing doctor data in relation');
+            return null;
+          }
+
+          const appointments = await db
+            .select()
+            .from(appointments)
+            .where(eq(appointments.doctorId, doctor.id));
+
+          // Get patient data for these appointments
+          const patientIds = [...new Set(appointments.map(apt => apt.patientId))];
+          const patients = await db
+            .select()
+            .from(users)
+            .where(inArray(users.id, patientIds));
+
+          const patientsMap = new Map(patients.map(p => [p.id, p]));
+
+          const appointmentsWithPatients = appointments.map(apt => ({
+            ...apt,
+            patient: patientsMap.get(apt.patientId),
+          }));
+
+          return {
+            ...doctorRelations.find(rel => rel.doctorId === doctor.id)!,
+            doctor,
+            appointments: appointmentsWithPatients,
+          };
+        })
+      );
+
+      // Filter out any null entries from failed doctor lookups
+      return doctorsWithAppointments.filter(Boolean);
+    } catch (error) {
+      console.error('Error in getAttenderDoctorsAppointments:', error);
       throw error;
     }
   }
