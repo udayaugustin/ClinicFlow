@@ -19,13 +19,6 @@ export const users = pgTable("users", {
   longitude: text("longitude"),
 });
 
-export const clinics = pgTable("clinics", {
-  id: serial("id").primaryKey(),
-  name: text("name").notNull(),
-  address: text("address").notNull(),
-  imageUrl: text("image_url"),
-});
-
 export const appointments = pgTable("appointments", {
   id: serial("id").primaryKey(),
   patientId: integer("patient_id").notNull(),
@@ -34,13 +27,15 @@ export const appointments = pgTable("appointments", {
   status: text("status", { enum: ["scheduled", "completed", "cancelled"] }).notNull(),
 });
 
+// Create schemas with proper validation
 export const insertUserSchema = createInsertSchema(users);
-export const insertClinicSchema = createInsertSchema(clinics);
-export const insertAppointmentSchema = createInsertSchema(appointments);
+export const insertAppointmentSchema = createInsertSchema(appointments, {
+  date: z.string().transform((str) => new Date(str)),
+  status: z.enum(["scheduled", "completed", "cancelled"]).default("scheduled"),
+});
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
-export type Clinic = typeof clinics.$inferSelect;
 export type Appointment = typeof appointments.$inferSelect;
 
 export const specialties = [

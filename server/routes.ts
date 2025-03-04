@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { storage } from "./storage";
+import { insertAppointmentSchema } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   setupAuth(app);
@@ -47,18 +48,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/appointments", async (req, res) => {
     if (!req.user) return res.sendStatus(401);
-    const appointments = await storage.getAppointments(req.user.id);
-    res.json(appointments);
+    try {
+      const appointments = await storage.getAppointments(req.user.id);
+      res.json(appointments);
+    } catch (error) {
+      console.error('Error fetching appointments:', error);
+      res.status(500).json({ message: 'Failed to fetch appointments' });
+    }
   });
 
   app.post("/api/appointments", async (req, res) => {
     if (!req.user) return res.sendStatus(401);
-    const appointment = await storage.createAppointment({
-      ...req.body,
-      patientId: req.user.id,
-      status: "scheduled",
-    });
-    res.json(appointment);
+    try {
+      // Validate and transform the appointment data
+      const appointmentData = insertAppointmentSchema.parse({
+        ...req.body,
+        patientId: req.user.id,
+      });
+
+      const appointment = await storage.createAppointment(appointmentData);
+      res.status(201).json(appointment);
+    } catch (error) {
+      console.error('Error creating appointment:', error);
+      res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid appointment data' });
+    }
   });
 
   const httpServer = createServer(app);

@@ -24,11 +24,9 @@ export default function BookingPage() {
   const [selectedDate, setSelectedDate] = useState<Date>();
   const [selectedTime, setSelectedTime] = useState<string>();
 
-  const { data: doctors, isLoading } = useQuery<User[]>({
-    queryKey: ["/api/doctors"],
+  const { data: doctor, isLoading } = useQuery<User>({
+    queryKey: [`/api/doctors/${doctorId}`],
   });
-
-  const doctor = doctors?.find(d => d.id === Number(doctorId));
 
   const bookingMutation = useMutation({
     mutationFn: async () => {
@@ -36,15 +34,15 @@ export default function BookingPage() {
         throw new Error("Please select a date and time");
       }
 
-      const date = new Date(selectedDate);
+      // Create a new date object for the selected date and time
       const [hours, minutes] = selectedTime.split(":");
-      date.setHours(parseInt(hours), parseInt(minutes));
+      const appointmentDate = new Date(selectedDate);
+      appointmentDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
 
       const res = await apiRequest("POST", "/api/appointments", {
         doctorId: Number(doctorId),
-        patientId: user.id,
-        date: date.toISOString(),
-        status: "scheduled",
+        date: appointmentDate.toISOString(),
+        status: "scheduled"
       });
       return res.json();
     },
@@ -98,7 +96,6 @@ export default function BookingPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <NavHeader />
-
       <main className="container mx-auto px-4 py-8">
         <div className="max-w-3xl mx-auto">
           <Card>
