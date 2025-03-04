@@ -142,28 +142,48 @@ export class DatabaseStorage implements IStorage {
         throw new Error('User not found');
       }
 
-      // Step 1: Get basic appointments based on user role
-      const appointmentsResult = await db
-        .select()
-        .from(appointments)
-        .where(
-          user.role === "doctor" 
-            ? eq(appointments.doctorId, userId)
-            : eq(appointments.patientId, userId)
-        );
+      let appointmentsResult;
+
+      if (user.role === "attender") {
+        // For attenders, first get their managed doctors
+        const managedDoctors = await this.getAttenderDoctors(userId);
+        const doctorIds = managedDoctors.map(rel => rel.doctorId);
+
+        console.log('Attender managed doctor IDs:', doctorIds);
+
+        // Then get appointments for all managed doctors
+        appointmentsResult = await db
+          .select()
+          .from(appointments)
+          .where(inArray(appointments.doctorId, doctorIds));
+
+      } else if (user.role === "doctor") {
+        // For doctors, get appointments where they are the doctor
+        appointmentsResult = await db
+          .select()
+          .from(appointments)
+          .where(eq(appointments.doctorId, userId));
+
+      } else {
+        // For patients, only get their own appointments
+        appointmentsResult = await db
+          .select()
+          .from(appointments)
+          .where(eq(appointments.patientId, userId));
+      }
 
       console.log('Basic appointments query result:', JSON.stringify(appointmentsResult, null, 2));
 
-      if (!appointmentsResult.length) {
+      if (!appointmentsResult?.length) {
         console.log('No appointments found for user:', userId);
         return [];
       }
 
-      // Step 2: Get doctor IDs
+      // Get all unique doctor IDs from the appointments
       const doctorIds = [...new Set(appointmentsResult.map(apt => apt.doctorId))];
       console.log('Doctor IDs to fetch:', doctorIds);
 
-      // Step 3: Get all doctors in one query
+      // Get all doctors in one query
       const doctors = await db
         .select()
         .from(users)
@@ -173,11 +193,24 @@ export class DatabaseStorage implements IStorage {
 
       const doctorsMap = new Map(doctors.map(d => [d.id, d]));
 
-      // Step 4: Combine the data
+      // Get patient data if needed (for doctor or attender view)
+      let patientsMap = new Map<number, User>();
+      if (user.role === "doctor" || user.role === "attender") {
+        const patientIds = [...new Set(appointmentsResult.map(apt => apt.patientId))];
+        const patients = await db
+          .select()
+          .from(users)
+          .where(inArray(users.id, patientIds));
+        patientsMap = new Map(patients.map(p => [p.id, p]));
+      }
+
+      // Combine the data
       const fullAppointments = appointmentsResult.map(appointment => ({
         ...appointment,
         doctor: doctorsMap.get(appointment.doctorId)!,
-        patient: user.role === "doctor" ? user : undefined
+        patient: (user.role === "doctor" || user.role === "attender") 
+          ? patientsMap.get(appointment.patientId)
+          : undefined
       }));
 
       console.log('Final appointments data:', JSON.stringify(fullAppointments, null, 2));
