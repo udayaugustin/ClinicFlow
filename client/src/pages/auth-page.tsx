@@ -132,16 +132,17 @@ function RegisterForm() {
       confirmPassword: "",
       name: "",
       role: "patient",
-      specialty: null,
-      bio: null,
-      imageUrl: null,
     },
   });
 
   const onSubmit = (data: RegisterData) => {
-    // Remove confirmPassword before sending to server
     const { confirmPassword, ...registerData } = data;
-    registerMutation.mutate(registerData);
+    registerMutation.mutate({
+      ...registerData,
+      specialty: null,
+      bio: null,
+      imageUrl: null,
+    });
   };
 
   return (
