@@ -21,7 +21,7 @@ export function NavHeader() {
         </Link>
 
         <div className="flex items-center gap-4">
-          {user && (
+          {user ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-10 w-10 rounded-full">
@@ -47,6 +47,15 @@ export function NavHeader() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" asChild>
+                <Link href="/auth">Login</Link>
+              </Button>
+              <Button asChild>
+                <Link href="/auth">Register</Link>
+              </Button>
+            </div>
           )}
         </div>
       </div>
