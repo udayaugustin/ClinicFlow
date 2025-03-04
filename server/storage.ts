@@ -148,21 +148,21 @@ export class DatabaseStorage implements IStorage {
           clinicId: users.clinicId,
         },
         patient: {
-          id: patientUsers.id,
-          username: patientUsers.username,
-          password: patientUsers.password,
-          name: patientUsers.name,
-          role: patientUsers.role,
-          specialty: patientUsers.specialty,
-          bio: patientUsers.bio,
-          imageUrl: patientUsers.imageUrl,
-          address: patientUsers.address,
-          city: patientUsers.city,
-          state: patientUsers.state,
-          zipCode: patientUsers.zipCode,
-          latitude: patientUsers.latitude,
-          longitude: patientUsers.longitude,
-          clinicId: patientUsers.clinicId,
+          id: patients.id,
+          username: patients.username,
+          password: patients.password,
+          name: patients.name,
+          role: patients.role,
+          specialty: patients.specialty,
+          bio: patients.bio,
+          imageUrl: patients.imageUrl,
+          address: patients.address,
+          city: patients.city,
+          state: patients.state,
+          zipCode: patients.zipCode,
+          latitude: patients.latitude,
+          longitude: patients.longitude,
+          clinicId: patients.clinicId,
         },
       })
       .from(appointments)
@@ -173,7 +173,7 @@ export class DatabaseStorage implements IStorage {
         )
       )
       .leftJoin(users, eq(appointments.doctorId, users.id))
-      .leftJoin(users as typeof users, eq(appointments.patientId, sql`${users}.id`)).as('patientUsers')
+      .leftJoin(users, eq(appointments.patientId, users.id), 'patients')
       .orderBy(appointments.date);
 
     return results;
