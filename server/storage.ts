@@ -1,6 +1,6 @@
 import { InsertUser, User, Clinic, Appointment } from "@shared/schema";
 import { users, clinics, appointments } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, or } from "drizzle-orm";
 import { db } from "./db";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
@@ -61,8 +61,12 @@ export class DatabaseStorage implements IStorage {
     return await db
       .select()
       .from(appointments)
-      .where(eq(appointments.patientId, userId))
-      .orWhere(eq(appointments.doctorId, userId));
+      .where(
+        or(
+          eq(appointments.patientId, userId),
+          eq(appointments.doctorId, userId)
+        )
+      );
   }
 
   async createAppointment(appointment: Omit<Appointment, "id">): Promise<Appointment> {
