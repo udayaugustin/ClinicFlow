@@ -10,12 +10,30 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { z } from "zod";
 
+// Login schema just needs username and password
 const loginSchema = insertUserSchema.pick({
   username: true,
   password: true,
 });
 
 type LoginData = z.infer<typeof loginSchema>;
+
+// Register schema extends the insertUserSchema with confirm password
+const registerSchema = insertUserSchema
+  .pick({
+    username: true,
+    password: true,
+    name: true,
+  })
+  .extend({
+    confirmPassword: z.string()
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords don't match",
+    path: ["confirmPassword"],
+  });
+
+type RegisterData = z.infer<typeof registerSchema>;
 
 export default function AuthPage() {
   const [_location, navigate] = useLocation();
@@ -111,17 +129,6 @@ function LoginForm() {
   );
 }
 
-const registerSchema = insertUserSchema
-  .extend({
-    confirmPassword: z.string(),
-  })
-  .refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords don't match",
-    path: ["confirmPassword"],
-  });
-
-type RegisterData = z.infer<typeof registerSchema>;
-
 function RegisterForm() {
   const { registerMutation } = useAuth();
   const form = useForm<RegisterData>({
@@ -131,14 +138,15 @@ function RegisterForm() {
       password: "",
       confirmPassword: "",
       name: "",
-      role: "patient",
     },
   });
 
   const onSubmit = (data: RegisterData) => {
-    const { confirmPassword, ...registerData } = data;
+    // Remove confirmPassword and add required fields for patient registration
+    const { confirmPassword, ...rest } = data;
     registerMutation.mutate({
-      ...registerData,
+      ...rest,
+      role: "patient",
       specialty: null,
       bio: null,
       imageUrl: null,
