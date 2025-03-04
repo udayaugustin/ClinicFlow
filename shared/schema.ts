@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -30,14 +30,11 @@ export const appointments = pgTable("appointments", {
   id: serial("id").primaryKey(),
   patientId: integer("patient_id").notNull(),
   doctorId: integer("doctor_id").notNull(),
-  clinicId: integer("clinic_id").notNull(),
   date: timestamp("date").notNull(),
   status: text("status", { enum: ["scheduled", "completed", "cancelled"] }).notNull(),
-  tokenNumber: integer("token_number").notNull(),
 });
 
 export const insertUserSchema = createInsertSchema(users);
-
 export const insertClinicSchema = createInsertSchema(clinics);
 export const insertAppointmentSchema = createInsertSchema(appointments);
 

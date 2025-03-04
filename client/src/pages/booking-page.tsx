@@ -6,7 +6,6 @@ import { NavHeader } from "@/components/nav-header";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent } from "@/components/ui/card";
-import { format } from "date-fns";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
@@ -23,21 +22,24 @@ export default function BookingPage() {
   const [selectedDate, setSelectedDate] = useState<Date>();
   const [selectedTime, setSelectedTime] = useState<string>();
 
-  const { data: doctors } = useQuery<User[]>({
+  const { data: doctors, isLoading } = useQuery<User[]>({
     queryKey: ["/api/doctors"],
   });
 
-  const doctor = doctors?.find(d => d.id === parseInt(doctorId));
+  const doctor = doctors?.find(d => d.id === Number(doctorId));
 
   const bookingMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedDate || !selectedTime) return;
+      if (!selectedDate || !selectedTime || !doctorId) {
+        throw new Error("Please select a date and time");
+      }
+
       const date = new Date(selectedDate);
       const [hours, minutes] = selectedTime.split(":");
       date.setHours(parseInt(hours), parseInt(minutes));
 
       const res = await apiRequest("POST", "/api/appointments", {
-        doctorId: parseInt(doctorId),
+        doctorId: Number(doctorId),
         date: date.toISOString(),
         status: "scheduled",
       });
@@ -60,7 +62,35 @@ export default function BookingPage() {
     },
   });
 
-  if (!doctor) return null;
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <NavHeader />
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!doctor) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <NavHeader />
+        <div className="container mx-auto px-4 py-8">
+          <Card>
+            <CardContent className="p-6">
+              <h1 className="text-2xl font-bold text-red-600">Doctor Not Found</h1>
+              <p className="mt-2 text-gray-600">The requested doctor could not be found.</p>
+              <Button className="mt-4" onClick={() => navigate("/")}>
+                Return to Home
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
