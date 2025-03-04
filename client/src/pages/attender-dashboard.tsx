@@ -164,8 +164,8 @@ export default function AttenderDashboard() {
               <Tabs defaultValue={managedDoctors?.[0]?.doctor?.id?.toString()}>
                 <TabsList className="mb-4">
                   {managedDoctors?.map((item) => (
-                    <TabsTrigger
-                      key={item.doctor.id}
+                    <TabsTrigger 
+                      key={item.doctor.id} 
                       value={item.doctor.id.toString()}
                     >
                       {item.doctor.name}
@@ -190,8 +190,8 @@ export default function AttenderDashboard() {
                   const currentToken = item.availability?.currentToken || 0;
 
                   return (
-                    <TabsContent
-                      key={item.doctor.id}
+                    <TabsContent 
+                      key={item.doctor.id} 
                       value={item.doctor.id.toString()}
                     >
                       <div className="flex justify-between items-center mb-6">
@@ -199,31 +199,23 @@ export default function AttenderDashboard() {
                           <h2 className="text-xl font-semibold">{item.doctor.name}</h2>
                           <p className="text-muted-foreground">{item.doctor.specialty}</p>
                         </div>
-                        <div className="flex items-center gap-4">
-                          <div className="flex items-center gap-2">
-                            <div className={`w-2 h-2 rounded-full ${isAvailable ? 'bg-green-500' : 'bg-red-500'}`} />
-                            <span className="text-sm font-medium">
-                              Status: {isAvailable ? 'Available' : 'Not Available'}
-                            </span>
-                          </div>
-                          <Button
-                            variant={isAvailable ? "destructive" : "default"}
-                            className="gap-2"
-                            onClick={() => handleToggleDoctorAvailability(item.doctor.id, isAvailable)}
-                          >
-                            {isAvailable ? (
-                              <>
-                                <XCircle className="h-4 w-4" />
-                                Mark as Not Available
-                              </>
-                            ) : (
-                              <>
-                                <CheckCircle2 className="h-4 w-4" />
-                                Mark As Available
-                              </>
-                            )}
-                          </Button>
-                        </div>
+                        <Button
+                          variant={isAvailable ? "default" : "outline"}
+                          className="gap-2"
+                          onClick={() => handleToggleDoctorAvailability(item.doctor.id, isAvailable)}
+                        >
+                          {isAvailable ? (
+                            <>
+                              <CheckCircle2 className="h-4 w-4" />
+                              Available
+                            </>
+                          ) : (
+                            <>
+                              <XCircle className="h-4 w-4" />
+                              Not Available
+                            </>
+                          )}
+                        </Button>
                       </div>
 
                       {isAvailable && (
@@ -253,8 +245,8 @@ export default function AttenderDashboard() {
                               </tr>
                             ) : (
                               filteredAppointments.map((appointment) => (
-                                <tr
-                                  key={appointment.id}
+                                <tr 
+                                  key={appointment.id} 
                                   className={`border-b ${
                                     appointment.status === "in_progress" ? "bg-secondary/10" : ""
                                   }`}
@@ -280,7 +272,7 @@ export default function AttenderDashboard() {
                                           : "destructive"
                                       }
                                     >
-                                      {appointment.status.charAt(0).toUpperCase() +
+                                      {appointment.status.charAt(0).toUpperCase() + 
                                         appointment.status.slice(1)}
                                     </Badge>
                                   </td>
