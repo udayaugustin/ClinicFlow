@@ -18,20 +18,16 @@ const loginSchema = insertUserSchema.pick({
 
 type LoginData = z.infer<typeof loginSchema>;
 
-// Register schema extends the insertUserSchema with confirm password
-const registerSchema = insertUserSchema
-  .pick({
-    username: true,
-    password: true,
-    name: true,
-  })
-  .extend({
-    confirmPassword: z.string()
-  })
-  .refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords don't match",
-    path: ["confirmPassword"],
-  });
+// Register schema for patients only
+const registerSchema = z.object({
+  username: z.string().min(1, "Username is required"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  confirmPassword: z.string(),
+  name: z.string().min(1, "Name is required"),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Passwords don't match",
+  path: ["confirmPassword"],
+});
 
 type RegisterData = z.infer<typeof registerSchema>;
 
@@ -142,7 +138,7 @@ function RegisterForm() {
   });
 
   const onSubmit = (data: RegisterData) => {
-    // Remove confirmPassword and add required fields for patient registration
+    // Remove confirmPassword and add patient-specific fields
     const { confirmPassword, ...rest } = data;
     registerMutation.mutate({
       ...rest,
