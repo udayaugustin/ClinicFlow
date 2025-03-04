@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { format, isSameDay } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, CheckCircle2, XCircle } from "lucide-react";
+import { AlertCircle, CheckCircle2, XCircle, Clock } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -18,6 +18,10 @@ import { useToast } from "@/hooks/use-toast";
 type DoctorWithAppointments = {
   doctor: User;
   appointments: (Appointment & { patient?: User })[];
+  availability?: {
+    isAvailable: boolean;
+    currentToken: number;
+  };
 };
 
 export default function AttenderDashboard() {
@@ -68,8 +72,12 @@ export default function AttenderDashboard() {
     updateAppointmentMutation.mutate({ appointmentId, status: "in_progress" });
   };
 
-  const handleToggleDoctorAvailability = (doctorId: number, isAvailable: boolean) => {
-    updateAvailabilityMutation.mutate({ doctorId, isAvailable });
+  const handleToggleDoctorAvailability = (doctorId: number, currentAvailability: boolean) => {
+    updateAvailabilityMutation.mutate({
+      doctorId,
+      isAvailable: !currentAvailability,
+      currentToken: currentAvailability ? 0 : undefined // Reset token when marking as unavailable
+    });
   };
 
   if (!user) {
@@ -178,6 +186,9 @@ export default function AttenderDashboard() {
                       return a.tokenNumber - b.tokenNumber;
                     });
 
+                  const isAvailable = item.availability?.isAvailable || false;
+                  const currentToken = item.availability?.currentToken || 0;
+
                   return (
                     <TabsContent 
                       key={item.doctor.id} 
@@ -189,14 +200,30 @@ export default function AttenderDashboard() {
                           <p className="text-muted-foreground">{item.doctor.specialty}</p>
                         </div>
                         <Button
-                          variant="outline"
+                          variant={isAvailable ? "default" : "outline"}
                           className="gap-2"
-                          onClick={() => handleToggleDoctorAvailability(item.doctor.id, true)}
+                          onClick={() => handleToggleDoctorAvailability(item.doctor.id, isAvailable)}
                         >
-                          <CheckCircle2 className="h-4 w-4" />
-                          Mark as Available
+                          {isAvailable ? (
+                            <>
+                              <CheckCircle2 className="h-4 w-4" />
+                              Available
+                            </>
+                          ) : (
+                            <>
+                              <XCircle className="h-4 w-4" />
+                              Not Available
+                            </>
+                          )}
                         </Button>
                       </div>
+
+                      {isAvailable && (
+                        <div className="mb-6 flex items-center gap-2 text-muted-foreground bg-secondary/10 p-4 rounded-md">
+                          <Clock className="h-4 w-4" />
+                          <span>Current Token: {String(currentToken).padStart(3, '0')}</span>
+                        </div>
+                      )}
 
                       <div className="overflow-x-auto">
                         <table className="w-full">
@@ -255,6 +282,7 @@ export default function AttenderDashboard() {
                                         <Button
                                           size="sm"
                                           onClick={() => handleMarkInProgress(appointment.id)}
+                                          disabled={!isAvailable}
                                         >
                                           Start
                                         </Button>
