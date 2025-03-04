@@ -131,38 +131,38 @@ export class DatabaseStorage implements IStorage {
         tokenNumber: appointments.tokenNumber,
         status: appointments.status,
         doctor: {
-          id: users.id,
-          username: users.username,
-          password: users.password,
-          name: users.name,
-          role: users.role,
-          specialty: users.specialty,
-          bio: users.bio,
-          imageUrl: users.imageUrl,
-          address: users.address,
-          city: users.city,
-          state: users.state,
-          zipCode: users.zipCode,
-          latitude: users.latitude,
-          longitude: users.longitude,
-          clinicId: users.clinicId,
+          id: sql`doctorUser.id`,
+          username: sql`doctorUser.username`,
+          password: sql`doctorUser.password`,
+          name: sql`doctorUser.name`,
+          role: sql`doctorUser.role`,
+          specialty: sql`doctorUser.specialty`,
+          bio: sql`doctorUser.bio`,
+          imageUrl: sql`doctorUser.imageUrl`,
+          address: sql`doctorUser.address`,
+          city: sql`doctorUser.city`,
+          state: sql`doctorUser.state`,
+          zipCode: sql`doctorUser.zipCode`,
+          latitude: sql`doctorUser.latitude`,
+          longitude: sql`doctorUser.longitude`,
+          clinicId: sql`doctorUser.clinicId`,
         },
         patient: {
-          id: patients.id,
-          username: patients.username,
-          password: patients.password,
-          name: patients.name,
-          role: patients.role,
-          specialty: patients.specialty,
-          bio: patients.bio,
-          imageUrl: patients.imageUrl,
-          address: patients.address,
-          city: patients.city,
-          state: patients.state,
-          zipCode: patients.zipCode,
-          latitude: patients.latitude,
-          longitude: patients.longitude,
-          clinicId: patients.clinicId,
+          id: sql`patientUser.id`,
+          username: sql`patientUser.username`,
+          password: sql`patientUser.password`,
+          name: sql`patientUser.name`,
+          role: sql`patientUser.role`,
+          specialty: sql`patientUser.specialty`,
+          bio: sql`patientUser.bio`,
+          imageUrl: sql`patientUser.imageUrl`,
+          address: sql`patientUser.address`,
+          city: sql`patientUser.city`,
+          state: sql`patientUser.state`,
+          zipCode: sql`patientUser.zipCode`,
+          latitude: sql`patientUser.latitude`,
+          longitude: sql`patientUser.longitude`,
+          clinicId: sql`patientUser.clinicId`,
         },
       })
       .from(appointments)
@@ -172,8 +172,8 @@ export class DatabaseStorage implements IStorage {
           eq(appointments.doctorId, userId)
         )
       )
-      .leftJoin(users, eq(appointments.doctorId, users.id))
-      .leftJoin(users, eq(appointments.patientId, users.id), 'patients')
+      .leftJoin(users.as('doctorUser'), eq(appointments.doctorId, sql`doctorUser.id`))
+      .leftJoin(users.as('patientUser'), eq(appointments.patientId, sql`patientUser.id`))
       .orderBy(appointments.date);
 
     return results;

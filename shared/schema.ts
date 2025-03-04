@@ -64,6 +64,21 @@ export const clinicsRelations = relations(clinics, ({ many }) => ({
   attenders: many(users),
 }));
 
+export const appointmentsRelations = relations(appointments, ({ one }) => ({
+  patient: one(users, {
+    fields: [appointments.patientId],
+    references: [users.id],
+  }),
+  doctor: one(users, {
+    fields: [appointments.doctorId],
+    references: [users.id],
+  }),
+  clinic: one(clinics, {
+    fields: [appointments.clinicId],
+    references: [clinics.id],
+  }),
+}));
+
 export const attenderDoctorsRelations = relations(attenderDoctors, ({ one }) => ({
   attender: one(users, {
     fields: [attenderDoctors.attenderId],
@@ -98,7 +113,7 @@ export type AttenderDoctor = typeof attenderDoctors.$inferSelect;
 
 export const specialties = [
   "Dermatologist",
-  "Pediatrician", 
+  "Pediatrician",
   "Cardiologist",
   "Neurologist",
   "Orthopedist",
