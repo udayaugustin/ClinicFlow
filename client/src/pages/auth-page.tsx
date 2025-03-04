@@ -10,10 +10,18 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { specialties } from "@shared/schema";
+import { z } from "zod";
+
+const loginSchema = insertUserSchema.pick({ 
+  username: true, 
+  password: true 
+});
+
+type LoginData = z.infer<typeof loginSchema>;
 
 export default function AuthPage() {
   const [_location, navigate] = useLocation();
-  const { user, loginMutation, registerMutation } = useAuth();
+  const { user } = useAuth();
 
   if (user) {
     navigate("/");
@@ -60,8 +68,12 @@ export default function AuthPage() {
 
 function LoginForm() {
   const { loginMutation } = useAuth();
-  const form = useForm({
-    resolver: zodResolver(insertUserSchema.pick({ username: true, password: true })),
+  const form = useForm<LoginData>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      username: "",
+      password: "",
+    },
   });
 
   return (
@@ -101,10 +113,37 @@ function LoginForm() {
   );
 }
 
+const registerSchema = insertUserSchema.extend({
+  role: z.enum(["patient", "doctor"]),
+  specialty: z.string().optional().nullable(),
+}).refine(
+  (data) => {
+    if (data.role === "doctor" && !data.specialty) {
+      return false;
+    }
+    return true;
+  },
+  {
+    message: "Specialty is required for doctors",
+    path: ["specialty"],
+  }
+);
+
+type RegisterData = z.infer<typeof registerSchema>;
+
 function RegisterForm() {
   const { registerMutation } = useAuth();
-  const form = useForm({
-    resolver: zodResolver(insertUserSchema),
+  const form = useForm<RegisterData>({
+    resolver: zodResolver(registerSchema),
+    defaultValues: {
+      username: "",
+      password: "",
+      name: "",
+      role: "patient",
+      specialty: null,
+      bio: null,
+      imageUrl: null,
+    },
   });
 
   return (
@@ -177,7 +216,7 @@ function RegisterForm() {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Specialty</FormLabel>
-                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <Select onValueChange={field.onChange} defaultValue={field.value ?? undefined}>
                   <FormControl>
                     <SelectTrigger>
                       <SelectValue placeholder="Select specialty" />
