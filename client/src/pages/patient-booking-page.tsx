@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
-import { format } from "date-fns";
+import { format, startOfDay } from "date-fns";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -124,7 +124,10 @@ export default function PatientBookingPage() {
                 selected={selectedDate}
                 onSelect={(date) => setSelectedDate(date || new Date())}
                 className="rounded-md border"
-                disabled={(date) => date < new Date()}
+                disabled={(date) => {
+                  const today = startOfDay(new Date());
+                  return date < today;
+                }}
               />
             </CardContent>
           </Card>
@@ -132,7 +135,7 @@ export default function PatientBookingPage() {
           <Card>
             <CardContent className="p-6">
               <h2 className="text-lg font-semibold mb-4">Available Time Slots</h2>
-              
+
               {availability?.isAvailable ? (
                 <div className="space-y-4">
                   <p className="text-sm text-muted-foreground">
