@@ -200,15 +200,14 @@ export default function AttenderDashboard() {
                           <p className="text-muted-foreground">{item.doctor.specialty}</p>
                         </div>
                         <div className="flex items-center gap-4">
-                          <div className="text-sm text-muted-foreground">
-                            Status: {isAvailable ? (
-                              <span className="text-green-600 font-medium">Available</span>
-                            ) : (
-                              <span className="text-red-600 font-medium">Not Available</span>
-                            )}
+                          <div className="flex items-center gap-2">
+                            <div className={`w-2 h-2 rounded-full ${isAvailable ? 'bg-green-500' : 'bg-red-500'}`} />
+                            <span className="text-sm font-medium">
+                              Status: {isAvailable ? 'Available' : 'Not Available'}
+                            </span>
                           </div>
                           <Button
-                            variant={isAvailable ? "default" : "outline"}
+                            variant={isAvailable ? "destructive" : "default"}
                             className="gap-2"
                             onClick={() => handleToggleDoctorAvailability(item.doctor.id, isAvailable)}
                           >
@@ -220,7 +219,7 @@ export default function AttenderDashboard() {
                             ) : (
                               <>
                                 <CheckCircle2 className="h-4 w-4" />
-                                Mark as Available
+                                Mark As Available
                               </>
                             )}
                           </Button>
