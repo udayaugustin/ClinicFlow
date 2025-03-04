@@ -131,16 +131,22 @@ function RegisterForm() {
       password: "",
       confirmPassword: "",
       name: "",
-      role: "patient", // Always set role as patient
-      specialty: undefined,
+      role: "patient",
+      specialty: null,
       bio: null,
       imageUrl: null,
     },
   });
 
+  const onSubmit = (data: RegisterData) => {
+    // Remove confirmPassword before sending to server
+    const { confirmPassword, ...registerData } = data;
+    registerMutation.mutate(registerData);
+  };
+
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit((data) => registerMutation.mutate(data))} className="space-y-4 mt-4">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 mt-4">
         <FormField
           control={form.control}
           name="username"

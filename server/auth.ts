@@ -71,7 +71,9 @@ export function setupAuth(app: Express) {
 
   app.post("/api/register", async (req, res, next) => {
     try {
-      const parsed = insertUserSchema.parse(req.body);
+      // Ensure role is set to patient
+      const data = { ...req.body, role: "patient" };
+      const parsed = insertUserSchema.parse(data);
 
       const existingUser = await storage.getUserByUsername(parsed.username);
       if (existingUser) {
@@ -81,6 +83,9 @@ export function setupAuth(app: Express) {
       const user = await storage.createUser({
         ...parsed,
         password: await hashPassword(parsed.password),
+        specialty: null,
+        bio: null,
+        imageUrl: null,
       });
 
       req.login(user, (err) => {
