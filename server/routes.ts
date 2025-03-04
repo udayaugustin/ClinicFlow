@@ -115,6 +115,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Add this new route after the existing doctor availability route
+  app.get("/api/doctors/availability", async (req, res) => {
+    try {
+      const doctorIds = (req.query.doctorIds as string || "").split(",").map(Number);
+      const date = new Date();
+
+      const availabilities = await Promise.all(
+        doctorIds.map(doctorId => storage.getDoctorAvailability(doctorId, date))
+      );
+
+      // Filter out any undefined values and return the result
+      res.json(availabilities.filter(Boolean));
+    } catch (error) {
+      console.error('Error fetching doctor availabilities:', error);
+      res.status(500).json({ message: 'Failed to fetch doctor availabilities' });
+    }
+  });
+
   // New routes for attender management
   app.get("/api/attenders/:clinicId", async (req, res) => {
     try {
