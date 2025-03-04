@@ -58,7 +58,21 @@ export class DatabaseStorage implements IStorage {
   async getDoctorWithClinic(id: number): Promise<(User & { clinic?: Clinic }) | undefined> {
     const [result] = await db
       .select({
-        ...users,
+        id: users.id,
+        username: users.username,
+        password: users.password,
+        name: users.name,
+        role: users.role,
+        specialty: users.specialty,
+        bio: users.bio,
+        imageUrl: users.imageUrl,
+        address: users.address,
+        city: users.city,
+        state: users.state,
+        zipCode: users.zipCode,
+        latitude: users.latitude,
+        longitude: users.longitude,
+        clinicId: users.clinicId,
         clinic: clinics,
       })
       .from(users)
@@ -85,10 +99,7 @@ export class DatabaseStorage implements IStorage {
       ))`;
 
     return await db
-      .select({
-        ...users,
-        distance: haversineDistance,
-      })
+      .select()
       .from(users)
       .where(
         and(
@@ -104,10 +115,31 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAppointments(userId: number): Promise<(Appointment & { doctor: User })[]> {
-    const appointments = await db
+    const results = await db
       .select({
-        ...appointments,
-        doctor: users,
+        id: appointments.id,
+        patientId: appointments.patientId,
+        doctorId: appointments.doctorId,
+        clinicId: appointments.clinicId,
+        date: appointments.date,
+        status: appointments.status,
+        doctor: {
+          id: users.id,
+          username: users.username,
+          password: users.password,
+          name: users.name,
+          role: users.role,
+          specialty: users.specialty,
+          bio: users.bio,
+          imageUrl: users.imageUrl,
+          address: users.address,
+          city: users.city,
+          state: users.state,
+          zipCode: users.zipCode,
+          latitude: users.latitude,
+          longitude: users.longitude,
+          clinicId: users.clinicId,
+        },
       })
       .from(appointments)
       .where(
@@ -118,10 +150,7 @@ export class DatabaseStorage implements IStorage {
       )
       .leftJoin(users, eq(appointments.doctorId, users.id));
 
-    return appointments.map(({ doctor, ...appointment }) => ({
-      ...appointment,
-      doctor,
-    }));
+    return results;
   }
 
   async createAppointment(appointment: Omit<Appointment, "id">): Promise<Appointment> {
