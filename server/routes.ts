@@ -220,7 +220,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ? (req.query.doctorIds as string).split(',').map(id => parseInt(id)).filter(id => !isNaN(id))
         : [];
 
+      console.log('Requested doctor IDs:', doctorIds);
+
       if (!doctorIds.length) {
+        console.log('No valid doctor IDs provided');
         return res.json([]);
       }
 
@@ -228,15 +231,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const date = new Date();
       date.setHours(0, 0, 0, 0);
 
+      console.log('Fetching progress for date:', date);
+
       // Fetch progress for all doctors
       const progressData = await Promise.all(
-        doctorIds.map(doctorId => storage.getConsultationProgress(doctorId, date))
+        doctorIds.map(async doctorId => {
+          try {
+            const progress = await storage.getConsultationProgress(doctorId, date);
+            if (!progress) {
+              // Return default structure for doctors with no progress
+              return {
+                doctorId,
+                date: date.toISOString(),
+                currentToken: 0
+              };
+            }
+            return progress;
+          } catch (error) {
+            console.error(`Error fetching progress for doctor ${doctorId}:`, error);
+            return null;
+          }
+        })
       );
 
-      // Filter out undefined results and return
-      res.json(progressData.filter(Boolean));
+      // Filter out null results and return
+      const validProgressData = progressData.filter(Boolean);
+      console.log('Progress data:', validProgressData);
+
+      res.json(validProgressData);
     } catch (error) {
-      console.error('Error fetching consultation progress:', error);
+      console.error('Error in consultation progress route:', error);
       res.status(500).json({ message: 'Failed to fetch consultation progress' });
     }
   });

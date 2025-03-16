@@ -563,11 +563,15 @@ export class DatabaseStorage implements IStorage {
 
   async getConsultationProgress(doctorId: number, date: Date): Promise<ConsultationProgress | undefined> {
     try {
+      console.log('Getting consultation progress for doctor:', doctorId, 'date:', date);
+
       const dayStart = new Date(date);
       dayStart.setHours(0, 0, 0, 0);
 
       const dayEnd = new Date(date);
       dayEnd.setHours(23, 59, 59, 999);
+
+      console.log('Query date range:', dayStart, 'to', dayEnd);
 
       const [progress] = await db
         .select()
@@ -579,6 +583,7 @@ export class DatabaseStorage implements IStorage {
           )
         );
 
+      console.log('Progress found:', progress);
       return progress;
     } catch (error) {
       console.error('Error getting consultation progress:', error);
