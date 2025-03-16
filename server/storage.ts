@@ -331,6 +331,28 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  async addDoctorToAttender(attenderId: number, doctorId: number, clinicId: number): Promise<AttenderDoctor> {
+    try {
+      const [relation] = await db
+        .insert(attenderDoctors)
+        .values({
+          attenderId,
+          doctorId,
+          clinicId
+        })
+        .returning();
+
+      if (!relation) {
+        throw new Error('Failed to create attender-doctor relationship');
+      }
+
+      return relation;
+    } catch (error) {
+      console.error('Error adding doctor to attender:', error);
+      throw error;
+    }
+  }
+
   async removeDoctorFromAttender(attenderId: number, doctorId: number): Promise<void> {
     await db
       .delete(attenderDoctors)
