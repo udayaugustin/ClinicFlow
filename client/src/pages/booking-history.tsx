@@ -30,7 +30,7 @@ export default function BookingHistoryPage() {
     apt => format(new Date(apt.date), "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd")
   ) || [];
 
-  const doctorIds = [...new Set(todayAppointments.map(apt => apt.doctorId))];
+  const doctorIds = todayAppointments.map(apt => apt.doctorId);
 
   // Fetch consultation progress for each doctor
   const { data: progressData } = useQuery<ConsultationProgress[]>({
@@ -130,7 +130,7 @@ export default function BookingHistoryPage() {
                                   <div className="flex items-center justify-between text-sm">
                                     <span>Current Token:</span>
                                     <span className="font-medium">
-                                      {progress?.currentToken
+                                      {progress?.currentToken !== undefined
                                         ? String(progress.currentToken).padStart(3, '0')
                                         : "Not Started"}
                                     </span>

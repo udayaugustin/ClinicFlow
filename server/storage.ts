@@ -607,7 +607,7 @@ export class DatabaseStorage implements IStorage {
         .where(
           and(
             eq(consultationProgress.doctorId, doctorId),
-            sql`date >= ${dayStart} AND date < ${sql.raw(`${dayStart} + INTERVAL '1 day'`)}`
+            eq(consultationProgress.date, dayStart)
           )
         );
 
