@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { Progress } from "@/components/ui/progress";
-import { Clock, ArrowRight, Users, Ticket } from "lucide-react";
+import { Clock, Users, Ticket } from "lucide-react";
 
 type AppointmentWithDoctor = Appointment & {
   doctor: User;
@@ -108,7 +108,7 @@ export default function BookingHistoryPage() {
                                   }
                                 >
                                   {appointment.status.charAt(0).toUpperCase() + 
-                                    appointment.status.slice(1)}
+                                    appointment.status.slice(1).replace('_', ' ')}
                                 </Badge>
                               </div>
 
@@ -121,19 +121,19 @@ export default function BookingHistoryPage() {
                                   <div className="flex items-center gap-2 justify-end">
                                     <Ticket className="h-4 w-4" />
                                     <span className="font-medium">
-                                      Token {String(availability?.currentToken || 0).padStart(3, '0')}/{String(maxTokenNumber).padStart(3, '0')}
+                                      Token {String(appointment.tokenNumber).padStart(3, '0')}
                                     </span>
                                   </div>
                                 </div>
 
                                 <div className="space-y-3">
                                   <div className="flex items-center justify-between text-sm">
-                                    <div className="flex items-center gap-1">
-                                      <span>Your Token:</span>
-                                      <span className="font-medium">
-                                        #{String(appointment.tokenNumber).padStart(3, '0')}
-                                      </span>
-                                    </div>
+                                    <span>Current Token:</span>
+                                    <span className="font-medium">
+                                      {availability?.currentToken 
+                                        ? String(availability.currentToken).padStart(3, '0')
+                                        : "Not Started"}
+                                    </span>
                                   </div>
 
                                   <Progress 
@@ -181,7 +181,7 @@ export default function BookingHistoryPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {appointments?.map((appointment) => (
+                        {appointments.map((appointment) => (
                           <tr key={appointment.id} className="border-b">
                             <td className="py-4 px-4">
                               {String(appointment.tokenNumber).padStart(3, '0')}
@@ -210,7 +210,7 @@ export default function BookingHistoryPage() {
                                 }
                               >
                                 {appointment.status.charAt(0).toUpperCase() + 
-                                  appointment.status.slice(1)}
+                                  appointment.status.slice(1).replace('_', ' ')}
                               </Badge>
                             </td>
                           </tr>
