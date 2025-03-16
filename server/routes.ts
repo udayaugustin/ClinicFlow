@@ -46,8 +46,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/appointments", async (req, res) => {
     if (!req.user) return res.sendStatus(401);
     try {
-      const appointments = await storage.getAppointments(req.user.id);
-      res.json(appointments);
+      // Route to specific endpoints based on user role
+      if (req.user.role === "patient") {
+        const appointments = await storage.getPatientAppointments(req.user.id);
+        return res.json(appointments);
+      } else if (req.user.role === "doctor") {
+        const appointments = await storage.getAppointments(req.user.id);
+        return res.json(appointments);
+      } else if (req.user.role === "attender") {
+        const doctorsWithAppointments = await storage.getAttenderDoctorsAppointments(req.user.id);
+        return res.json(doctorsWithAppointments);
+      }
+
+      res.status(403).json({ message: 'Invalid role for appointments access' });
     } catch (error) {
       console.error('Error fetching appointments:', error);
       res.status(500).json({ message: 'Failed to fetch appointments' });
