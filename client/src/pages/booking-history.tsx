@@ -34,7 +34,7 @@ export default function BookingHistoryPage() {
 
   // Fetch consultation progress for each doctor
   const { data: progressData } = useQuery<ConsultationProgress[]>({
-    queryKey: ["/api/doctors/consultation-progress", doctorIds.join(",")],
+    queryKey: ["/api/doctors/consultation-progress", { doctorIds: doctorIds.join(",") }],
     enabled: doctorIds.length > 0,
     // Refresh every 30 seconds to keep token status current
     refetchInterval: 30000
@@ -107,7 +107,7 @@ export default function BookingHistoryPage() {
                                       : "destructive"
                                   }
                                 >
-                                  {appointment.status.charAt(0).toUpperCase() + 
+                                  {appointment.status.charAt(0).toUpperCase() +
                                     appointment.status.slice(1).replace('_', ' ')}
                                 </Badge>
                               </div>
@@ -130,18 +130,18 @@ export default function BookingHistoryPage() {
                                   <div className="flex items-center justify-between text-sm">
                                     <span>Current Token:</span>
                                     <span className="font-medium">
-                                      {progress?.currentToken 
+                                      {progress?.currentToken
                                         ? String(progress.currentToken).padStart(3, '0')
                                         : "Not Started"}
                                     </span>
                                   </div>
 
-                                  <Progress 
+                                  <Progress
                                     value={
                                       maxTokenNumber > 0 && progress?.currentToken !== undefined
                                         ? (progress.currentToken / maxTokenNumber) * 100
                                         : 0
-                                    } 
+                                    }
                                     className="h-2"
                                   />
 
@@ -209,7 +209,7 @@ export default function BookingHistoryPage() {
                                     : "destructive"
                                 }
                               >
-                                {appointment.status.charAt(0).toUpperCase() + 
+                                {appointment.status.charAt(0).toUpperCase() +
                                   appointment.status.slice(1).replace('_', ' ')}
                               </Badge>
                             </td>

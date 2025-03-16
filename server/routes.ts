@@ -214,23 +214,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Add new routes for consultation progress
-  app.get("/api/doctors/:id/consultation-progress", async (req, res) => {
+  app.get("/api/doctors/consultation-progress", async (req, res) => {
     try {
-      const doctorId = parseInt(req.params.id);
-      const date = req.query.date ? new Date(req.query.date as string) : new Date();
+      const doctorIds = req.query.doctorIds
+        ? (req.query.doctorIds as string).split(',').map(id => parseInt(id)).filter(id => !isNaN(id))
+        : [];
 
-      const progress = await storage.getConsultationProgress(doctorId, date);
-
-      // If no progress record exists, return a default structure
-      if (!progress) {
-        return res.json({
-          doctorId,
-          date: date.toISOString(),
-          currentToken: 0
-        });
+      if (!doctorIds.length) {
+        return res.json([]);
       }
 
-      res.json(progress);
+      // Get start of today
+      const date = new Date();
+      date.setHours(0, 0, 0, 0);
+
+      // Fetch progress for all doctors
+      const progressData = await Promise.all(
+        doctorIds.map(doctorId => storage.getConsultationProgress(doctorId, date))
+      );
+
+      // Filter out undefined results and return
+      res.json(progressData.filter(Boolean));
     } catch (error) {
       console.error('Error fetching consultation progress:', error);
       res.status(500).json({ message: 'Failed to fetch consultation progress' });
@@ -241,7 +245,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!req.user || req.user.role !== "attender") return res.sendStatus(403);
     try {
       const doctorId = parseInt(req.params.id);
+      if (isNaN(doctorId)) {
+        return res.status(400).json({ message: 'Invalid doctor ID' });
+      }
+
       const { currentToken, date } = req.body;
+      if (typeof currentToken !== 'number') {
+        return res.status(400).json({ message: 'Invalid token number' });
+      }
 
       const progress = await storage.updateConsultationProgress(
         doctorId,
