@@ -12,11 +12,10 @@ type AppointmentWithDoctor = Appointment & {
   doctor: User;
 };
 
-type DoctorAvailability = {
+type ConsultationProgress = {
   id: number;
   doctorId: number;
   date: string;
-  isAvailable: boolean;
   currentToken: number;
 };
 
@@ -33,8 +32,9 @@ export default function BookingHistoryPage() {
 
   const doctorIds = [...new Set(todayAppointments.map(apt => apt.doctorId))];
 
-  const { data: doctorAvailabilities } = useQuery<DoctorAvailability[]>({
-    queryKey: ["/api/doctors/availability", doctorIds.join(",")],
+  // Fetch consultation progress for each doctor
+  const { data: progressData } = useQuery<ConsultationProgress[]>({
+    queryKey: ["/api/doctors/consultation-progress", doctorIds.join(",")],
     enabled: doctorIds.length > 0,
     // Refresh every 30 seconds to keep token status current
     refetchInterval: 30000
@@ -69,8 +69,8 @@ export default function BookingHistoryPage() {
                     <h2 className="text-xl font-semibold mb-4">Today's Appointments</h2>
                     <div className="space-y-4">
                       {todayAppointments.map((appointment) => {
-                        const availability = doctorAvailabilities?.find(
-                          a => a.doctorId === appointment.doctorId
+                        const progress = progressData?.find(
+                          p => p.doctorId === appointment.doctorId
                         );
 
                         // Get all appointments for this doctor today
@@ -82,8 +82,8 @@ export default function BookingHistoryPage() {
                           ...doctorTodayAppointments.map(apt => apt.tokenNumber)
                         );
 
-                        const tokensAhead = availability?.currentToken !== undefined
-                          ? Math.max(0, appointment.tokenNumber - availability.currentToken - 1)
+                        const tokensAhead = progress?.currentToken !== undefined
+                          ? Math.max(0, appointment.tokenNumber - progress.currentToken - 1)
                           : null;
 
                         return (
@@ -130,16 +130,16 @@ export default function BookingHistoryPage() {
                                   <div className="flex items-center justify-between text-sm">
                                     <span>Current Token:</span>
                                     <span className="font-medium">
-                                      {availability?.currentToken 
-                                        ? String(availability.currentToken).padStart(3, '0')
+                                      {progress?.currentToken 
+                                        ? String(progress.currentToken).padStart(3, '0')
                                         : "Not Started"}
                                     </span>
                                   </div>
 
                                   <Progress 
                                     value={
-                                      maxTokenNumber > 0 && availability?.currentToken !== undefined
-                                        ? (availability.currentToken / maxTokenNumber) * 100
+                                      maxTokenNumber > 0 && progress?.currentToken !== undefined
+                                        ? (progress.currentToken / maxTokenNumber) * 100
                                         : 0
                                     } 
                                     className="h-2"

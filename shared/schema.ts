@@ -56,7 +56,13 @@ export const appointments = pgTable("appointments", {
   status: text("status", { enum: ["scheduled", "completed", "cancelled", "in_progress"] }).notNull(),
 });
 
-// Define relations
+export const consultationProgress = pgTable("consultation_progress", {
+  id: serial("id").primaryKey(),
+  doctorId: integer("doctor_id").notNull().references(() => users.id),
+  date: timestamp("date").notNull(),
+  currentToken: integer("current_token").notNull().default(0),
+});
+
 export const usersRelations = relations(users, ({ one, many }) => ({
   clinic: one(clinics, {
     fields: [users.clinicId],
@@ -110,6 +116,12 @@ export const doctorAvailabilityRelations = relations(doctorAvailability, ({ one 
   }),
 }));
 
+export const consultationProgressRelations = relations(consultationProgress, ({ one }) => ({
+  doctor: one(users, {
+    fields: [consultationProgress.doctorId],
+    references: [users.id],
+  }),
+}));
 
 export const insertUserSchema = createInsertSchema(users);
 export const insertClinicSchema = createInsertSchema(clinics);
@@ -118,12 +130,14 @@ export const insertAppointmentSchema = createInsertSchema(appointments, {
   date: z.string().transform((str) => new Date(str)),
   status: z.enum(["scheduled", "completed", "cancelled", "in_progress"]).default("scheduled"),
 }).omit({ tokenNumber: true });
+export const insertConsultationProgressSchema = createInsertSchema(consultationProgress);
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type Clinic = typeof clinics.$inferSelect;
 export type Appointment = typeof appointments.$inferSelect;
 export type AttenderDoctor = typeof attenderDoctors.$inferSelect;
+export type ConsultationProgress = typeof consultationProgress.$inferSelect;
 
 export const specialties = [
   "Dermatologist",

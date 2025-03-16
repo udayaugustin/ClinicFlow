@@ -213,6 +213,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Add new routes for consultation progress
+  app.get("/api/doctors/:id/consultation-progress", async (req, res) => {
+    try {
+      const doctorId = parseInt(req.params.id);
+      const date = req.query.date ? new Date(req.query.date as string) : new Date();
+
+      const progress = await storage.getConsultationProgress(doctorId, date);
+
+      // If no progress record exists, return a default structure
+      if (!progress) {
+        return res.json({
+          doctorId,
+          date: date.toISOString(),
+          currentToken: 0
+        });
+      }
+
+      res.json(progress);
+    } catch (error) {
+      console.error('Error fetching consultation progress:', error);
+      res.status(500).json({ message: 'Failed to fetch consultation progress' });
+    }
+  });
+
+  app.patch("/api/doctors/:id/consultation-progress", async (req, res) => {
+    if (!req.user || req.user.role !== "attender") return res.sendStatus(403);
+    try {
+      const doctorId = parseInt(req.params.id);
+      const { currentToken, date } = req.body;
+
+      const progress = await storage.updateConsultationProgress(
+        doctorId,
+        new Date(date),
+        currentToken
+      );
+      res.json(progress);
+    } catch (error) {
+      console.error('Error updating consultation progress:', error);
+      res.status(500).json({ message: 'Failed to update consultation progress' });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
