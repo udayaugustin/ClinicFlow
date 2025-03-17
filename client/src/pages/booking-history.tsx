@@ -6,17 +6,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { Progress } from "@/components/ui/progress";
-import { Clock, ArrowRight, Users, Ticket } from "lucide-react";
+import { Clock, Users, Ticket } from "lucide-react";
 
 type AppointmentWithDoctor = Appointment & {
   doctor: User;
 };
 
-type DoctorAvailability = {
+type ConsultationProgress = {
   id: number;
   doctorId: number;
   date: string;
-  isAvailable: boolean;
   currentToken: number;
 };
 
@@ -31,10 +30,11 @@ export default function BookingHistoryPage() {
     apt => format(new Date(apt.date), "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd")
   ) || [];
 
-  const doctorIds = [...new Set(todayAppointments.map(apt => apt.doctorId))];
+  const doctorIds = todayAppointments.map(apt => apt.doctorId);
 
-  const { data: doctorAvailabilities } = useQuery<DoctorAvailability[]>({
-    queryKey: ["/api/doctors/availability", doctorIds.join(",")],
+  // Fetch consultation progress for each doctor
+  const { data: progressData } = useQuery<ConsultationProgress[]>({
+    queryKey: ["/api/doctors/consultation-progress", { doctorIds: doctorIds.join(",") }],
     enabled: doctorIds.length > 0,
     // Refresh every 30 seconds to keep token status current
     refetchInterval: 30000
@@ -69,8 +69,8 @@ export default function BookingHistoryPage() {
                     <h2 className="text-xl font-semibold mb-4">Today's Appointments</h2>
                     <div className="space-y-4">
                       {todayAppointments.map((appointment) => {
-                        const availability = doctorAvailabilities?.find(
-                          a => a.doctorId === appointment.doctorId
+                        const progress = progressData?.find(
+                          p => p.doctorId === appointment.doctorId
                         );
 
                         // Get all appointments for this doctor today
@@ -82,8 +82,8 @@ export default function BookingHistoryPage() {
                           ...doctorTodayAppointments.map(apt => apt.tokenNumber)
                         );
 
-                        const tokensAhead = availability?.currentToken !== undefined
-                          ? Math.max(0, appointment.tokenNumber - availability.currentToken - 1)
+                        const tokensAhead = progress?.currentToken !== undefined
+                          ? Math.max(0, appointment.tokenNumber - progress.currentToken - 1)
                           : null;
 
                         return (
@@ -107,8 +107,8 @@ export default function BookingHistoryPage() {
                                       : "destructive"
                                   }
                                 >
-                                  {appointment.status.charAt(0).toUpperCase() + 
-                                    appointment.status.slice(1)}
+                                  {appointment.status.charAt(0).toUpperCase() +
+                                    appointment.status.slice(1).replace('_', ' ')}
                                 </Badge>
                               </div>
 
@@ -121,27 +121,27 @@ export default function BookingHistoryPage() {
                                   <div className="flex items-center gap-2 justify-end">
                                     <Ticket className="h-4 w-4" />
                                     <span className="font-medium">
-                                      Token {String(availability?.currentToken || 0).padStart(3, '0')}/{String(maxTokenNumber).padStart(3, '0')}
+                                      Token {String(appointment.tokenNumber).padStart(3, '0')}
                                     </span>
                                   </div>
                                 </div>
 
                                 <div className="space-y-3">
                                   <div className="flex items-center justify-between text-sm">
-                                    <div className="flex items-center gap-1">
-                                      <span>Your Token:</span>
-                                      <span className="font-medium">
-                                        #{String(appointment.tokenNumber).padStart(3, '0')}
-                                      </span>
-                                    </div>
+                                    <span>Current Token:</span>
+                                    <span className="font-medium">
+                                      {progress?.currentToken !== undefined
+                                        ? String(progress.currentToken).padStart(3, '0')
+                                        : "Not Started"}
+                                    </span>
                                   </div>
 
-                                  <Progress 
+                                  <Progress
                                     value={
-                                      maxTokenNumber > 0 && availability?.currentToken !== undefined
-                                        ? (availability.currentToken / maxTokenNumber) * 100
+                                      maxTokenNumber > 0 && progress?.currentToken !== undefined
+                                        ? (progress.currentToken / maxTokenNumber) * 100
                                         : 0
-                                    } 
+                                    }
                                     className="h-2"
                                   />
 
@@ -181,7 +181,7 @@ export default function BookingHistoryPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {appointments?.map((appointment) => (
+                        {appointments.map((appointment) => (
                           <tr key={appointment.id} className="border-b">
                             <td className="py-4 px-4">
                               {String(appointment.tokenNumber).padStart(3, '0')}
@@ -209,8 +209,8 @@ export default function BookingHistoryPage() {
                                     : "destructive"
                                 }
                               >
-                                {appointment.status.charAt(0).toUpperCase() + 
-                                  appointment.status.slice(1)}
+                                {appointment.status.charAt(0).toUpperCase() +
+                                  appointment.status.slice(1).replace('_', ' ')}
                               </Badge>
                             </td>
                           </tr>

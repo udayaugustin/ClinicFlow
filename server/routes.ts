@@ -46,8 +46,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/appointments", async (req, res) => {
     if (!req.user) return res.sendStatus(401);
     try {
-      const appointments = await storage.getAppointments(req.user.id);
-      res.json(appointments);
+      // Route to specific endpoints based on user role
+      if (req.user.role === "patient") {
+        const appointments = await storage.getPatientAppointments(req.user.id);
+        return res.json(appointments);
+      } else if (req.user.role === "doctor") {
+        const appointments = await storage.getAppointments(req.user.id);
+        return res.json(appointments);
+      } else if (req.user.role === "attender") {
+        const doctorsWithAppointments = await storage.getAttenderDoctorsAppointments(req.user.id);
+        return res.json(doctorsWithAppointments);
+      }
+
+      res.status(403).json({ message: 'Invalid role for appointments access' });
     } catch (error) {
       console.error('Error fetching appointments:', error);
       res.status(500).json({ message: 'Failed to fetch appointments' });
@@ -199,6 +210,83 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error fetching doctor availability:', error);
       res.status(500).json({ message: 'Failed to fetch doctor availability' });
+    }
+  });
+
+  // Add new routes for consultation progress
+  app.get("/api/doctors/consultation-progress", async (req, res) => {
+    try {
+      const doctorIds = req.query.doctorIds
+        ? (req.query.doctorIds as string).split(',').map(id => parseInt(id)).filter(id => !isNaN(id))
+        : [];
+
+      console.log('Requested doctor IDs:', doctorIds);
+
+      if (!doctorIds.length) {
+        console.log('No valid doctor IDs provided');
+        return res.json([]);
+      }
+
+      // Get start of today
+      const date = new Date();
+      date.setHours(0, 0, 0, 0);
+
+      console.log('Fetching progress for date:', date);
+
+      // Fetch progress for all doctors
+      const progressData = await Promise.all(
+        doctorIds.map(async doctorId => {
+          try {
+            const progress = await storage.getConsultationProgress(doctorId, date);
+            if (!progress) {
+              // Return default structure for doctors with no progress
+              return {
+                doctorId,
+                date: date.toISOString(),
+                currentToken: 0
+              };
+            }
+            return progress;
+          } catch (error) {
+            console.error(`Error fetching progress for doctor ${doctorId}:`, error);
+            return null;
+          }
+        })
+      );
+
+      // Filter out null results and return
+      const validProgressData = progressData.filter(Boolean);
+      console.log('Progress data:', validProgressData);
+
+      res.json(validProgressData);
+    } catch (error) {
+      console.error('Error in consultation progress route:', error);
+      res.status(500).json({ message: 'Failed to fetch consultation progress' });
+    }
+  });
+
+  app.patch("/api/doctors/:id/consultation-progress", async (req, res) => {
+    if (!req.user || req.user.role !== "attender") return res.sendStatus(403);
+    try {
+      const doctorId = parseInt(req.params.id);
+      if (isNaN(doctorId)) {
+        return res.status(400).json({ message: 'Invalid doctor ID' });
+      }
+
+      const { currentToken, date } = req.body;
+      if (typeof currentToken !== 'number') {
+        return res.status(400).json({ message: 'Invalid token number' });
+      }
+
+      const progress = await storage.updateConsultationProgress(
+        doctorId,
+        new Date(date),
+        currentToken
+      );
+      res.json(progress);
+    } catch (error) {
+      console.error('Error updating consultation progress:', error);
+      res.status(500).json({ message: 'Failed to update consultation progress' });
     }
   });
 
