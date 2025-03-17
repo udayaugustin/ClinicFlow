@@ -1,4 +1,4 @@
-import { InsertUser, User, Clinic, Appointment, attenderDoctors, AttenderDoctor, consultationProgress, ConsultationProgress } from "@shared/schema";
+import { InsertUser, User, Clinic, Appointment, attenderDoctors, AttenderDoctor } from "@shared/schema";
 import { users, clinics, appointments, doctorAvailability } from "@shared/schema"; // Added doctorAvailability import
 import { eq, or, and, sql, inArray } from "drizzle-orm";
 import { db } from "./db";
@@ -36,8 +36,6 @@ export interface IStorage {
   getDoctorAvailability(doctorId: number, date: Date): Promise<typeof doctorAvailability.$inferSelect | undefined>;
   getPatientAppointments(patientId: number): Promise<(Appointment & { doctor: User })[]>;
   getAttenderDoctorsAppointments(attenderId: number): Promise<(AttenderDoctor & { doctor: User, appointments: (Appointment & { patient?: User })[] })[]>;
-  getConsultationProgress(doctorId: number, date: Date): Promise<ConsultationProgress | undefined>;
-  updateConsultationProgress(doctorId: number, date: Date, currentToken: number): Promise<ConsultationProgress>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -557,83 +555,6 @@ export class DatabaseStorage implements IStorage {
       return doctorsWithAppointments;
     } catch (error) {
       console.error('Error in getAttenderDoctorsAppointments:', error);
-      throw error;
-    }
-  }
-
-  async getConsultationProgress(doctorId: number, date: Date): Promise<ConsultationProgress | undefined> {
-    try {
-      console.log('Getting consultation progress for doctor:', doctorId, 'date:', date);
-
-      const dayStart = new Date(date);
-      dayStart.setHours(0, 0, 0, 0);
-
-      const dayEnd = new Date(date);
-      dayEnd.setHours(23, 59, 59, 999);
-
-      console.log('Query date range:', dayStart, 'to', dayEnd);
-
-      const [progress] = await db
-        .select()
-        .from(consultationProgress)
-        .where(
-          and(
-            eq(consultationProgress.doctorId, doctorId),
-            sql`date >= ${dayStart} AND date < ${dayEnd}`
-          )
-        );
-
-      console.log('Progress found:', progress);
-      return progress;
-    } catch (error) {
-      console.error('Error getting consultation progress:', error);
-      throw error;
-    }
-  }
-
-  async updateConsultationProgress(
-    doctorId: number,
-    date: Date,
-    currentToken: number
-  ): Promise<ConsultationProgress> {
-    try {
-      const dayStart = new Date(date);
-      dayStart.setHours(0, 0, 0, 0);
-
-      // First try to find existing progress
-      const [existing] = await db
-        .select()
-        .from(consultationProgress)
-        .where(
-          and(
-            eq(consultationProgress.doctorId, doctorId),
-            eq(consultationProgress.date, dayStart)
-          )
-        );
-
-      if (existing) {
-        // Update existing record
-        const [updated] = await db
-          .update(consultationProgress)
-          .set({ currentToken })
-          .where(eq(consultationProgress.id, existing.id))
-          .returning();
-        return updated;
-      }
-
-      // Create new record if none exists
-      const [created] = await db
-        .insert(consultationProgress)
-        .values({
-          doctorId,
-          date: dayStart,
-          currentToken,
-        })
-        .returning();
-
-      return created;
-    } catch (error) {
-      console.error('Error updating consultation progress:', error);
       throw error;
     }
   }
