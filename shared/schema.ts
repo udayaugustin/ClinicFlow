@@ -110,7 +110,6 @@ export const doctorAvailabilityRelations = relations(doctorAvailability, ({ one 
   }),
 }));
 
-
 export const insertUserSchema = createInsertSchema(users);
 export const insertClinicSchema = createInsertSchema(clinics);
 export const insertAttenderDoctorSchema = createInsertSchema(attenderDoctors);

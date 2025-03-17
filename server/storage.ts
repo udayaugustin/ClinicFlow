@@ -4,9 +4,16 @@ import { eq, or, and, sql, inArray } from "drizzle-orm";
 import { db } from "./db";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
+import { Pool } from '@neondatabase/serverless';
 import { pool } from "./db";
 
-const PostgresStore = connectPg(session);
+const pgSession = connectPg(session);
+
+const sessionStore = new pgSession({
+  pool: pool as any,
+  tableName: 'session',
+  createTableIfMissing: true
+});
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
@@ -36,16 +43,16 @@ export interface IStorage {
   getDoctorAvailability(doctorId: number, date: Date): Promise<typeof doctorAvailability.$inferSelect | undefined>;
   getPatientAppointments(patientId: number): Promise<(Appointment & { doctor: User })[]>;
   getAttenderDoctorsAppointments(attenderId: number): Promise<(AttenderDoctor & { doctor: User, appointments: (Appointment & { patient?: User })[] })[]>;
+
+  // Token Progress method
+  getCurrentTokenProgress(doctorId: number, clinicId: number, date: Date, retryCount?: number): Promise<{ currentToken: number; status: 'in_progress' | 'completed' | 'not_started' | 'no_appointments'; appointment?: Appointment }>;
 }
 
 export class DatabaseStorage implements IStorage {
   sessionStore: session.Store;
 
   constructor() {
-    this.sessionStore = new PostgresStore({
-      pool,
-      createTableIfMissing: true,
-    });
+    this.sessionStore = sessionStore;
   }
 
   async getUser(id: number): Promise<User | undefined> {
@@ -182,7 +189,7 @@ export class DatabaseStorage implements IStorage {
       }
 
       // Get all unique doctor IDs from the appointments
-      const doctorIds = [...new Set(appointmentsResult.map(apt => apt.doctorId))];
+      const doctorIds = Array.from(new Set(appointmentsResult.map(apt => apt.doctorId)));
       console.log('Doctor IDs to fetch:', doctorIds);
 
       // Get all doctors in one query
@@ -198,7 +205,7 @@ export class DatabaseStorage implements IStorage {
       // Get patient data if needed (for doctor or attender view)
       let patientsMap = new Map<number, User>();
       if (user.role === "doctor" || user.role === "attender") {
-        const patientIds = [...new Set(appointmentsResult.map(apt => apt.patientId))];
+        const patientIds = Array.from(new Set(appointmentsResult.map(apt => apt.patientId)));
         const patients = await db
           .select()
           .from(users)
@@ -376,7 +383,7 @@ export class DatabaseStorage implements IStorage {
       );
   }
 
-  async updateAppointmentStatus(appointmentId: number, status: string): Promise<Appointment> {
+  async updateAppointmentStatus(appointmentId: number, status: "scheduled" | "completed" | "cancelled" | "in_progress"): Promise<Appointment> {
     try {
       const [updated] = await db
         .update(appointments)
@@ -489,7 +496,7 @@ export class DatabaseStorage implements IStorage {
       }
 
       // Get all unique doctor IDs
-      const doctorIds = [...new Set(appointmentsResult.map(apt => apt.doctorId))];
+      const doctorIds = Array.from(new Set(appointmentsResult.map(apt => apt.doctorId)));
       const doctors = await db
         .select()
         .from(users)
@@ -530,7 +537,7 @@ export class DatabaseStorage implements IStorage {
             .where(eq(appointments.doctorId, doctor.id));
 
           // Get patient data for these appointments
-          const patientIds = [...new Set(appointmentsForDoctor.map(apt => apt.patientId))];
+          const patientIds = Array.from(new Set(appointmentsForDoctor.map(apt => apt.patientId)));
           const patients = await db
             .select()
             .from(users)
@@ -555,6 +562,104 @@ export class DatabaseStorage implements IStorage {
       return doctorsWithAppointments;
     } catch (error) {
       console.error('Error in getAttenderDoctorsAppointments:', error);
+      throw error;
+    }
+  }
+
+  async getCurrentTokenProgress(
+    doctorId: number, 
+    clinicId: number, 
+    date: Date,
+    retryCount = 3
+  ): Promise<{ currentToken: number; status: 'in_progress' | 'completed' | 'not_started' | 'no_appointments'; appointment?: Appointment }> {
+    try {
+      console.log('Getting token progress for:', { doctorId, clinicId, date });
+
+      // Round date to start of day for consistency
+      const dayStart = new Date(date);
+      dayStart.setHours(0, 0, 0, 0);
+      
+      const dayEnd = new Date(date);
+      dayEnd.setHours(23, 59, 59, 999);
+
+      // Get all appointments for the doctor at the specific clinic on this date
+      const todayAppointments = await db
+        .select()
+        .from(appointments)
+        .where(
+          and(
+            eq(appointments.doctorId, doctorId),
+            eq(appointments.clinicId, clinicId),
+            sql`${appointments.date}::date = ${dayStart}::date`
+          )
+        )
+        .orderBy(appointments.tokenNumber);
+
+      console.log('Found appointments:', todayAppointments);
+
+      if (!todayAppointments || todayAppointments.length === 0) {
+        return {
+          currentToken: 0,
+          status: 'no_appointments'
+        };
+      }
+
+      // Find appointment in progress
+      const inProgressAppointment = todayAppointments.find(apt => apt.status === 'in_progress');
+      
+      if (inProgressAppointment) {
+        console.log('Found in-progress appointment:', inProgressAppointment);
+        return {
+          currentToken: inProgressAppointment.tokenNumber,
+          status: 'in_progress',
+          appointment: inProgressAppointment
+        };
+      }
+
+      // If no appointment is in progress, find the last completed appointment
+      const completedAppointments = todayAppointments.filter(apt => apt.status === 'completed');
+      const lastCompleted = completedAppointments[completedAppointments.length - 1];
+
+      console.log('Completed appointments:', { count: completedAppointments.length, lastCompleted });
+
+      if (lastCompleted) {
+        // Find the next scheduled appointment after the last completed one
+        const nextAppointment = todayAppointments.find(apt => 
+          apt.tokenNumber > lastCompleted.tokenNumber && 
+          apt.status === 'scheduled'
+        );
+
+        return {
+          currentToken: lastCompleted.tokenNumber,
+          status: 'completed',
+          appointment: nextAppointment
+        };
+      }
+
+      // If no appointments are completed or in progress, return the first scheduled appointment
+      const firstScheduled = todayAppointments.find(apt => apt.status === 'scheduled');
+      return {
+        currentToken: 0,
+        status: 'not_started',
+        appointment: firstScheduled
+      };
+
+    } catch (error) {
+      console.error('Error in getCurrentTokenProgress:', error);
+      
+      // If we have retries left and it's a connection error, retry
+      if (retryCount > 0 && (
+        error instanceof Error && 
+        (error.message.includes('ETIMEDOUT') || 
+         error.message.includes('connection') ||
+         error.message.includes('network'))
+      )) {
+        console.log(`Retrying getCurrentTokenProgress... (${retryCount} attempts left)`);
+        // Wait for 1 second before retrying
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        return this.getCurrentTokenProgress(doctorId, clinicId, date, retryCount - 1);
+      }
+      
       throw error;
     }
   }

@@ -1,8 +1,8 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
-import { storage } from "./storage";
-import { insertAppointmentSchema, insertAttenderDoctorSchema } from "@shared/schema";
+import { storage, type IStorage } from "./storage";
+import { insertAppointmentSchema, insertAttenderDoctorSchema, type AttenderDoctor, type User } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   setupAuth(app);
@@ -97,8 +97,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid status" });
       }
 
-      const appointment = await storage.updateAppointmentStatus(appointmentId, status);
-      res.json(appointment);
+      // Update the appointment status
+      const updatedAppointment = await storage.updateAppointmentStatus(appointmentId, status);
+      res.json(updatedAppointment);
     } catch (error) {
       console.error('Error updating appointment status:', error);
       res.status(500).json({ message: 'Failed to update appointment status' });
@@ -210,6 +211,81 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error fetching doctor availability:', error);
       res.status(500).json({ message: 'Failed to fetch doctor availability' });
+    }
+  });
+
+  // Get token progress for a doctor on a specific date
+  app.get("/api/doctors/:id/token-progress", async (req, res) => {
+    try {
+      const doctorId = parseInt(req.params.id);
+      const date = req.query.date ? new Date(req.query.date as string) : new Date();
+      const clinicId = parseInt(req.query.clinicId as string);
+
+      console.log('Token Progress Request:', {
+        doctorId,
+        clinicId,
+        date,
+        params: req.params,
+        query: req.query
+      });
+
+      if (!clinicId || isNaN(clinicId)) {
+        return res.status(400).json({ message: 'Clinic ID is required' });
+      }
+
+      if (!doctorId || isNaN(doctorId)) {
+        return res.status(400).json({ message: 'Invalid doctor ID' });
+      }
+
+      const progress = await storage.getCurrentTokenProgress(doctorId, clinicId, date);
+      console.log('Token Progress Response:', progress);
+      res.json(progress);
+    } catch (error) {
+      console.error('Error fetching token progress:', error);
+      if (error instanceof Error) {
+        res.status(500).json({ 
+          message: 'Failed to fetch token progress',
+          error: error.message,
+          stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
+      } else {
+        res.status(500).json({ 
+          message: 'Failed to fetch token progress',
+          error: 'Unknown error'
+        });
+      }
+    }
+  });
+
+  // Update token progress (Attender only)
+  app.patch("/api/doctors/:id/token-progress", async (req, res) => {
+    if (!req.user) return res.sendStatus(401);
+    if (req.user.role !== "attender") return res.sendStatus(403);
+
+    try {
+      const doctorId = parseInt(req.params.id);
+      const { currentToken, clinicId, date } = req.body;
+
+      // Validate that this attender can manage this doctor
+      const attenderDoctors = await storage.getAttenderDoctors(req.user.id);
+      const canManageDoctor = attenderDoctors.some((ad: AttenderDoctor & { doctor: User }) => ad.doctor.id === doctorId);
+      
+      if (!canManageDoctor) {
+        return res.status(403).json({ message: 'Not authorized to manage this doctor' });
+      }
+
+      const progress = await storage.updateTokenProgress(
+        doctorId,
+        clinicId,
+        new Date(date),
+        currentToken,
+        req.user.id
+      );
+
+      res.json(progress);
+    } catch (error) {
+      console.error('Error updating token progress:', error);
+      res.status(500).json({ message: 'Failed to update token progress' });
     }
   });
 

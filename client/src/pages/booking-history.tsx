@@ -12,12 +12,10 @@ type AppointmentWithDoctor = Appointment & {
   doctor: User;
 };
 
-type DoctorAvailability = {
-  id: number;
-  doctorId: number;
-  date: string;
-  isAvailable: boolean;
+type TokenProgress = {
   currentToken: number;
+  status: 'in_progress' | 'completed' | 'not_started' | 'no_appointments';
+  appointment?: Appointment;
 };
 
 export default function BookingHistoryPage() {
@@ -31,11 +29,34 @@ export default function BookingHistoryPage() {
     apt => format(new Date(apt.date), "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd")
   ) || [];
 
-  const doctorIds = [...new Set(todayAppointments.map(apt => apt.doctorId))];
+  // Group today's appointments by doctor and clinic
+  const doctorClinicPairs = todayAppointments.map(apt => ({
+    doctorId: apt.doctorId,
+    clinicId: apt.clinicId
+  }));
 
-  const { data: doctorAvailabilities } = useQuery<DoctorAvailability[]>({
-    queryKey: ["/api/doctors/availability", doctorIds.join(",")],
-    enabled: doctorIds.length > 0,
+  // Create a unique key for each doctor-clinic pair
+  const uniquePairs = Array.from(new Set(doctorClinicPairs.map(p => `${p.doctorId}-${p.clinicId}`)))
+    .map(key => {
+      const [doctorId, clinicId] = key.split('-').map(Number);
+      return { doctorId, clinicId };
+    });
+
+  // Fetch token progress for each doctor-clinic pair
+  const { data: tokenProgressMap } = useQuery<Record<string, TokenProgress>>({
+    queryKey: ["token-progress", uniquePairs],
+    queryFn: async () => {
+      const progressPromises = uniquePairs.map(async ({ doctorId, clinicId }) => {
+        const res = await fetch(`/api/doctors/${doctorId}/token-progress?clinicId=${clinicId}`);
+        if (!res.ok) throw new Error('Failed to fetch token progress');
+        const progress = await res.json();
+        return { key: `${doctorId}-${clinicId}`, progress };
+      });
+
+      const progressResults = await Promise.all(progressPromises);
+      return Object.fromEntries(progressResults.map(({ key, progress }) => [key, progress]));
+    },
+    enabled: uniquePairs.length > 0,
     // Refresh every 30 seconds to keep token status current
     refetchInterval: 30000
   });
@@ -69,21 +90,19 @@ export default function BookingHistoryPage() {
                     <h2 className="text-xl font-semibold mb-4">Today's Appointments</h2>
                     <div className="space-y-4">
                       {todayAppointments.map((appointment) => {
-                        const availability = doctorAvailabilities?.find(
-                          a => a.doctorId === appointment.doctorId
-                        );
+                        const progress = tokenProgressMap?.[`${appointment.doctorId}-${appointment.clinicId}`];
 
-                        // Get all appointments for this doctor today
-                        const doctorTodayAppointments = todayAppointments.filter(
-                          apt => apt.doctorId === appointment.doctorId
+                        // Get all appointments for this doctor at this clinic today
+                        const doctorClinicAppointments = todayAppointments.filter(
+                          apt => apt.doctorId === appointment.doctorId && apt.clinicId === appointment.clinicId
                         );
 
                         const maxTokenNumber = Math.max(
-                          ...doctorTodayAppointments.map(apt => apt.tokenNumber)
+                          ...doctorClinicAppointments.map(apt => apt.tokenNumber)
                         );
 
-                        const tokensAhead = availability?.currentToken !== undefined
-                          ? Math.max(0, appointment.tokenNumber - availability.currentToken - 1)
+                        const tokensAhead = progress?.currentToken !== undefined
+                          ? Math.max(0, appointment.tokenNumber - progress.currentToken - 1)
                           : null;
 
                         return (
@@ -121,7 +140,7 @@ export default function BookingHistoryPage() {
                                   <div className="flex items-center gap-2 justify-end">
                                     <Ticket className="h-4 w-4" />
                                     <span className="font-medium">
-                                      Token {String(availability?.currentToken || 0).padStart(3, '0')}/{String(maxTokenNumber).padStart(3, '0')}
+                                      Token {String(progress?.currentToken || 0).padStart(3, '0')}/{String(maxTokenNumber).padStart(3, '0')}
                                     </span>
                                   </div>
                                 </div>
@@ -134,30 +153,40 @@ export default function BookingHistoryPage() {
                                         #{String(appointment.tokenNumber).padStart(3, '0')}
                                       </span>
                                     </div>
+                                    {/* <div className="text-sm text-muted-foreground">
+                                      Status: {progress?.status ? progress.status.charAt(0).toUpperCase() + progress.status.slice(1) : 'Unknown'}
+                                    </div> */}
                                   </div>
 
                                   <Progress 
                                     value={
-                                      maxTokenNumber > 0 && availability?.currentToken !== undefined
-                                        ? (availability.currentToken / maxTokenNumber) * 100
+                                      maxTokenNumber > 0 && progress?.currentToken !== undefined
+                                        ? (progress.currentToken / maxTokenNumber) * 100
                                         : 0
                                     } 
                                     className="h-2"
                                   />
 
-                                  {tokensAhead !== null && tokensAhead > 0 && (
+                                  {appointment.status === "completed" ? (
+                                    <div className="text-sm text-center text-muted-foreground mt-2">
+                                      Consultation completed
+                                    </div>
+                                  ) : appointment.status === "in_progress" ? (
+                                    <div className="text-sm text-center text-primary font-medium mt-2">
+                                      You are currently being consulted
+                                    </div>
+                                  ) : tokensAhead !== null && tokensAhead > 0 ? (
                                     <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground mt-2">
                                       <Users className="h-4 w-4" />
                                       <span>
                                         {tokensAhead} {tokensAhead === 1 ? 'patient' : 'patients'} ahead of you
                                       </span>
                                     </div>
-                                  )}
-                                  {tokensAhead === 0 && (
+                                  ) : tokensAhead === 0 ? (
                                     <div className="text-sm text-center text-primary font-medium mt-2">
                                       You're next! Please be ready.
                                     </div>
-                                  )}
+                                  ) : null}
                                 </div>
                               </div>
                             </CardContent>
@@ -169,7 +198,7 @@ export default function BookingHistoryPage() {
                 )}
 
                 <div className="mt-8">
-                  <h2 className="text-xl font-semibold mb-4">All Appointments</h2>
+                  <h2 className="text-xl font-semibold mb-4">Past Appointments</h2>
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead>
@@ -181,7 +210,9 @@ export default function BookingHistoryPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {appointments?.map((appointment) => (
+                        {appointments?.filter(apt => 
+                          format(new Date(apt.date), "yyyy-MM-dd") !== format(new Date(), "yyyy-MM-dd")
+                        ).map((appointment) => (
                           <tr key={appointment.id} className="border-b">
                             <td className="py-4 px-4">
                               {String(appointment.tokenNumber).padStart(3, '0')}
