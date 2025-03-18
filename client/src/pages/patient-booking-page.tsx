@@ -9,24 +9,37 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
-import { format, startOfDay, addMinutes, setHours, setMinutes } from "date-fns";
+import { format, startOfDay } from "date-fns";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, Clock, UserCheck, UserX } from "lucide-react";
+import { AlertCircle, Clock, UserCheck, UserX, Building } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
-// Hardcoded time slots (9 AM to 5 PM, 30-minute intervals)
-const generateTimeSlots = (baseDate: Date) => {
-  const slots = [];
-  const startTime = setHours(setMinutes(baseDate, 0), 9); // 9 AM
-  const endTime = setHours(setMinutes(baseDate, 0), 17); // 5 PM
+// Define types
+type Clinic = {
+  id: number;
+  name: string;
+};
 
-  let currentSlot = startTime;
-  while (currentSlot < endTime) {
-    slots.push(new Date(currentSlot));
-    currentSlot = addMinutes(currentSlot, 30);
-  }
-  return slots;
+type DoctorSchedule = {
+  id: number;
+  doctorId: number;
+  clinicId: number;
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  isActive: boolean;
+  clinic: Clinic;
+};
+
+type AvailableSlotsResponse = {
+  schedules: DoctorSchedule[];
+  availableSlots: {
+    startTime: string;
+    endTime: string;
+    clinicId: number;
+    clinicName: string;
+  }[];
 };
 
 export default function PatientBookingPage() {
@@ -35,26 +48,38 @@ export default function PatientBookingPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [selectedTime, setSelectedTime] = useState<Date | null>(null);
+  const [selectedSchedule, setSelectedSchedule] = useState<DoctorSchedule | null>(null);
 
   const { data: doctor, isLoading: isLoadingDoctor } = useQuery<User>({
     queryKey: [`/api/doctors/${doctorId}`],
     enabled: !!doctorId,
   });
 
-  const { data: availability } = useQuery({
-    queryKey: [`/api/doctors/${doctorId}/availability`, selectedDate.toISOString()],
+  const { data: availableSlotsData, isLoading: isLoadingSlots } = useQuery<AvailableSlotsResponse>({
+    queryKey: [`/api/doctors/${doctorId}/available-slots`, selectedDate.toISOString().split('T')[0]],
     enabled: !!doctorId,
+    queryFn: async () => {
+      const response = await fetch(`/api/doctors/${doctorId}/available-slots?date=${selectedDate.toISOString()}`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch available slots");
+      }
+      return response.json();
+    },
   });
 
   const bookAppointmentMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedTime) throw new Error("Please select a time slot");
+      if (!selectedSchedule) throw new Error("Please select a clinic schedule");
 
-      const appointmentDate = new Date(selectedTime);
+      // Create appointment date by combining selected date with schedule start time
+      const [hours, minutes] = selectedSchedule.startTime.split(':').map(Number);
+      const appointmentDate = new Date(selectedDate);
+      appointmentDate.setHours(hours, minutes, 0, 0);
+
       const res = await apiRequest("POST", "/api/appointments", {
         doctorId: parseInt(doctorId!),
         date: appointmentDate.toISOString(),
+        clinicId: selectedSchedule.clinicId,
       });
       return res.json();
     },
@@ -74,8 +99,6 @@ export default function PatientBookingPage() {
       });
     },
   });
-
-  const timeSlots = generateTimeSlots(selectedDate);
 
   if (!user) {
     return (
@@ -132,15 +155,15 @@ export default function PatientBookingPage() {
               <div className="mb-6">
                 <h2 className="text-lg font-semibold">{doctor.name}</h2>
                 <p className="text-muted-foreground">{doctor.specialty}</p>
-                {availability?.isAvailable ? (
+                {availableSlotsData?.schedules?.length ? (
                   <div className="flex items-center gap-2 text-sm text-green-600 mt-2">
                     <UserCheck className="h-4 w-4" />
-                    <span>Available today</span>
+                    <span>Available on {format(selectedDate, "EEEE, MMM d")}</span>
                   </div>
                 ) : (
                   <div className="flex items-center gap-2 text-sm text-yellow-600 mt-2">
                     <UserX className="h-4 w-4" />
-                    <span>May not be available today</span>
+                    <span>Not available on {format(selectedDate, "EEEE, MMM d")}</span>
                   </div>
                 )}
               </div>
@@ -151,7 +174,7 @@ export default function PatientBookingPage() {
                 selected={selectedDate}
                 onSelect={(date) => {
                   setSelectedDate(date || new Date());
-                  setSelectedTime(null);
+                  setSelectedSchedule(null);
                 }}
                 className="rounded-md border"
                 disabled={(date) => {
@@ -164,31 +187,57 @@ export default function PatientBookingPage() {
 
           <Card>
             <CardContent className="p-6">
-              <h2 className="text-lg font-semibold mb-4">Available Time Slots</h2>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                {timeSlots.map((slot) => (
-                  <Button
-                    key={slot.toISOString()}
-                    variant={selectedTime?.toISOString() === slot.toISOString() ? "default" : "outline"}
-                    className="w-full"
-                    onClick={() => setSelectedTime(slot)}
-                  >
-                    <Clock className="mr-2 h-4 w-4" />
-                    {format(slot, "h:mm a")}
-                  </Button>
-                ))}
-              </div>
-
-              {selectedTime && (
-                <div className="mt-6">
-                  <Button
-                    className="w-full"
-                    onClick={() => bookAppointmentMutation.mutate()}
-                    disabled={bookAppointmentMutation.isPending}
-                  >
-                    Book for {format(selectedTime, "h:mm a")}
-                  </Button>
+              <h2 className="text-lg font-semibold mb-4">Available Schedules</h2>
+              
+              {isLoadingSlots ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-20" />
+                  ))}
                 </div>
+              ) : !availableSlotsData?.schedules?.length ? (
+                <Alert className="mb-4">
+                  <AlertCircle className="h-4 w-4 mr-2" />
+                  <AlertDescription>
+                    No schedules available on this date. Please select another date.
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <>
+                  <div className="space-y-3">
+                    {availableSlotsData.schedules.map((schedule) => (
+                      <Button
+                        key={schedule.id}
+                        variant={selectedSchedule?.id === schedule.id ? "default" : "outline"}
+                        className="w-full flex justify-between items-center h-auto py-4 px-4"
+                        onClick={() => setSelectedSchedule(schedule)}
+                      >
+                        <div className="flex flex-col items-start">
+                          <div className="font-medium text-base">{schedule.clinic.name}</div>
+                          <div className="flex items-center text-sm mt-1">
+                            <Clock className="mr-1 h-4 w-4" />
+                            {schedule.startTime} - {schedule.endTime}
+                          </div>
+                        </div>
+                        <Badge variant="outline">
+                          Select
+                        </Badge>
+                      </Button>
+                    ))}
+                  </div>
+
+                  {selectedSchedule && (
+                    <div className="mt-6">
+                      <Button
+                        className="w-full"
+                        onClick={() => bookAppointmentMutation.mutate()}
+                        disabled={bookAppointmentMutation.isPending}
+                      >
+                        Book an appointment at {selectedSchedule.clinic.name}
+                      </Button>
+                    </div>
+                  )}
+                </>
               )}
             </CardContent>
           </Card>
