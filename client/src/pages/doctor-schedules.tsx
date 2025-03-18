@@ -33,6 +33,7 @@ type DoctorSchedule = {
   startTime: string;
   endTime: string;
   isActive: boolean;
+  maxTokens: number;
   doctor?: Doctor;
   clinic?: Clinic;
 };
@@ -56,6 +57,7 @@ export default function DoctorSchedulesPage() {
     startTime: "09:00",
     endTime: "17:00",
     isActive: true,
+    maxTokens: 20,
   });
 
   // Fetch clinics
@@ -185,7 +187,11 @@ export default function DoctorSchedulesPage() {
   // Form handlers
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setFormData({ ...formData, [name]: value });
+    if (name === 'maxTokens') {
+      setFormData({ ...formData, [name]: parseInt(value) || 0 });
+    } else {
+      setFormData({ ...formData, [name]: value });
+    }
   };
 
   const handleSelectChange = (name: string, value: string) => {
@@ -209,6 +215,7 @@ export default function DoctorSchedulesPage() {
       startTime: schedule.startTime,
       endTime: schedule.endTime,
       isActive: schedule.isActive,
+      maxTokens: schedule.maxTokens,
     });
     setActiveTab("create");
   };
@@ -256,6 +263,7 @@ export default function DoctorSchedulesPage() {
       startTime: "09:00",
       endTime: "17:00",
       isActive: true,
+      maxTokens: 20,
     });
     setSelectedSchedule(null);
   };
@@ -344,6 +352,7 @@ export default function DoctorSchedulesPage() {
                       <TableHead>Clinic</TableHead>
                       <TableHead>Start Time</TableHead>
                       <TableHead>End Time</TableHead>
+                      <TableHead>Max Tokens</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
@@ -355,6 +364,7 @@ export default function DoctorSchedulesPage() {
                         <TableCell>{getClinicName(schedule.clinicId)}</TableCell>
                         <TableCell>{schedule.startTime}</TableCell>
                         <TableCell>{schedule.endTime}</TableCell>
+                        <TableCell>{schedule.maxTokens}</TableCell>
                         <TableCell>
                           {schedule.isActive ? (
                             <span className="text-green-600">Active</span>
@@ -490,6 +500,18 @@ export default function DoctorSchedulesPage() {
                       onCheckedChange={(checked) => handleSwitchChange("isActive", checked)}
                     />
                     <Label htmlFor="isActive">Active</Label>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="maxTokens">Max Tokens</Label>
+                    <Input
+                      id="maxTokens"
+                      name="maxTokens"
+                      type="number"
+                      value={formData.maxTokens.toString()}
+                      onChange={handleInputChange}
+                      required
+                    />
                   </div>
                 </div>
 

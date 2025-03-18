@@ -475,6 +475,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         startTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/),
         endTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/),
         isActive: z.boolean().optional().default(true),
+        maxTokens: z.number().min(1).default(20),
       });
 
       const validData = scheduleSchema.parse(req.body);
@@ -519,6 +520,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         startTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/).optional(),
         endTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/).optional(),
         isActive: z.boolean().optional(),
+        maxTokens: z.number().min(1).optional(),
       });
 
       const validData = scheduleSchema.parse(req.body);

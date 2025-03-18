@@ -86,6 +86,7 @@ export const doctorSchedules = pgTable("doctor_schedules", {
   startTime: varchar("start_time", { length: 5 }).notNull(), // Format: "HH:MM" in 24-hour format
   endTime: varchar("end_time", { length: 5 }).notNull(), // Format: "HH:MM" in 24-hour format
   isActive: boolean("is_active").default(true),
+  maxTokens: integer("max_tokens").default(20),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
 });
