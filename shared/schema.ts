@@ -1,59 +1,93 @@
-import { pgTable, text, serial, integer, timestamp, boolean } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
+import { relations, sql } from "drizzle-orm";
+import { boolean, decimal, integer, pgTable, serial, text, timestamp, varchar } from "drizzle-orm/pg-core";
+import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
-import { relations } from "drizzle-orm";
 
 export const clinics = pgTable("clinics", {
   id: serial("id").primaryKey(),
-  name: text("name").notNull(),
-  address: text("address").notNull(),
-  city: text("city"),
-  state: text("state"),
-  zipCode: text("zip_code"),
-  imageUrl: text("image_url"),
+  name: varchar("name", { length: 255 }).notNull(),
+  address: varchar("address", { length: 255 }),
+  city: varchar("city", { length: 100 }),
+  state: varchar("state", { length: 100 }),
+  zipCode: varchar("zip_code", { length: 20 }),
+  phone: varchar("phone", { length: 20 }),
+  email: varchar("email", { length: 255 }),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
-  name: text("name").notNull(),
-  role: text("role", { enum: ["patient", "doctor", "attender"] }).notNull(),
-  specialty: text("specialty"),
+  name: varchar("name", { length: 255 }).notNull(),
+  username: varchar("username", { length: 255 }).notNull().unique(),
+  password: varchar("password", { length: 255 }).notNull(),
+  role: varchar("role", { length: 50 }).notNull(),
+  specialty: varchar("specialty", { length: 255 }),
   bio: text("bio"),
   imageUrl: text("image_url"),
   address: text("address"),
   city: text("city"),
   state: text("state"),
   zipCode: text("zip_code"),
-  latitude: text("latitude"),
-  longitude: text("longitude"),
+  latitude: varchar("latitude", { length: 50 }),
+  longitude: varchar("longitude", { length: 50 }),
   clinicId: integer("clinic_id").references(() => clinics.id),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const doctorDetails = pgTable("doctor_details", {
+  id: serial("id").primaryKey(),
+  doctorId: integer("doctor_id").notNull().references(() => users.id),
+  consultationFee: decimal("consultation_fee", { precision: 10, scale: 2 }).notNull(),
+  consultationDuration: integer("consultation_duration").notNull(), // in minutes
+  qualifications: text("qualifications"),
+  experience: integer("experience"), // in years
+  registrationNumber: varchar("registration_number", { length: 100 }),
+  isEnabled: boolean("is_enabled").default(true),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
 export const doctorAvailability = pgTable("doctor_availability", {
   id: serial("id").primaryKey(),
-  doctorId: integer("doctor_id").notNull().references(() => users.id),
-  date: timestamp("date").notNull(),
-  isAvailable: boolean("is_available").notNull().default(false),
-  currentToken: integer("current_token").notNull().default(0),
+  doctorId: integer("doctor_id").references(() => users.id),
+  clinicId: integer("clinic_id").references(() => clinics.id),
+  dayOfWeek: integer("day_of_week").notNull(), // 0-6 for Sunday-Saturday
+  startTime: varchar("start_time", { length: 10 }).notNull(), // Format: HH:MM
+  endTime: varchar("end_time", { length: 10 }).notNull(), // Format: HH:MM
+  isAvailable: boolean("is_available").default(true),
+  maxTokens: integer("max_tokens").default(20),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
 export const attenderDoctors = pgTable("attender_doctors", {
   id: serial("id").primaryKey(),
   attenderId: integer("attender_id").notNull().references(() => users.id),
   doctorId: integer("doctor_id").notNull().references(() => users.id),
-  clinicId: integer("clinic_id").notNull().references(() => clinics.id),
+  clinicId: integer("clinic_id").references(() => clinics.id),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
 export const appointments = pgTable("appointments", {
   id: serial("id").primaryKey(),
-  patientId: integer("patient_id").notNull(),
-  doctorId: integer("doctor_id").notNull(),
-  clinicId: integer("clinic_id").notNull(),
+  patientId: integer("patient_id").references(() => users.id),
+  doctorId: integer("doctor_id").references(() => users.id),
+  clinicId: integer("clinic_id").references(() => clinics.id),
   date: timestamp("date").notNull(),
   tokenNumber: integer("token_number").notNull(),
-  status: text("status", { enum: ["scheduled", "completed", "cancelled", "in_progress"] }).notNull(),
+  status: varchar("status", { length: 50 }).default("scheduled"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const doctorSchedules = pgTable("doctor_schedules", {
+  id: serial("id").primaryKey(),
+  doctorId: integer("doctor_id").notNull().references(() => users.id),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id),
+  dayOfWeek: integer("day_of_week").notNull(), // 0-6 for Sunday-Saturday
+  startTime: varchar("start_time", { length: 5 }).notNull(), // Format: "HH:MM" in 24-hour format
+  endTime: varchar("end_time", { length: 5 }).notNull(), // Format: "HH:MM" in 24-hour format
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
 // Define relations
@@ -64,11 +98,20 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   }),
   managedDoctors: many(attenderDoctors, { relationName: "attender" }),
   attenders: many(attenderDoctors, { relationName: "doctor" }),
+  doctorDetails: one(doctorDetails, {
+    fields: [users.id],
+    references: [doctorDetails.doctorId],
+  }),
+  appointments: many(appointments),
+  schedules: many(doctorSchedules),
 }));
 
 export const clinicsRelations = relations(clinics, ({ many }) => ({
+  users: many(users),
+  appointments: many(appointments),
   doctors: many(users),
   attenders: many(users),
+  schedules: many(doctorSchedules),
 }));
 
 export const appointmentsRelations = relations(appointments, ({ one }) => ({
@@ -103,34 +146,72 @@ export const attenderDoctorsRelations = relations(attenderDoctors, ({ one }) => 
   }),
 }));
 
+export const doctorDetailsRelations = relations(doctorDetails, ({ one }) => ({
+  doctor: one(users, {
+    fields: [doctorDetails.doctorId],
+    references: [users.id],
+  }),
+}));
+
 export const doctorAvailabilityRelations = relations(doctorAvailability, ({ one }) => ({
   doctor: one(users, {
     fields: [doctorAvailability.doctorId],
     references: [users.id],
   }),
+  clinic: one(clinics, {
+    fields: [doctorAvailability.clinicId],
+    references: [clinics.id],
+  }),
+}));
+
+export const doctorSchedulesRelations = relations(doctorSchedules, ({ one }) => ({
+  doctor: one(users, {
+    fields: [doctorSchedules.doctorId],
+    references: [users.id],
+  }),
+  clinic: one(clinics, {
+    fields: [doctorSchedules.clinicId],
+    references: [clinics.id],
+  }),
 }));
 
 export const insertUserSchema = createInsertSchema(users);
 export const insertClinicSchema = createInsertSchema(clinics);
+export const insertAppointmentSchema = createInsertSchema(appointments);
+export const insertDoctorAvailabilitySchema = createInsertSchema(doctorAvailability);
 export const insertAttenderDoctorSchema = createInsertSchema(attenderDoctors);
-export const insertAppointmentSchema = createInsertSchema(appointments, {
-  date: z.string().transform((str) => new Date(str)),
-  status: z.enum(["scheduled", "completed", "cancelled", "in_progress"]).default("scheduled"),
-}).omit({ tokenNumber: true });
+export const insertDoctorDetailSchema = createInsertSchema(doctorDetails);
+export const insertDoctorScheduleSchema = createInsertSchema(doctorSchedules);
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type Clinic = typeof clinics.$inferSelect;
 export type Appointment = typeof appointments.$inferSelect;
 export type AttenderDoctor = typeof attenderDoctors.$inferSelect;
+export type DoctorAvailability = typeof doctorAvailability.$inferSelect;
+export type DoctorDetail = typeof doctorDetails.$inferSelect;
+export type DoctorSchedule = typeof doctorSchedules.$inferSelect;
+export type InsertDoctorSchedule = z.infer<typeof insertDoctorScheduleSchema>;
 
 export const specialties = [
-  "Dermatologist",
-  "Pediatrician",
   "Cardiologist",
+  "Dermatologist",
+  "Endocrinologist",
+  "Gastroenterologist",
   "Neurologist",
-  "Orthopedist",
+  "Obstetrician",
+  "Ophthalmologist",
+  "Orthopedic Surgeon",
+  "Pediatrician",
   "Psychiatrist",
+  "Urologist",
+  "General Practitioner",
+  "Dentist",
+  "ENT Specialist",
+  "Pulmonologist",
+  "Rheumatologist",
+  "Oncologist",
+  "Nephrologist",
   "Gynecologist",
-  "General Physician"
+  "Allergist",
 ] as const;

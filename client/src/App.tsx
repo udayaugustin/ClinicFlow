@@ -1,3 +1,4 @@
+import React from 'react';
 import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -12,6 +13,22 @@ import DoctorBookingPage from "@/pages/doctor-booking-page";
 import BookingHistoryPage from "@/pages/booking-history";
 import AttenderDashboard from "@/pages/attender-dashboard";
 import { useAuth } from "./hooks/use-auth";
+import DoctorManagementPage from "./pages/doctor-management";
+import { ProtectedRoute } from "./components/ProtectedRoute";
+import DoctorSchedulesPage from "./pages/doctor-schedules";
+
+// Wrap DoctorManagementPage with ProtectedRoute
+const ProtectedDoctorManagement = () => (
+  <ProtectedRoute allowedRoles={["hospital_admin", "attender"]}>
+    <DoctorManagementPage />
+  </ProtectedRoute>
+);
+
+const ProtectedDoctorSchedules = () => (
+  <ProtectedRoute allowedRoles={["hospital_admin", "attender", "doctor"]}>
+    <DoctorSchedulesPage />
+  </ProtectedRoute>
+);
 
 function Router() {
   const { user } = useAuth();
@@ -37,6 +54,8 @@ function Router() {
       <Route path="/doctor/bookings" component={DoctorBookingPage} />
       <Route path="/appointments" component={BookingHistoryPage} />
       <Route path="/attender-dashboard" component={AttenderDashboard} />
+      <Route path="/doctor-management" component={ProtectedDoctorManagement} />
+      <Route path="/schedules" component={ProtectedDoctorSchedules} />
       <Route component={NotFound} />
     </Switch>
   );

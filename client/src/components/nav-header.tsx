@@ -8,7 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, User, Calendar } from "lucide-react";
+import { LogOut, User, Calendar, UserPlus, Clock } from "lucide-react";
 
 export function NavHeader() {
   const { user, logoutMutation } = useAuth();
@@ -16,6 +16,12 @@ export function NavHeader() {
 
   // For attenders, don't show the navigation if they're on their dashboard
   const isAttenderDashboard = user?.role === "attender" && location === "/attender-dashboard";
+  
+  // Check if user can manage doctors (hospital_admin or attender)
+  const canManageDoctors = user?.role === "hospital_admin" || user?.role === "attender";
+  
+  // Check if user can access schedules (hospital_admin, attender, or doctor)
+  const canAccessSchedules = user?.role === "hospital_admin" || user?.role === "attender" || user?.role === "doctor";
 
   return (
     <header className="border-b">
@@ -32,6 +38,22 @@ export function NavHeader() {
                   <Link href="/appointments">
                     <Calendar className="mr-2 h-4 w-4" />
                     My Appointments
+                  </Link>
+                </Button>
+              )}
+              {canManageDoctors && (
+                <Button variant="ghost" asChild className="hidden md:flex">
+                  <Link href="/doctor-management">
+                    <UserPlus className="mr-2 h-4 w-4" />
+                    Manage Doctors
+                  </Link>
+                </Button>
+              )}
+              {canAccessSchedules && (
+                <Button variant="ghost" asChild className="hidden md:flex">
+                  <Link href="/schedules">
+                    <Clock className="mr-2 h-4 w-4" />
+                    Schedules
                   </Link>
                 </Button>
               )}
@@ -64,6 +86,22 @@ export function NavHeader() {
                           <span>My Appointments</span>
                         </Link>
                       )}
+                    </DropdownMenuItem>
+                  )}
+                  {canManageDoctors && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/doctor-management" className="gap-2">
+                        <UserPlus size={16} />
+                        <span>Manage Doctors</span>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {canAccessSchedules && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/schedules" className="gap-2">
+                        <Clock size={16} />
+                        <span>Schedules</span>
+                      </Link>
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuItem

@@ -1,11 +1,12 @@
-import { InsertUser, User, Clinic, Appointment, attenderDoctors, AttenderDoctor } from "@shared/schema";
+import { InsertUser, User, Clinic, Appointment, attenderDoctors, AttenderDoctor, doctorDetails, insertDoctorDetailSchema, doctorSchedules, type DoctorSchedule, type InsertDoctorSchedule } from "@shared/schema";
 import { users, clinics, appointments, doctorAvailability } from "@shared/schema"; // Added doctorAvailability import
-import { eq, or, and, sql, inArray } from "drizzle-orm";
+import { eq, or, and, sql, inArray, lte, gte } from "drizzle-orm";
 import { db } from "./db";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 import { Pool } from '@neondatabase/serverless';
 import { pool } from "./db";
+import { DoctorDetail } from "@shared/schema";
 
 const pgSession = connectPg(session);
 
@@ -46,6 +47,36 @@ export interface IStorage {
 
   // Token Progress method
   getCurrentTokenProgress(doctorId: number, clinicId: number, date: Date, retryCount?: number): Promise<{ currentToken: number; status: 'in_progress' | 'completed' | 'not_started' | 'no_appointments'; appointment?: Appointment }>;
+
+  // Doctor management methods
+  createDoctor(user: Omit<InsertUser, "role">, details: { consultationFee: number | string; consultationDuration: number; qualifications?: string; experience?: number; registrationNumber?: string; isEnabled?: boolean; }): Promise<User & { details: DoctorDetail }>;
+  getDoctorDetails(doctorId: number): Promise<DoctorDetail | undefined>;
+  updateDoctorDetails(doctorId: number, details: Partial<{
+    consultationFee: number | string;
+    consultationDuration: number;
+    qualifications: string;
+    experience: number;
+    registrationNumber: string;
+  }>): Promise<DoctorDetail>;
+  toggleDoctorStatus(doctorId: number, isEnabled: boolean): Promise<DoctorDetail>;
+
+  // Doctor schedules methods
+  createDoctorSchedule(schedule: InsertDoctorSchedule): Promise<DoctorSchedule>;
+  getDoctorSchedules(doctorId: number): Promise<DoctorSchedule[]>;
+  getDoctorSchedulesByClinic(clinicId: number): Promise<(DoctorSchedule & { doctor: User })[]>;
+  getDoctorSchedulesByDay(day: number): Promise<(DoctorSchedule & { doctor: User, clinic: Clinic })[]>;
+  updateDoctorSchedule(id: number, schedule: Partial<InsertDoctorSchedule>): Promise<DoctorSchedule>;
+  deleteDoctorSchedule(id: number): Promise<void>;
+  getAvailableDoctors(clinicId: number, day: number, time: string): Promise<User[]>;
+  getDoctorAvailableTimeSlots(doctorId: number, date: Date): Promise<{ 
+    schedules: (DoctorSchedule & { clinic: Clinic })[], 
+    availableSlots: { 
+      startTime: string,  // Format: "HH:MM"
+      endTime: string,    // Format: "HH:MM"
+      clinicId: number,
+      clinicName: string
+    }[] 
+  }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -258,9 +289,21 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createAppointment(appointment: Omit<Appointment, "id" | "tokenNumber">): Promise<Appointment> {
+    // Use the provided clinicId or get it from the doctor
+    let clinicId = appointment.clinicId;
+    
+    if (!clinicId) {
+      // If no clinicId provided, get the doctor's default clinic
+      const doctor = await this.getUser(appointment.doctorId);
+      if (!doctor || !doctor.clinicId) {
+        throw new Error("Invalid doctor or doctor has no default clinic");
+      }
+      clinicId = doctor.clinicId;
+    }
+    
     const tokenNumber = await this.getNextTokenNumber(
       appointment.doctorId,
-      appointment.clinicId,
+      clinicId,
       appointment.date
     );
 
@@ -268,6 +311,7 @@ export class DatabaseStorage implements IStorage {
       .insert(appointments)
       .values({
         ...appointment,
+        clinicId,
         tokenNumber,
         status: appointment.status || "scheduled"
       })
@@ -662,6 +706,259 @@ export class DatabaseStorage implements IStorage {
       
       throw error;
     }
+  }
+
+  async createDoctor(
+    user: Omit<InsertUser, "role">, 
+    details: {
+      consultationFee: number | string;
+      consultationDuration: number;
+      qualifications?: string;
+      experience?: number;
+      registrationNumber?: string;
+      isEnabled?: boolean;
+    }
+  ): Promise<User & { details: DoctorDetail }> {
+    // Ensure the role is set to doctor
+    const doctorUser: InsertUser = {
+      ...user,
+      role: "doctor"
+    };
+
+    // Start a transaction
+    return await db.transaction(async (tx) => {
+      // Create the user first
+      const [createdUser] = await tx.insert(users).values(doctorUser).returning();
+      
+      // Then create the doctor details with the doctorId
+      const [createdDetails] = await tx.insert(doctorDetails).values({
+        doctorId: createdUser.id,
+        consultationFee: typeof details.consultationFee === 'string' 
+          ? details.consultationFee 
+          : details.consultationFee.toString(),
+        consultationDuration: details.consultationDuration,
+        qualifications: details.qualifications || null,
+        experience: details.experience || null,
+        registrationNumber: details.registrationNumber || null,
+        isEnabled: details.isEnabled ?? true
+      }).returning();
+      
+      return {
+        ...createdUser,
+        details: createdDetails
+      };
+    });
+  }
+
+  async getDoctorDetails(doctorId: number): Promise<DoctorDetail | undefined> {
+    const [details] = await db
+      .select()
+      .from(doctorDetails)
+      .where(eq(doctorDetails.doctorId, doctorId));
+    
+    return details;
+  }
+
+  async updateDoctorDetails(
+    doctorId: number, 
+    details: Partial<{
+      consultationFee: number | string;
+      consultationDuration: number;
+      qualifications: string;
+      experience: number;
+      registrationNumber: string;
+    }>
+  ): Promise<DoctorDetail> {
+    // Convert consultationFee to string if it's a number
+    const updatedDetails = { ...details };
+    if (typeof updatedDetails.consultationFee === 'number') {
+      updatedDetails.consultationFee = updatedDetails.consultationFee.toString();
+    }
+
+    const [updated] = await db
+      .update(doctorDetails)
+      .set(updatedDetails)
+      .where(eq(doctorDetails.doctorId, doctorId))
+      .returning();
+
+    return updated;
+  }
+
+  async toggleDoctorStatus(doctorId: number, isEnabled: boolean): Promise<DoctorDetail> {
+    const [updatedDetails] = await db
+      .update(doctorDetails)
+      .set({
+        isEnabled,
+        updatedAt: new Date()
+      })
+      .where(eq(doctorDetails.doctorId, doctorId))
+      .returning();
+    
+    if (!updatedDetails) {
+      throw new Error(`Doctor details not found for doctor ID: ${doctorId}`);
+    }
+    
+    return updatedDetails;
+  }
+
+  // Doctor schedules methods
+  async createDoctorSchedule(schedule: InsertDoctorSchedule): Promise<DoctorSchedule> {
+    const [result] = await db.insert(doctorSchedules).values(schedule).returning();
+    return result;
+  }
+
+  async getDoctorSchedules(doctorId: number): Promise<DoctorSchedule[]> {
+    return db
+      .select()
+      .from(doctorSchedules)
+      .where(eq(doctorSchedules.doctorId, doctorId))
+      .orderBy(doctorSchedules.dayOfWeek, doctorSchedules.startTime);
+  }
+
+  async getDoctorSchedulesByClinic(clinicId: number): Promise<(DoctorSchedule & { doctor: User })[]> {
+    return db
+      .select({
+        ...doctorSchedules,
+        doctor: users,
+      })
+      .from(doctorSchedules)
+      .innerJoin(users, eq(doctorSchedules.doctorId, users.id))
+      .where(eq(doctorSchedules.clinicId, clinicId))
+      .orderBy(doctorSchedules.dayOfWeek, doctorSchedules.startTime);
+  }
+
+  async getDoctorSchedulesByDay(day: number): Promise<(DoctorSchedule & { doctor: User, clinic: Clinic })[]> {
+    const results = await db
+      .select()
+      .from(doctorSchedules)
+      .innerJoin(users, eq(doctorSchedules.doctorId, users.id))
+      .innerJoin(clinics, eq(doctorSchedules.clinicId, clinics.id))
+      .where(eq(doctorSchedules.dayOfWeek, day))
+      .orderBy(doctorSchedules.startTime);
+
+    return results.map(row => ({
+      ...row.doctor_schedules,
+      doctor: row.users,
+      clinic: row.clinics
+    }));
+  }
+
+  async updateDoctorSchedule(id: number, schedule: Partial<InsertDoctorSchedule>): Promise<DoctorSchedule> {
+    const [result] = await db
+      .update(doctorSchedules)
+      .set({ ...schedule, updatedAt: new Date() })
+      .where(eq(doctorSchedules.id, id))
+      .returning();
+    return result;
+  }
+
+  async deleteDoctorSchedule(id: number): Promise<void> {
+    await db.delete(doctorSchedules).where(eq(doctorSchedules.id, id));
+  }
+
+  async getAvailableDoctors(clinicId: number, day: number, time: string): Promise<User[]> {
+    const results = await db
+      .select()
+      .from(doctorSchedules)
+      .innerJoin(users, eq(doctorSchedules.doctorId, users.id))
+      .where(
+        and(
+          eq(doctorSchedules.clinicId, clinicId),
+          eq(doctorSchedules.dayOfWeek, day),
+          lte(doctorSchedules.startTime, time),
+          gte(doctorSchedules.endTime, time),
+          eq(doctorSchedules.isActive, true)
+        )
+      );
+
+    return results.map(row => row.users);
+  }
+
+  async getDoctorAvailableTimeSlots(doctorId: number, date: Date): Promise<{ 
+    schedules: (DoctorSchedule & { clinic: Clinic })[], 
+    availableSlots: { 
+      startTime: string, 
+      endTime: string, 
+      clinicId: number,
+      clinicName: string
+    }[] 
+  }> {
+    // Get the day of week (0-6) for the given date
+    const dayOfWeek = date.getDay();
+    
+    // Get all schedules for the doctor on this day of week
+    const results = await db
+      .select()
+      .from(doctorSchedules)
+      .innerJoin(clinics, eq(doctorSchedules.clinicId, clinics.id))
+      .where(
+        and(
+          eq(doctorSchedules.doctorId, doctorId),
+          eq(doctorSchedules.dayOfWeek, dayOfWeek),
+          eq(doctorSchedules.isActive, true)
+        )
+      )
+      .orderBy(doctorSchedules.startTime);
+    
+    // Transform the results
+    const schedules = results.map(row => ({
+      ...row.doctor_schedules,
+      clinic: row.clinics
+    }));
+    
+    // Get existing appointments for this doctor on this date
+    const appointmentsForDate = await db
+      .select()
+      .from(appointments)
+      .where(
+        and(
+          eq(appointments.doctorId, doctorId),
+          sql`DATE(${appointments.date}) = DATE(${date.toISOString()})`
+        )
+      );
+    
+    // Extract booked time slots from the appointments
+    const bookedTimes = new Set(
+      appointmentsForDate.map(appt => {
+        const apptTime = new Date(appt.date);
+        return `${String(apptTime.getHours()).padStart(2, '0')}:${String(apptTime.getMinutes()).padStart(2, '0')}`;
+      })
+    );
+    
+    // Generate available time slots from schedules
+    const availableSlots = [];
+    
+    for (const schedule of schedules) {
+      // Parse start and end time
+      const [startHour, startMinute] = schedule.startTime.split(':').map(Number);
+      const [endHour, endMinute] = schedule.endTime.split(':').map(Number);
+      
+      // Generate 30-minute slots
+      let slotTime = new Date(date);
+      slotTime.setHours(startHour, startMinute, 0, 0);
+      
+      const endTime = new Date(date);
+      endTime.setHours(endHour, endMinute, 0, 0);
+      
+      while (slotTime < endTime) {
+        const timeString = `${String(slotTime.getHours()).padStart(2, '0')}:${String(slotTime.getMinutes()).padStart(2, '0')}`;
+        
+        // Only add if the slot is not already booked
+        if (!bookedTimes.has(timeString)) {
+          availableSlots.push({
+            startTime: timeString,
+            endTime: `${String(slotTime.getHours()).padStart(2, '0')}:${String(slotTime.getMinutes() + 30).padStart(2, '0')}`,
+            clinicId: schedule.clinicId,
+            clinicName: schedule.clinic.name
+          });
+        }
+        
+        // Advance by 30 minutes
+        slotTime.setMinutes(slotTime.getMinutes() + 30);
+      }
+    }
+    
+    return { schedules, availableSlots };
   }
 }
 

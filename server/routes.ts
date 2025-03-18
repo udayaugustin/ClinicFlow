@@ -3,6 +3,8 @@ import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { storage, type IStorage } from "./storage";
 import { insertAppointmentSchema, insertAttenderDoctorSchema, type AttenderDoctor, type User } from "@shared/schema";
+import { insertDoctorDetailSchema } from "@shared/schema";
+import { z } from "zod";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   setupAuth(app);
@@ -73,11 +75,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'Invalid doctor or clinic' });
       }
 
-      const appointmentData = insertAppointmentSchema.parse({
+      const appointmentData = {
         ...req.body,
         patientId: req.user.id,
         clinicId: doctor.clinicId,
-      });
+        date: new Date(req.body.date),
+        tokenNumber: req.body.tokenNumber
+      };
 
       const appointment = await storage.createAppointment(appointmentData);
       res.status(201).json(appointment);
@@ -274,18 +278,351 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: 'Not authorized to manage this doctor' });
       }
 
-      const progress = await storage.updateTokenProgress(
-        doctorId,
-        clinicId,
-        new Date(date),
-        currentToken,
-        req.user.id
-      );
-
-      res.json(progress);
+      // This endpoint is deprecated - token progress is now calculated from appointments
+      res.status(410).json({ 
+        message: 'This endpoint is deprecated. Token progress is now calculated from appointments.',
+        info: 'Use the GET /api/doctors/:id/token-progress endpoint to get the current token progress.'
+      });
     } catch (error) {
       console.error('Error updating token progress:', error);
       res.status(500).json({ message: 'Failed to update token progress' });
+    }
+  });
+
+  // Doctor management routes
+  app.post("/api/doctors", async (req, res) => {
+    try {
+      // Check if user is authorized (must be hospital_admin or attender)
+      if (!req.user || (req.user.role !== "hospital_admin" && req.user.role !== "attender")) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      // Validate request body
+      const doctorSchema = z.object({
+        user: z.object({
+          name: z.string(),
+          username: z.string(),
+          password: z.string(),
+          specialty: z.string(),
+          bio: z.string().optional(),
+          imageUrl: z.string().optional(),
+          address: z.string().optional(),
+          city: z.string().optional(),
+          state: z.string().optional(),
+          zipCode: z.string().optional(),
+          latitude: z.string().optional(),
+          longitude: z.string().optional(),
+          clinicId: z.number(),
+        }),
+        details: z.object({
+          consultationFee: z.number().or(z.string().transform(val => parseFloat(val))),
+          consultationDuration: z.number().or(z.string().transform(val => parseInt(val))),
+          qualifications: z.string().optional(),
+          experience: z.number().optional().or(z.string().transform(val => parseInt(val))),
+          registrationNumber: z.string().optional(),
+          isEnabled: z.boolean().optional(),
+        }),
+      });
+
+      const validatedData = doctorSchema.parse(req.body);
+
+      // Create the doctor with role explicitly set
+      const doctor = await storage.createDoctor(
+        {
+          name: validatedData.user.name,
+          username: validatedData.user.username,
+          password: validatedData.user.password,
+          specialty: validatedData.user.specialty,
+          bio: validatedData.user.bio,
+          imageUrl: validatedData.user.imageUrl,
+          address: validatedData.user.address,
+          city: validatedData.user.city,
+          state: validatedData.user.state,
+          zipCode: validatedData.user.zipCode,
+          latitude: validatedData.user.latitude,
+          longitude: validatedData.user.longitude,
+          clinicId: validatedData.user.clinicId,
+        },
+        validatedData.details
+      );
+
+      res.status(201).json(doctor);
+    } catch (error) {
+      console.error("Error creating doctor:", error);
+      res.status(500).json({ message: "Failed to create doctor" });
+    }
+  });
+
+  // Get doctor details
+  app.get("/api/doctors/:id/details", async (req, res) => {
+    try {
+      const doctorId = parseInt(req.params.id);
+      
+      // Get doctor details
+      const details = await storage.getDoctorDetails(doctorId);
+      
+      if (!details) {
+        return res.status(404).json({ message: "Doctor details not found" });
+      }
+      
+      res.json(details);
+    } catch (error) {
+      console.error("Error fetching doctor details:", error);
+      res.status(500).json({ message: "Failed to fetch doctor details" });
+    }
+  });
+
+  // Update doctor details
+  app.patch("/api/doctors/:id/details", async (req, res) => {
+    try {
+      // Check if user is authorized (must be hospital_admin or attender)
+      if (!req.user || (req.user.role !== "hospital_admin" && req.user.role !== "attender")) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+      
+      const doctorId = parseInt(req.params.id);
+      
+      // Validate request body
+      const updateSchema = z.object({
+        consultationFee: z.number().or(z.string().transform(val => parseFloat(val))).optional(),
+        consultationDuration: z.number().optional(),
+        qualifications: z.string().optional(),
+        experience: z.number().optional(),
+        registrationNumber: z.string().optional(),
+      });
+      
+      const validatedData = updateSchema.parse(req.body);
+      
+      // Update doctor details
+      const updatedDetails = await storage.updateDoctorDetails(doctorId, validatedData);
+      
+      res.json(updatedDetails);
+    } catch (error) {
+      console.error("Error updating doctor details:", error);
+      res.status(500).json({ message: "Failed to update doctor details" });
+    }
+  });
+
+  // Toggle doctor status (enable/disable)
+  app.patch("/api/doctors/:id/status", async (req, res) => {
+    try {
+      // Check if user is authorized (must be hospital_admin or attender)
+      if (!req.user || (req.user.role !== "hospital_admin" && req.user.role !== "attender")) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+      
+      const doctorId = parseInt(req.params.id);
+      
+      // Validate request body
+      const statusSchema = z.object({
+        isEnabled: z.boolean(),
+      });
+      
+      const { isEnabled } = statusSchema.parse(req.body);
+      
+      // Toggle doctor status
+      const updatedDetails = await storage.toggleDoctorStatus(doctorId, isEnabled);
+      
+      res.json(updatedDetails);
+    } catch (error) {
+      console.error("Error toggling doctor status:", error);
+      res.status(500).json({ message: "Failed to toggle doctor status" });
+    }
+  });
+
+  // Get all clinics
+  app.get("/api/clinics", async (req, res) => {
+    try {
+      const clinics = await storage.getClinics();
+      res.json(clinics);
+    } catch (error) {
+      console.error('Error fetching clinics:', error);
+      res.status(500).json({ message: 'Failed to fetch clinics' });
+    }
+  });
+
+  // Doctor schedule routes
+  app.get("/api/doctors/:id/schedules", async (req, res) => {
+    try {
+      const doctorId = parseInt(req.params.id);
+      if (isNaN(doctorId)) {
+        return res.status(400).json({ message: 'Invalid doctor ID' });
+      }
+
+      const schedules = await storage.getDoctorSchedules(doctorId);
+      res.json(schedules);
+    } catch (error) {
+      console.error('Error fetching doctor schedules:', error);
+      res.status(500).json({ message: 'Failed to fetch doctor schedules' });
+    }
+  });
+
+  app.post("/api/doctors/:id/schedules", async (req, res) => {
+    if (!req.user || !['hospital_admin', 'attender'].includes(req.user.role)) {
+      return res.status(403).json({ message: 'Unauthorized access' });
+    }
+
+    try {
+      const doctorId = parseInt(req.params.id);
+      if (isNaN(doctorId)) {
+        return res.status(400).json({ message: 'Invalid doctor ID' });
+      }
+
+      // Validate the schedule data
+      const scheduleSchema = z.object({
+        clinicId: z.number(),
+        dayOfWeek: z.number().min(0).max(6),
+        startTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/),
+        endTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/),
+        isActive: z.boolean().optional().default(true),
+      });
+
+      const validData = scheduleSchema.parse(req.body);
+      
+      // Check if the doctor exists
+      const doctor = await storage.getUser(doctorId);
+      if (!doctor || doctor.role !== 'doctor') {
+        return res.status(404).json({ message: 'Doctor not found' });
+      }
+
+      // Create the schedule
+      const schedule = await storage.createDoctorSchedule({
+        doctorId,
+        ...validData,
+      });
+
+      res.status(201).json(schedule);
+    } catch (error) {
+      console.error('Error creating doctor schedule:', error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: 'Invalid schedule data', errors: error.errors });
+      }
+      res.status(500).json({ message: 'Failed to create doctor schedule' });
+    }
+  });
+
+  app.patch("/api/doctors/schedules/:id", async (req, res) => {
+    if (!req.user || !['hospital_admin', 'attender'].includes(req.user.role)) {
+      return res.status(403).json({ message: 'Unauthorized access' });
+    }
+
+    try {
+      const scheduleId = parseInt(req.params.id);
+      if (isNaN(scheduleId)) {
+        return res.status(400).json({ message: 'Invalid schedule ID' });
+      }
+
+      // Validate the schedule data
+      const scheduleSchema = z.object({
+        clinicId: z.number().optional(),
+        dayOfWeek: z.number().min(0).max(6).optional(),
+        startTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/).optional(),
+        endTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/).optional(),
+        isActive: z.boolean().optional(),
+      });
+
+      const validData = scheduleSchema.parse(req.body);
+      
+      // Update the schedule
+      const schedule = await storage.updateDoctorSchedule(scheduleId, validData);
+      res.json(schedule);
+    } catch (error) {
+      console.error('Error updating doctor schedule:', error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: 'Invalid schedule data', errors: error.errors });
+      }
+      res.status(500).json({ message: 'Failed to update doctor schedule' });
+    }
+  });
+
+  app.delete("/api/doctors/schedules/:id", async (req, res) => {
+    if (!req.user || !['hospital_admin', 'attender'].includes(req.user.role)) {
+      return res.status(403).json({ message: 'Unauthorized access' });
+    }
+
+    try {
+      const scheduleId = parseInt(req.params.id);
+      if (isNaN(scheduleId)) {
+        return res.status(400).json({ message: 'Invalid schedule ID' });
+      }
+
+      await storage.deleteDoctorSchedule(scheduleId);
+      res.status(204).send();
+    } catch (error) {
+      console.error('Error deleting doctor schedule:', error);
+      res.status(500).json({ message: 'Failed to delete doctor schedule' });
+    }
+  });
+
+  // Get available doctors by clinic, day, and time
+  app.get("/api/clinics/:clinicId/available-doctors", async (req, res) => {
+    try {
+      const clinicId = parseInt(req.params.clinicId);
+      const { day, time } = req.query;
+      
+      if (isNaN(clinicId)) {
+        return res.status(400).json({ message: 'Invalid clinic ID' });
+      }
+      
+      if (!day || typeof day !== 'string' || !time || typeof time !== 'string') {
+        return res.status(400).json({ message: 'Day and time parameters are required' });
+      }
+      
+      const dayNum = parseInt(day);
+      if (isNaN(dayNum) || dayNum < 0 || dayNum > 6) {
+        return res.status(400).json({ message: 'Day must be a number between 0 (Sunday) and 6 (Saturday)' });
+      }
+      
+      if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(time)) {
+        return res.status(400).json({ message: 'Time must be in format HH:MM in 24-hour format' });
+      }
+      
+      const doctors = await storage.getAvailableDoctors(clinicId, dayNum, time);
+      res.json(doctors);
+    } catch (error) {
+      console.error('Error fetching available doctors:', error);
+      res.status(500).json({ message: 'Failed to fetch available doctors' });
+    }
+  });
+
+  // Get schedules by clinic
+  app.get("/api/clinics/:clinicId/schedules", async (req, res) => {
+    try {
+      const clinicId = parseInt(req.params.clinicId);
+      if (isNaN(clinicId)) {
+        return res.status(400).json({ message: 'Invalid clinic ID' });
+      }
+
+      const schedules = await storage.getDoctorSchedulesByClinic(clinicId);
+      res.json(schedules);
+    } catch (error) {
+      console.error('Error fetching clinic schedules:', error);
+      res.status(500).json({ message: 'Failed to fetch clinic schedules' });
+    }
+  });
+
+  // Get available time slots for a doctor on a specific date
+  app.get("/api/doctors/:id/available-slots", async (req, res) => {
+    try {
+      const doctorId = parseInt(req.params.id);
+      if (isNaN(doctorId)) {
+        return res.status(400).json({ message: 'Invalid doctor ID' });
+      }
+
+      // Get date from query parameter or use current date
+      const dateParam = req.query.date as string;
+      const date = dateParam ? new Date(dateParam) : new Date();
+      
+      // Validate the date
+      if (isNaN(date.getTime())) {
+        return res.status(400).json({ message: 'Invalid date format' });
+      }
+
+      const result = await storage.getDoctorAvailableTimeSlots(doctorId, date);
+      res.json(result);
+    } catch (error) {
+      console.error('Error fetching available time slots:', error);
+      res.status(500).json({ message: 'Failed to fetch available time slots' });
     }
   });
 
