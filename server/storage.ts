@@ -34,7 +34,11 @@ export interface IStorage {
   addDoctorToAttender(attenderId: number, doctorId: number, clinicId: number): Promise<AttenderDoctor>;
   removeDoctorFromAttender(attenderId: number, doctorId: number): Promise<void>;
   getAttendersByClinic(clinicId: number): Promise<User[]>;
-  updateAppointmentStatus(appointmentId: number, status: string): Promise<Appointment>;
+  updateAppointmentStatus(
+    appointmentId: number, 
+    status: "scheduled" | "start" | "hold" | "pause" | "cancel" | "completed", 
+    statusNotes?: string
+  ): Promise<Appointment>;
   updateDoctorAvailability(
     doctorId: number,
     date: Date,
@@ -46,7 +50,7 @@ export interface IStorage {
   getAttenderDoctorsAppointments(attenderId: number): Promise<(AttenderDoctor & { doctor: User, appointments: (Appointment & { patient?: User })[] })[]>;
 
   // Token Progress method
-  getCurrentTokenProgress(doctorId: number, clinicId: number, date: Date, retryCount?: number): Promise<{ currentToken: number; status: 'in_progress' | 'completed' | 'not_started' | 'no_appointments'; appointment?: Appointment }>;
+  getCurrentTokenProgress(doctorId: number, clinicId: number, date: Date, retryCount?: number): Promise<{ currentToken: number; status: 'start' | 'completed' | 'scheduled' | 'hold' | 'pause' | 'cancel' | 'not_started' | 'no_appointments'; appointment?: Appointment }>;
 
   // Doctor management methods
   createDoctor(user: Omit<InsertUser, "role">, details: { consultationFee: number | string; consultationDuration: number; qualifications?: string; experience?: number; registrationNumber?: string; isEnabled?: boolean; }): Promise<User & { details: DoctorDetail }>;
@@ -480,11 +484,23 @@ export class DatabaseStorage implements IStorage {
       );
   }
 
-  async updateAppointmentStatus(appointmentId: number, status: "scheduled" | "completed" | "cancelled" | "in_progress"): Promise<Appointment> {
+  async updateAppointmentStatus(
+    appointmentId: number, 
+    status: "scheduled" | "start" | "hold" | "pause" | "cancel" | "completed", 
+    statusNotes?: string
+  ): Promise<Appointment> {
     try {
+      const updateData: Partial<typeof appointments.$inferInsert> = { 
+        status 
+      };
+      
+      if (statusNotes !== undefined) {
+        updateData.statusNotes = statusNotes;
+      }
+      
       const [updated] = await db
         .update(appointments)
-        .set({ status })
+        .set(updateData)
         .where(eq(appointments.id, appointmentId))
         .returning();
 
@@ -668,7 +684,7 @@ export class DatabaseStorage implements IStorage {
     clinicId: number, 
     date: Date,
     retryCount = 3
-  ): Promise<{ currentToken: number; status: 'in_progress' | 'completed' | 'not_started' | 'no_appointments'; appointment?: Appointment }> {
+  ): Promise<{ currentToken: number; status: 'start' | 'completed' | 'scheduled' | 'hold' | 'pause' | 'cancel' | 'not_started' | 'no_appointments'; appointment?: Appointment }> {
     try {
       console.log('Getting token progress for:', { doctorId, clinicId, date });
 
@@ -708,7 +724,7 @@ export class DatabaseStorage implements IStorage {
         console.log('Found in-progress appointment:', inProgressAppointment);
         return {
           currentToken: inProgressAppointment.tokenNumber,
-          status: 'in_progress',
+          status: 'start',
           appointment: inProgressAppointment
         };
       }

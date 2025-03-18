@@ -67,6 +67,18 @@ export const attenderDoctors = pgTable("attender_doctors", {
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
+// Define appointment status values
+export const appointmentStatuses = [
+  "scheduled", // Initial status when appointment is booked
+  "start",     // Appointment has started (was previously in_progress)
+  "hold",      // Patient not arrived at right time
+  "pause",     // Temporarily paused appointment
+  "cancel",    // Appointment cancelled (was previously cancelled)
+  "completed"  // Appointment completed
+] as const;
+
+export type AppointmentStatus = typeof appointmentStatuses[number];
+
 export const appointments = pgTable("appointments", {
   id: serial("id").primaryKey(),
   patientId: integer("patient_id").references(() => users.id),
@@ -75,6 +87,7 @@ export const appointments = pgTable("appointments", {
   date: timestamp("date").notNull(),
   tokenNumber: integer("token_number").notNull(),
   status: varchar("status", { length: 50 }).default("scheduled"),
+  statusNotes: text("status_notes"), // For recording reasons for status changes
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 

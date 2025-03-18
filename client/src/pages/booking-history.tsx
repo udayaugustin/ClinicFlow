@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { Progress } from "@/components/ui/progress";
 import { Clock, ArrowRight, Users, Ticket } from "lucide-react";
+import { AppointmentStatusBadge } from "@/components/appointment-status-badge";
 
 type AppointmentWithDoctor = Appointment & {
   doctor: User;
@@ -14,7 +15,7 @@ type AppointmentWithDoctor = Appointment & {
 
 type TokenProgress = {
   currentToken: number;
-  status: 'in_progress' | 'completed' | 'not_started' | 'no_appointments';
+  status: 'start' | 'completed' | 'scheduled' | 'hold' | 'pause' | 'cancel' | 'not_started' | 'no_appointments';
   appointment?: Appointment;
 };
 
@@ -171,9 +172,21 @@ export default function BookingHistoryPage() {
                                     <div className="text-sm text-center text-muted-foreground mt-2">
                                       Consultation completed
                                     </div>
-                                  ) : appointment.status === "in_progress" ? (
+                                  ) : appointment.status === "start" ? (
                                     <div className="text-sm text-center text-primary font-medium mt-2">
                                       You are currently being consulted
+                                    </div>
+                                  ) : appointment.status === "hold" ? (
+                                    <div className="text-sm text-center text-amber-500 font-medium mt-2">
+                                      Your appointment is on hold: {appointment.statusNotes}
+                                    </div>
+                                  ) : appointment.status === "pause" ? (
+                                    <div className="text-sm text-center text-amber-500 font-medium mt-2">
+                                      Your appointment is paused: {appointment.statusNotes}
+                                    </div>
+                                  ) : appointment.status === "cancel" ? (
+                                    <div className="text-sm text-center text-red-500 font-medium mt-2">
+                                      Your appointment was cancelled: {appointment.statusNotes}
                                     </div>
                                   ) : tokensAhead !== null && tokensAhead > 0 ? (
                                     <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground mt-2">
@@ -229,20 +242,10 @@ export default function BookingHistoryPage() {
                               {format(new Date(appointment.date), "PPP p")}
                             </td>
                             <td className="py-4 px-4">
-                              <Badge
-                                variant={
-                                  appointment.status === "scheduled"
-                                    ? "default"
-                                    : appointment.status === "completed"
-                                    ? "outline"
-                                    : appointment.status === "in_progress"
-                                    ? "secondary"
-                                    : "destructive"
-                                }
-                              >
-                                {appointment.status.charAt(0).toUpperCase() + 
-                                  appointment.status.slice(1)}
-                              </Badge>
+                              <AppointmentStatusBadge 
+                                status={appointment.status}
+                                statusNotes={appointment.statusNotes} 
+                              />
                             </td>
                           </tr>
                         ))}

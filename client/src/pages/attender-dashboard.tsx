@@ -14,6 +14,14 @@ import { AlertCircle, CheckCircle2, XCircle } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { 
+  Tooltip, 
+  TooltipContent, 
+  TooltipTrigger,
+  TooltipProvider 
+} from "@/components/ui/tooltip";
+import { InfoIcon } from "lucide-react";
+import { AppointmentActions } from "@/components/appointment-actions";
 
 type DoctorWithAppointments = {
   doctor: User;
@@ -32,8 +40,19 @@ export default function AttenderDashboard() {
 
   // Add mutations for updating appointment status and doctor availability
   const updateAppointmentMutation = useMutation({
-    mutationFn: async ({ appointmentId, status }: { appointmentId: number; status: string }) => {
-      const res = await apiRequest("PATCH", `/api/appointments/${appointmentId}/status`, { status });
+    mutationFn: async ({ 
+      appointmentId, 
+      status, 
+      statusNotes 
+    }: { 
+      appointmentId: number; 
+      status: string; 
+      statusNotes?: string 
+    }) => {
+      const res = await apiRequest("PATCH", `/api/appointments/${appointmentId}/status`, { 
+        status, 
+        statusNotes 
+      });
       return res.json();
     },
     onSuccess: () => {
@@ -60,12 +79,42 @@ export default function AttenderDashboard() {
   });
 
   // Handler functions for updating status
+  const handleUpdateStatus = (appointmentId: number, status: string, notes?: string) => {
+    updateAppointmentMutation.mutate({ 
+      appointmentId, 
+      status, 
+      statusNotes: notes 
+    });
+  };
+
+  // Replace the old handler functions
   const handleMarkAsCompleted = (appointmentId: number) => {
-    updateAppointmentMutation.mutate({ appointmentId, status: "completed" });
+    handleUpdateStatus(appointmentId, "completed");
   };
 
   const handleMarkInProgress = (appointmentId: number) => {
-    updateAppointmentMutation.mutate({ appointmentId, status: "in_progress" });
+    handleUpdateStatus(appointmentId, "start");
+  };
+
+  const handleHoldAppointment = (appointmentId: number) => {
+    const notes = prompt("Please enter reason for holding:");
+    if (notes !== null) {
+      handleUpdateStatus(appointmentId, "hold", notes);
+    }
+  };
+  
+  const handlePauseAppointment = (appointmentId: number) => {
+    const notes = prompt("Please enter reason for pausing:");
+    if (notes !== null) {
+      handleUpdateStatus(appointmentId, "pause", notes);
+    }
+  };
+  
+  const handleCancelAppointment = (appointmentId: number) => {
+    const notes = prompt("Please enter reason for cancellation:");
+    if (notes !== null) {
+      handleUpdateStatus(appointmentId, "cancel", notes);
+    }
   };
 
   const handleToggleDoctorAvailability = (doctorId: number, isAvailable: boolean) => {
@@ -135,154 +184,163 @@ export default function AttenderDashboard() {
   return (
     <div className="min-h-screen bg-gray-50">
       <NavHeader />
-      <main className="container mx-auto px-4 py-8">
-        <h1 className="text-2xl font-bold mb-6">Doctor Appointments Dashboard</h1>
+      <TooltipProvider>
+        <main className="container mx-auto px-4 py-8">
+          <h1 className="text-2xl font-bold mb-6">Doctor Appointments Dashboard</h1>
 
-        <div className="grid md:grid-cols-[300px,1fr] gap-6">
-          <Card>
-            <CardContent className="p-6">
-              <h2 className="text-lg font-semibold mb-4">Select Date</h2>
-              <Calendar
-                mode="single"
-                selected={selectedDate}
-                onSelect={(date) => setSelectedDate(date || new Date())}
-                className="rounded-md border"
-              />
-            </CardContent>
-          </Card>
+          <div className="grid md:grid-cols-[300px,1fr] gap-6">
+            <Card>
+              <CardContent className="p-6">
+                <h2 className="text-lg font-semibold mb-4">Select Date</h2>
+                <Calendar
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={(date) => setSelectedDate(date || new Date())}
+                  className="rounded-md border"
+                />
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent className="p-6">
-              <Tabs defaultValue={managedDoctors?.[0]?.doctor?.id?.toString()}>
-                <TabsList className="mb-4">
-                  {managedDoctors?.map((item) => (
-                    <TabsTrigger 
-                      key={item.doctor.id} 
-                      value={item.doctor.id.toString()}
-                    >
-                      {item.doctor.name}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
+            <Card>
+              <CardContent className="p-6">
+                <Tabs defaultValue={managedDoctors?.[0]?.doctor?.id?.toString()}>
+                  <TabsList className="mb-4">
+                    {managedDoctors?.map((item) => (
+                      <TabsTrigger 
+                        key={item.doctor.id} 
+                        value={item.doctor.id.toString()}
+                      >
+                        {item.doctor.name}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
 
-                {managedDoctors?.map((item) => {
-                  const filteredAppointments = item.appointments
-                    .filter((apt) => isSameDay(new Date(apt.date), selectedDate))
-                    .sort((a, b) => {
-                      // Sort by status: in_progress first, then scheduled, then completed
-                      if (a.status === "in_progress") return -1;
-                      if (b.status === "in_progress") return 1;
-                      if (a.status === "scheduled" && b.status !== "scheduled") return -1;
-                      if (b.status === "scheduled" && a.status !== "scheduled") return 1;
-                      // If same status, sort by token number
-                      return a.tokenNumber - b.tokenNumber;
-                    });
+                  {managedDoctors?.map((item) => {
+                    const filteredAppointments = item.appointments
+                      .filter((apt) => isSameDay(new Date(apt.date), selectedDate))
+                      .sort((a, b) => {
+                        // Sort by status: in_progress first, then scheduled, then completed
+                        if (a.status === "in_progress") return -1;
+                        if (b.status === "in_progress") return 1;
+                        if (a.status === "scheduled" && b.status !== "scheduled") return -1;
+                        if (b.status === "scheduled" && a.status !== "scheduled") return 1;
+                        // If same status, sort by token number
+                        return a.tokenNumber - b.tokenNumber;
+                      });
 
-                  return (
-                    <TabsContent 
-                      key={item.doctor.id} 
-                      value={item.doctor.id.toString()}
-                    >
-                      <div className="flex justify-between items-center mb-6">
-                        <div>
-                          <h2 className="text-xl font-semibold">{item.doctor.name}</h2>
-                          <p className="text-muted-foreground">{item.doctor.specialty}</p>
+                    return (
+                      <TabsContent 
+                        key={item.doctor.id} 
+                        value={item.doctor.id.toString()}
+                      >
+                        <div className="flex justify-between items-center mb-6">
+                          <div>
+                            <h2 className="text-xl font-semibold">{item.doctor.name}</h2>
+                            <p className="text-muted-foreground">{item.doctor.specialty}</p>
+                          </div>
+                          <Button
+                            variant="outline"
+                            className="gap-2"
+                            onClick={() => handleToggleDoctorAvailability(item.doctor.id, true)}
+                          >
+                            <CheckCircle2 className="h-4 w-4" />
+                            Mark as Available
+                          </Button>
                         </div>
-                        <Button
-                          variant="outline"
-                          className="gap-2"
-                          onClick={() => handleToggleDoctorAvailability(item.doctor.id, true)}
-                        >
-                          <CheckCircle2 className="h-4 w-4" />
-                          Mark as Available
-                        </Button>
-                      </div>
 
-                      <div className="overflow-x-auto">
-                        <table className="w-full">
-                          <thead>
-                            <tr className="border-b">
-                              <th className="text-left py-4 px-4">Token #</th>
-                              <th className="text-left py-4 px-4">Patient</th>
-                              <th className="text-left py-4 px-4">Time</th>
-                              <th className="text-left py-4 px-4">Status</th>
-                              <th className="text-left py-4 px-4">Actions</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {filteredAppointments.length === 0 ? (
-                              <tr>
-                                <td colSpan={5} className="text-center py-8 text-muted-foreground">
-                                  No appointments scheduled for {format(selectedDate, "PPP")}
-                                </td>
+                        <div className="overflow-x-auto">
+                          <table className="w-full">
+                            <thead>
+                              <tr className="border-b">
+                                <th className="text-left py-4 px-4">Token #</th>
+                                <th className="text-left py-4 px-4">Patient</th>
+                                <th className="text-left py-4 px-4">Time</th>
+                                <th className="text-left py-4 px-4">Status</th>
+                                <th className="text-left py-4 px-4">Actions</th>
                               </tr>
-                            ) : (
-                              filteredAppointments.map((appointment) => (
-                                <tr 
-                                  key={appointment.id} 
-                                  className={`border-b ${
-                                    appointment.status === "in_progress" ? "bg-secondary/10" : ""
-                                  }`}
-                                >
-                                  <td className="py-4 px-4">
-                                    {String(appointment.tokenNumber).padStart(3, '0')}
-                                  </td>
-                                  <td className="py-4 px-4">
-                                    {appointment.patient?.name || 'Unknown Patient'}
-                                  </td>
-                                  <td className="py-4 px-4">
-                                    {format(new Date(appointment.date), "p")}
-                                  </td>
-                                  <td className="py-4 px-4">
-                                    <Badge
-                                      variant={
-                                        appointment.status === "scheduled"
-                                          ? "default"
-                                          : appointment.status === "completed"
-                                          ? "outline"
-                                          : appointment.status === "in_progress"
-                                          ? "secondary"
-                                          : "destructive"
-                                      }
-                                    >
-                                      {appointment.status.charAt(0).toUpperCase() + 
-                                        appointment.status.slice(1)}
-                                    </Badge>
-                                  </td>
-                                  <td className="py-4 px-4">
-                                    <div className="flex gap-2">
-                                      {appointment.status === "scheduled" && (
-                                        <Button
-                                          size="sm"
-                                          onClick={() => handleMarkInProgress(appointment.id)}
-                                        >
-                                          Start
-                                        </Button>
-                                      )}
-                                      {appointment.status === "in_progress" && (
-                                        <Button
-                                          size="sm"
-                                          onClick={() => handleMarkAsCompleted(appointment.id)}
-                                        >
-                                          Complete
-                                        </Button>
-                                      )}
-                                    </div>
+                            </thead>
+                            <tbody>
+                              {filteredAppointments.length === 0 ? (
+                                <tr>
+                                  <td colSpan={5} className="text-center py-8 text-muted-foreground">
+                                    No appointments scheduled for {format(selectedDate, "PPP")}
                                   </td>
                                 </tr>
-                              ))
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </TabsContent>
-                  );
-                })}
-              </Tabs>
-            </CardContent>
-          </Card>
-        </div>
-      </main>
+                              ) : (
+                                filteredAppointments.map((appointment) => (
+                                  <tr 
+                                    key={appointment.id} 
+                                    className={`border-b ${
+                                      appointment.status === "in_progress" ? "bg-secondary/10" : ""
+                                    }`}
+                                  >
+                                    <td className="py-4 px-4">
+                                      {String(appointment.tokenNumber).padStart(3, '0')}
+                                    </td>
+                                    <td className="py-4 px-4">
+                                      {appointment.patient?.name || 'Unknown Patient'}
+                                    </td>
+                                    <td className="py-4 px-4">
+                                      {format(new Date(appointment.date), "p")}
+                                    </td>
+                                    <td className="py-4 px-4">
+                                      <Badge
+                                        variant={
+                                          appointment.status === "scheduled"
+                                            ? "default"
+                                            : appointment.status === "completed"
+                                            ? "outline"
+                                            : appointment.status === "start"
+                                            ? "secondary"
+                                            : appointment.status === "hold"
+                                            ? "warning"
+                                            : appointment.status === "pause"
+                                            ? "warning"
+                                            : "destructive"
+                                        }
+                                      >
+                                        {appointment.status.charAt(0).toUpperCase() + 
+                                          appointment.status.slice(1)}
+                                      </Badge>
+                                      {appointment.statusNotes && (
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <Button variant="ghost" size="icon" className="ml-1 h-5 w-5">
+                                              <InfoIcon className="h-3 w-3" />
+                                            </Button>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            <p>{appointment.statusNotes}</p>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      )}
+                                    </td>
+                                    <td className="py-4 px-4">
+                                      <AppointmentActions
+                                        appointmentId={appointment.id}
+                                        status={appointment.status}
+                                        onStart={(id) => handleMarkInProgress(id)}
+                                        onComplete={(id) => handleMarkAsCompleted(id)}
+                                        onHold={(id) => handleHoldAppointment(id)}
+                                        onPause={(id) => handlePauseAppointment(id)}
+                                        onCancel={(id) => handleCancelAppointment(id)}
+                                      />
+                                    </td>
+                                  </tr>
+                                ))
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </TabsContent>
+                    );
+                  })}
+                </Tabs>
+              </CardContent>
+            </Card>
+          </div>
+        </main>
+      </TooltipProvider>
     </div>
   );
 }

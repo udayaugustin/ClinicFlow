@@ -133,14 +133,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!req.user || req.user.role !== "attender") return res.sendStatus(403);
     try {
       const appointmentId = parseInt(req.params.id);
-      const { status } = req.body;
+      const { status, statusNotes } = req.body;
 
-      if (!["scheduled", "completed", "in_progress"].includes(status)) {
-        return res.status(400).json({ message: "Invalid status" });
+      const allowedStatuses = ["scheduled", "start", "hold", "pause", "cancel", "completed"];
+      
+      if (!allowedStatuses.includes(status)) {
+        return res.status(400).json({ 
+          error: `Invalid status. Must be one of: ${allowedStatuses.join(", ")}` 
+        });
       }
 
       // Update the appointment status
-      const updatedAppointment = await storage.updateAppointmentStatus(appointmentId, status);
+      const updatedAppointment = await storage.updateAppointmentStatus(
+        appointmentId, 
+        status as any, 
+        statusNotes
+      );
       res.json(updatedAppointment);
     } catch (error) {
       console.error('Error updating appointment status:', error);
