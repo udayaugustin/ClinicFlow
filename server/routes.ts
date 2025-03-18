@@ -75,11 +75,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'Invalid doctor or clinic' });
       }
 
+      // Get the appointment date and extract day of week
+      const appointmentDate = new Date(req.body.date);
+      const dayOfWeek = appointmentDate.getDay();
+      const clinicId = req.body.clinicId || doctor.clinicId;
+
+      // Get the doctor's schedule for this day and clinic
+      const schedules = await storage.getDoctorSchedules(Number(req.body.doctorId));
+      const schedule = schedules.find(s => 
+        s.clinicId === clinicId && 
+        s.dayOfWeek === dayOfWeek && 
+        s.isActive
+      );
+
+      if (!schedule) {
+        return res.status(400).json({ message: 'No active schedule found for this doctor on the selected day' });
+      }
+
+      // Get current token count for this date
+      const startOfDay = new Date(appointmentDate);
+      startOfDay.setHours(0, 0, 0, 0);
+      
+      const endOfDay = new Date(appointmentDate);
+      endOfDay.setHours(23, 59, 59, 999);
+      
+      const appointments = await storage.getAppointmentCountForDoctor(
+        Number(req.body.doctorId),
+        clinicId,
+        startOfDay,
+        endOfDay
+      );
+      
+      // Check if token limit has been reached
+      if (schedule.maxTokens !== null && schedule.maxTokens !== undefined && appointments >= schedule.maxTokens) {
+        return res.status(400).json({ 
+          message: `Maximum number of tokens (${schedule.maxTokens}) has been reached for this schedule` 
+        });
+      }
+
       const appointmentData = {
         ...req.body,
         patientId: req.user.id,
-        clinicId: doctor.clinicId,
-        date: new Date(req.body.date),
+        clinicId,
+        date: appointmentDate,
         tokenNumber: req.body.tokenNumber
       };
 

@@ -1,6 +1,6 @@
 import { InsertUser, User, Clinic, Appointment, attenderDoctors, AttenderDoctor, doctorDetails, insertDoctorDetailSchema, doctorSchedules, type DoctorSchedule, type InsertDoctorSchedule } from "@shared/schema";
 import { users, clinics, appointments, doctorAvailability } from "@shared/schema"; // Added doctorAvailability import
-import { eq, or, and, sql, inArray, lte, gte } from "drizzle-orm";
+import { eq, or, and, sql, inArray, lte, gte, count } from "drizzle-orm";
 import { db } from "./db";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
@@ -69,14 +69,21 @@ export interface IStorage {
   deleteDoctorSchedule(id: number): Promise<void>;
   getAvailableDoctors(clinicId: number, day: number, time: string): Promise<User[]>;
   getDoctorAvailableTimeSlots(doctorId: number, date: Date): Promise<{ 
-    schedules: (DoctorSchedule & { clinic: Clinic })[], 
+    schedules: (DoctorSchedule & { clinic: Clinic, currentTokenCount?: number })[], 
     availableSlots: { 
-      startTime: string,  // Format: "HH:MM"
-      endTime: string,    // Format: "HH:MM"
+      startTime: string, 
+      endTime: string, 
       clinicId: number,
       clinicName: string
     }[] 
   }>;
+
+  getAppointmentCountForDoctor(
+    doctorId: number,
+    clinicId: number,
+    startDate: Date,
+    endDate: Date
+  ): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -299,6 +306,52 @@ export class DatabaseStorage implements IStorage {
         throw new Error("Invalid doctor or doctor has no default clinic");
       }
       clinicId = doctor.clinicId;
+    }
+    
+    // Get the day of week for the appointment date
+    const appointmentDate = new Date(appointment.date);
+    const dayOfWeek = appointmentDate.getDay();
+    
+    // Get the doctor's schedule for this day and clinic
+    const [schedule] = await db
+      .select()
+      .from(doctorSchedules)
+      .where(
+        and(
+          eq(doctorSchedules.doctorId, appointment.doctorId),
+          eq(doctorSchedules.clinicId, clinicId),
+          eq(doctorSchedules.dayOfWeek, dayOfWeek),
+          eq(doctorSchedules.isActive, true)
+        )
+      );
+      
+    if (!schedule) {
+      throw new Error("No active schedule found for this doctor on the selected day");
+    }
+    
+    // Get current token count for this date
+    const startOfDay = new Date(appointmentDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    
+    const endOfDay = new Date(appointmentDate);
+    endOfDay.setHours(23, 59, 59, 999);
+    
+    const [tokenCount] = await db
+      .select({
+        count: count(),
+      })
+      .from(appointments)
+      .where(
+        and(
+          eq(appointments.doctorId, appointment.doctorId),
+          eq(appointments.clinicId, clinicId),
+          sql`date >= ${startOfDay} AND date < ${endOfDay}`
+        )
+      );
+      
+    // Check if token limit has been reached
+    if (schedule.maxTokens !== null && tokenCount.count >= schedule.maxTokens) {
+      throw new Error(`Maximum number of tokens (${schedule.maxTokens}) has been reached for this schedule`);
     }
     
     const tokenNumber = await this.getNextTokenNumber(
@@ -875,7 +928,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getDoctorAvailableTimeSlots(doctorId: number, date: Date): Promise<{ 
-    schedules: (DoctorSchedule & { clinic: Clinic })[], 
+    schedules: (DoctorSchedule & { clinic: Clinic, currentTokenCount?: number })[], 
     availableSlots: { 
       startTime: string, 
       endTime: string, 
@@ -924,6 +977,21 @@ export class DatabaseStorage implements IStorage {
         return `${String(apptTime.getHours()).padStart(2, '0')}:${String(apptTime.getMinutes()).padStart(2, '0')}`;
       })
     );
+
+    // Create a map of clinic to appointment count
+    const clinicAppointmentCount = new Map<number, number>();
+    appointmentsForDate.forEach(appt => {
+      if (appt.clinicId) {
+        const count = clinicAppointmentCount.get(appt.clinicId) || 0;
+        clinicAppointmentCount.set(appt.clinicId, count + 1);
+      }
+    });
+    
+    // Add the current token count to each schedule
+    const schedulesWithTokenCount = schedules.map(schedule => ({
+      ...schedule,
+      currentTokenCount: clinicAppointmentCount.get(schedule.clinicId) || 0
+    }));
     
     // Generate available time slots from schedules
     const availableSlots = [];
@@ -958,7 +1026,34 @@ export class DatabaseStorage implements IStorage {
       }
     }
     
-    return { schedules, availableSlots };
+    return { schedules: schedulesWithTokenCount, availableSlots };
+  }
+
+  async getAppointmentCountForDoctor(
+    doctorId: number,
+    clinicId: number,
+    startDate: Date,
+    endDate: Date
+  ): Promise<number> {
+    try {
+      const [result] = await db
+        .select({
+          count: count(),
+        })
+        .from(appointments)
+        .where(
+          and(
+            eq(appointments.doctorId, doctorId),
+            eq(appointments.clinicId, clinicId),
+            sql`date >= ${startDate} AND date < ${endDate}`
+          )
+        );
+      
+      return result?.count || 0;
+    } catch (error) {
+      console.error('Error counting appointments:', error);
+      throw error;
+    }
   }
 }
 

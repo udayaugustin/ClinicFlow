@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
@@ -29,7 +29,9 @@ type DoctorSchedule = {
   startTime: string;
   endTime: string;
   isActive: boolean;
+  maxTokens: number;
   clinic: Clinic;
+  currentTokenCount?: number;
 };
 
 type AvailableSlotsResponse = {
@@ -55,9 +57,13 @@ export default function PatientBookingPage() {
     enabled: !!doctorId,
   });
 
-  const { data: availableSlotsData, isLoading: isLoadingSlots } = useQuery<AvailableSlotsResponse>({
+  const { data: availableSlotsData, isLoading: isLoadingSlots, refetch: refetchSlots } = useQuery<AvailableSlotsResponse>({
     queryKey: [`/api/doctors/${doctorId}/available-slots`, selectedDate.toISOString().split('T')[0]],
     enabled: !!doctorId,
+    staleTime: 0,
+    cacheTime: 0,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
     queryFn: async () => {
       const response = await fetch(`/api/doctors/${doctorId}/available-slots?date=${selectedDate.toISOString()}`);
       if (!response.ok) {
@@ -85,6 +91,12 @@ export default function PatientBookingPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/patient/appointments"] });
+      // Also invalidate the available slots query to refresh token counts
+      queryClient.invalidateQueries({ 
+        queryKey: [`/api/doctors/${doctorId}/available-slots`]
+      });
+      // Force an immediate refetch
+      refetchSlots();
       toast({
         title: "Success",
         description: "Appointment booked successfully",
@@ -99,6 +111,14 @@ export default function PatientBookingPage() {
       });
     },
   });
+
+  // Add this useEffect near the top of the component
+  useEffect(() => {
+    // Refetch data when component mounts
+    if (doctorId) {
+      refetchSlots();
+    }
+  }, [doctorId, refetchSlots]);
 
   if (!user) {
     return (
@@ -205,25 +225,40 @@ export default function PatientBookingPage() {
               ) : (
                 <>
                   <div className="space-y-3">
-                    {availableSlotsData.schedules.map((schedule) => (
-                      <Button
-                        key={schedule.id}
-                        variant={selectedSchedule?.id === schedule.id ? "default" : "outline"}
-                        className="w-full flex justify-between items-center h-auto py-4 px-4"
-                        onClick={() => setSelectedSchedule(schedule)}
-                      >
-                        <div className="flex flex-col items-start">
-                          <div className="font-medium text-base">{schedule.clinic.name}</div>
-                          <div className="flex items-center text-sm mt-1">
-                            <Clock className="mr-1 h-4 w-4" />
-                            {schedule.startTime} - {schedule.endTime}
+                    {availableSlotsData.schedules.map((schedule) => {
+                      const isAtCapacity = schedule.maxTokens > 0 && 
+                        schedule.currentTokenCount !== undefined && 
+                        schedule.currentTokenCount >= schedule.maxTokens;
+                      
+                      return (
+                        <Button
+                          key={schedule.id}
+                          variant={selectedSchedule?.id === schedule.id ? "default" : "outline"}
+                          className="w-full flex justify-between items-center h-auto py-4 px-4"
+                          onClick={() => setSelectedSchedule(schedule)}
+                          disabled={isAtCapacity}
+                        >
+                          <div className="flex flex-col items-start">
+                            <div className="font-medium text-base">{schedule.clinic.name}</div>
+                            <div className="flex items-center text-sm mt-1">
+                              <Clock className="mr-1 h-4 w-4" />
+                              {schedule.startTime} - {schedule.endTime}
+                            </div>
+                            {schedule.maxTokens > 0 && (
+                              <div className="text-xs mt-1 flex items-center">
+                                <span className={isAtCapacity ? "text-red-500" : "text-green-600"}>
+                                  Tokens: {schedule.currentTokenCount || 0}/{schedule.maxTokens}
+                                  {isAtCapacity && " (Full)"}
+                                </span>
+                              </div>
+                            )}
                           </div>
-                        </div>
-                        <Badge variant="outline">
-                          Select
-                        </Badge>
-                      </Button>
-                    ))}
+                          <Badge variant="outline">
+                            {isAtCapacity ? "Full" : "Select"}
+                          </Badge>
+                        </Button>
+                      );
+                    })}
                   </div>
 
                   {selectedSchedule && (
@@ -231,9 +266,19 @@ export default function PatientBookingPage() {
                       <Button
                         className="w-full"
                         onClick={() => bookAppointmentMutation.mutate()}
-                        disabled={bookAppointmentMutation.isPending}
+                        disabled={
+                          bookAppointmentMutation.isPending || 
+                          (selectedSchedule.maxTokens > 0 && 
+                           selectedSchedule.currentTokenCount !== undefined && 
+                           selectedSchedule.currentTokenCount >= selectedSchedule.maxTokens)
+                        }
                       >
-                        Book an appointment at {selectedSchedule.clinic.name}
+                        {selectedSchedule.maxTokens > 0 && 
+                         selectedSchedule.currentTokenCount !== undefined && 
+                         selectedSchedule.currentTokenCount >= selectedSchedule.maxTokens
+                          ? "Schedule is full"
+                          : `Book an appointment at ${selectedSchedule.clinic.name}`
+                        }
                       </Button>
                     </div>
                   )}
