@@ -1,12 +1,26 @@
-import { InsertUser, User, Clinic, Appointment, attenderDoctors, AttenderDoctor, doctorDetails, insertDoctorDetailSchema, doctorSchedules, type DoctorSchedule, type InsertDoctorSchedule } from "@shared/schema";
-import { users, clinics, appointments, doctorAvailability } from "@shared/schema"; // Added doctorAvailability import
+import {
+  doctorDailyPresence,
+  appointments,
+  doctorSchedules,
+  clinics,
+  users,
+  attenderDoctors,
+  doctorDetails,
+  type User,
+  type AttenderDoctor,
+  type InsertUser,
+  type Appointment,
+  type Clinic,
+  type DoctorDetail,
+  type DoctorSchedule,
+  type DoctorAvailability,
+} from "@shared/schema";
 import { eq, or, and, sql, inArray, lte, gte, count } from "drizzle-orm";
 import { db } from "./db";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 import { Pool } from '@neondatabase/serverless';
 import { pool } from "./db";
-import { DoctorDetail } from "@shared/schema";
 
 const pgSession = connectPg(session);
 
@@ -44,10 +58,16 @@ export interface IStorage {
     date: Date,
     isAvailable: boolean,
     currentToken?: number
-  ): Promise<typeof doctorAvailability.$inferSelect>;
-  getDoctorAvailability(doctorId: number, date: Date): Promise<typeof doctorAvailability.$inferSelect | undefined>;
+  ): Promise<typeof doctorDailyPresence.$inferSelect>;
+  getDoctorAvailability(doctorId: number, date: Date): Promise<typeof doctorDailyPresence.$inferSelect | undefined>;
   getPatientAppointments(patientId: number): Promise<(Appointment & { doctor: User })[]>;
-  getAttenderDoctorsAppointments(attenderId: number): Promise<(AttenderDoctor & { doctor: User, appointments: (Appointment & { patient?: User })[] })[]>;
+  getAttenderDoctorsAppointments(attenderId: number): Promise<(AttenderDoctor & { 
+    doctor: User, 
+    appointments: (Appointment & { patient?: User })[], 
+    schedules: (typeof doctorSchedules.$inferSelect & { 
+      appointments: (Appointment & { patient?: User })[]
+    })[]
+  })[]>;
 
   // Token Progress method
   getCurrentTokenProgress(doctorId: number, clinicId: number, date: Date, retryCount?: number): Promise<{ currentToken: number; status: 'start' | 'completed' | 'scheduled' | 'hold' | 'pause' | 'cancel' | 'not_started' | 'no_appointments'; appointment?: Appointment }>;
@@ -88,6 +108,21 @@ export interface IStorage {
     startDate: Date,
     endDate: Date
   ): Promise<number>;
+
+  // Add these to the IStorage interface
+  updateDoctorArrivalStatus(
+    doctorId: number,
+    clinicId: number,
+    scheduleId: number | null,
+    date: Date,
+    hasArrived: boolean
+  ): Promise<typeof doctorDailyPresence.$inferSelect>;
+  
+  getDoctorArrivalStatus(
+    doctorId: number,
+    clinicId: number,
+    date: Date
+  ): Promise<typeof doctorDailyPresence.$inferSelect | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -520,46 +555,66 @@ export class DatabaseStorage implements IStorage {
     date: Date,
     isAvailable: boolean,
     currentToken?: number
-  ): Promise<typeof doctorAvailability.$inferSelect> {
+  ): Promise<typeof doctorDailyPresence.$inferSelect> {
+    // Since the purpose of this table has changed, we'll update it to use the new schema
+    // We'll repurpose isAvailable to hasArrived since that's what we're tracking now
     try {
       // Round date to start of day for consistency
       const dayStart = new Date(date);
       dayStart.setHours(0, 0, 0, 0);
-
+      
+      // Get a default clinic for this doctor (first one found)
+      const [doctorWithClinic] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, doctorId));
+        
+      // Use the doctor's clinic or get the first clinic if none assigned
+      let clinicId = doctorWithClinic.clinicId;
+      
+      if (!clinicId) {
+        const [firstClinic] = await db.select().from(clinics).limit(1);
+        if (firstClinic) {
+          clinicId = firstClinic.id;
+        } else {
+          throw new Error('No clinic found for doctor availability');
+        }
+      }
+      
       // Try to update existing record first
       const [existing] = await db
         .select()
-        .from(doctorAvailability)
+        .from(doctorDailyPresence)
         .where(
           and(
-            eq(doctorAvailability.doctorId, doctorId),
-            eq(doctorAvailability.date, dayStart)
+            eq(doctorDailyPresence.doctorId, doctorId),
+            eq(doctorDailyPresence.clinicId, clinicId),
+            eq(doctorDailyPresence.date, dayStart)
           )
         );
-
+      
       if (existing) {
         const [updated] = await db
-          .update(doctorAvailability)
+          .update(doctorDailyPresence)
           .set({
-            isAvailable,
-            ...(currentToken !== undefined ? { currentToken } : {}),
+            hasArrived: isAvailable, // Repurposing isAvailable to hasArrived
           })
-          .where(eq(doctorAvailability.id, existing.id))
+          .where(eq(doctorDailyPresence.id, existing.id))
           .returning();
         return updated;
       }
-
+      
       // Create new record if none exists
       const [created] = await db
-        .insert(doctorAvailability)
+        .insert(doctorDailyPresence)
         .values({
           doctorId,
+          clinicId,
           date: dayStart,
-          isAvailable,
-          currentToken: currentToken || 0,
+          hasArrived: isAvailable, // Repurposing isAvailable to hasArrived
         })
         .returning();
-
+      
       return created;
     } catch (error) {
       console.error('Error updating doctor availability:', error);
@@ -570,18 +625,37 @@ export class DatabaseStorage implements IStorage {
   async getDoctorAvailability(
     doctorId: number,
     date: Date
-  ): Promise<typeof doctorAvailability.$inferSelect | undefined> {
+  ): Promise<typeof doctorDailyPresence.$inferSelect | undefined> {
     try {
       const dayStart = new Date(date);
       dayStart.setHours(0, 0, 0, 0);
+      
+      // Get the doctor's clinic
+      const [doctorWithClinic] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, doctorId));
+        
+      // Use the doctor's clinic or get the first clinic if none assigned
+      let clinicId = doctorWithClinic.clinicId;
+      
+      if (!clinicId) {
+        const [firstClinic] = await db.select().from(clinics).limit(1);
+        if (firstClinic) {
+          clinicId = firstClinic.id;
+        } else {
+          return undefined; // No clinic to check availability for
+        }
+      }
 
       const [availability] = await db
         .select()
-        .from(doctorAvailability)
+        .from(doctorDailyPresence)
         .where(
           and(
-            eq(doctorAvailability.doctorId, doctorId),
-            eq(doctorAvailability.date, dayStart)
+            eq(doctorDailyPresence.doctorId, doctorId),
+            eq(doctorDailyPresence.clinicId, clinicId),
+            eq(doctorDailyPresence.date, dayStart)
           )
         );
 
@@ -628,7 +702,13 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  async getAttenderDoctorsAppointments(attenderId: number): Promise<(AttenderDoctor & { doctor: User, appointments: (Appointment & { patient?: User })[] })[]> {
+  async getAttenderDoctorsAppointments(attenderId: number): Promise<(AttenderDoctor & { 
+    doctor: User, 
+    appointments: (Appointment & { patient?: User })[], 
+    schedules: (typeof doctorSchedules.$inferSelect & { 
+      appointments: (Appointment & { patient?: User })[]
+    })[]
+  })[]> {
     try {
       console.log('Getting appointments for attender:', attenderId);
 
@@ -642,12 +722,32 @@ export class DatabaseStorage implements IStorage {
       const doctorsWithAppointments = await Promise.all(
         doctorRelations.map(async (relation) => {
           const { doctor } = relation;
+          const today = new Date();
+          const dayOfWeek = today.getDay();
+
+          // Get doctor's schedules for today
+          const schedules = await db
+            .select()
+            .from(doctorSchedules)
+            .where(
+              and(
+                eq(doctorSchedules.doctorId, doctor.id),
+                eq(doctorSchedules.dayOfWeek, dayOfWeek),
+                eq(doctorSchedules.isActive, true)
+              )
+            );
 
           // Get appointments for this doctor
           const appointmentsForDoctor = await db
             .select()
             .from(appointments)
-            .where(eq(appointments.doctorId, doctor.id));
+            .where(
+              and(
+                eq(appointments.doctorId, doctor.id),
+                gte(appointments.date, new Date(today.setHours(0, 0, 0, 0))),
+                lte(appointments.date, new Date(today.setHours(23, 59, 59, 999)))
+              )
+            );
 
           // Get patient data for these appointments
           const patientIds = Array.from(new Set(appointmentsForDoctor.map(apt => apt.patientId)));
@@ -664,10 +764,45 @@ export class DatabaseStorage implements IStorage {
             patient: patientsMap.get(apt.patientId),
           }));
 
+          // Map schedules with their appointments
+          const schedulesWithAppointments = schedules.map(schedule => {
+            // Find appointments that belong to this schedule by scheduleId
+            const scheduleAppointments = appointmentsWithPatients.filter(apt => {
+              // Use scheduleId as primary association
+              if (apt.scheduleId === schedule.id) {
+                return true;
+              }
+              
+              // As a fallback for legacy appointments without scheduleId, use time range
+              if (!apt.scheduleId) {
+                const aptTime = new Date(apt.date);
+                const aptHour = aptTime.getHours();
+                const aptMinute = aptTime.getMinutes();
+                
+                // Create a comparable time value (hours * 60 + minutes)
+                const aptTimeValue = aptHour * 60 + aptMinute;
+                const scheduleStartTime = this.parseTime(schedule.startTime);
+                const scheduleEndTime = this.parseTime(schedule.endTime);
+                
+                return aptTimeValue >= scheduleStartTime && 
+                       aptTimeValue <= scheduleEndTime &&
+                       apt.clinicId === schedule.clinicId;
+              }
+              
+              return false;
+            });
+            
+            return {
+              ...schedule,
+              appointments: scheduleAppointments
+            };
+          });
+
           return {
             ...relation,
             doctor,
-            appointments: appointmentsWithPatients,
+            appointments: appointmentsWithPatients, // Keep all appointments
+            schedules: schedulesWithAppointments,
           };
         })
       );
@@ -677,6 +812,12 @@ export class DatabaseStorage implements IStorage {
       console.error('Error in getAttenderDoctorsAppointments:', error);
       throw error;
     }
+  }
+  
+  // Helper method to parse time strings like "09:00" to minutes since midnight
+  private parseTime(timeStr: string): number {
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    return hours * 60 + minutes;
   }
 
   async getCurrentTokenProgress(
@@ -1068,6 +1209,92 @@ export class DatabaseStorage implements IStorage {
       return result?.count || 0;
     } catch (error) {
       console.error('Error counting appointments:', error);
+      throw error;
+    }
+  }
+
+  async updateDoctorArrivalStatus(
+    doctorId: number,
+    clinicId: number,
+    scheduleId: number | null,
+    date: Date,
+    hasArrived: boolean
+  ): Promise<typeof doctorDailyPresence.$inferSelect> {
+    try {
+      // Round date to start of day for consistency
+      const dayStart = new Date(date);
+      dayStart.setHours(0, 0, 0, 0);
+      
+      // Try to update existing record first
+      const [existing] = await db
+        .select()
+        .from(doctorDailyPresence)
+        .where(
+          and(
+            eq(doctorDailyPresence.doctorId, doctorId),
+            eq(doctorDailyPresence.clinicId, clinicId),
+            eq(doctorDailyPresence.date, dayStart)
+          )
+        );
+        
+      if (existing) {
+        // Always update scheduleId when specified, otherwise keep existing
+        const scheduleIdToUse = scheduleId !== undefined ? scheduleId : existing.scheduleId;
+        
+        const [updated] = await db
+          .update(doctorDailyPresence)
+          .set({ 
+            hasArrived,
+            scheduleId: scheduleIdToUse,
+            updatedAt: new Date() 
+          })
+          .where(eq(doctorDailyPresence.id, existing.id))
+          .returning();
+        return updated;
+      }
+      
+      // Create new record if none exists
+      const [created] = await db
+        .insert(doctorDailyPresence)
+        .values({
+          doctorId,
+          clinicId,
+          scheduleId,
+          date: dayStart,
+          hasArrived,
+        })
+        .returning();
+        
+      return created;
+    } catch (error) {
+      console.error('Error updating doctor arrival status:', error);
+      throw error;
+    }
+  }
+
+  async getDoctorArrivalStatus(
+    doctorId: number,
+    clinicId: number,
+    date: Date
+  ): Promise<typeof doctorDailyPresence.$inferSelect | undefined> {
+    try {
+      const dayStart = new Date(date);
+      dayStart.setHours(0, 0, 0, 0);
+
+      const [presence] = await db
+        .select()
+        .from(doctorDailyPresence)
+        .where(
+          and(
+            eq(doctorDailyPresence.doctorId, doctorId),
+            eq(doctorDailyPresence.clinicId, clinicId),
+            eq(doctorDailyPresence.date, dayStart)
+          )
+        );
+
+      return presence;
+    } catch (error) {
+      console.error('Error getting doctor arrival status:', error);
       throw error;
     }
   }

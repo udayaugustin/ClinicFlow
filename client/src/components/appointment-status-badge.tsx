@@ -36,7 +36,8 @@ export function AppointmentStatusBadge({ status, statusNotes }: AppointmentStatu
   return (
     <div className="flex items-center">
       <Badge variant={getVariant()}>
-        {status.charAt(0).toUpperCase() + status.slice(1)}
+        {status === "start" ? "In Progress" : 
+          status.charAt(0).toUpperCase() + status.slice(1)}
       </Badge>
       
       {statusNotes && (

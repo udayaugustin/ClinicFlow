@@ -1,53 +1,54 @@
 import React from 'react';
 import { Button } from "@/components/ui/button";
+import { Appointment } from "@shared/schema";
 
 type AppointmentActionsProps = {
-  appointmentId: number;
-  status: string;
-  onStart: (id: number) => void;
-  onComplete: (id: number) => void;
-  onHold: (id: number) => void;
-  onPause: (id: number) => void;
-  onCancel: (id: number) => void;
+  appointment: Appointment & { patient?: any };
+  onMarkAsStarted: () => void;
+  onMarkAsCompleted: () => void;
+  onHold: () => void;
+  onPause: () => void;
+  onCancel: () => void;
 };
 
 export function AppointmentActions({ 
-  appointmentId,
-  status,
-  onStart,
-  onComplete,
+  appointment,
+  onMarkAsStarted,
+  onMarkAsCompleted,
   onHold,
   onPause,
   onCancel
 }: AppointmentActionsProps) {
+  const status = appointment.status;
+  
   return (
     <div className="flex gap-2 flex-wrap">
       {status === "scheduled" && (
         <>
           <Button
             size="sm"
-            onClick={() => onStart(appointmentId)}
+            onClick={onMarkAsStarted}
           >
             Start
           </Button>
           <Button
             size="sm"
             variant="outline"
-            onClick={() => onHold(appointmentId)}
+            onClick={onHold}
           >
             Hold
           </Button>
           <Button
             size="sm"
             variant="outline"
-            onClick={() => onPause(appointmentId)}
+            onClick={onPause}
           >
             Pause
           </Button>
           <Button
             size="sm"
             variant="outline"
-            onClick={() => onCancel(appointmentId)}
+            onClick={onCancel}
           >
             Cancel
           </Button>
@@ -58,21 +59,21 @@ export function AppointmentActions({
         <>
           <Button
             size="sm"
-            onClick={() => onComplete(appointmentId)}
+            onClick={onMarkAsCompleted}
           >
             Complete
           </Button>
           <Button
             size="sm"
             variant="outline"
-            onClick={() => onHold(appointmentId)}
+            onClick={onHold}
           >
             Hold
           </Button>
           <Button
             size="sm"
             variant="outline"
-            onClick={() => onPause(appointmentId)}
+            onClick={onPause}
           >
             Pause
           </Button>
@@ -82,7 +83,7 @@ export function AppointmentActions({
       {(status === "hold" || status === "pause") && (
         <Button
           size="sm"
-          onClick={() => onStart(appointmentId)}
+          onClick={onMarkAsStarted}
         >
           Resume
         </Button>

@@ -6,8 +6,22 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { Progress } from "@/components/ui/progress";
-import { Clock, ArrowRight, Users, Ticket } from "lucide-react";
+import { Clock, ArrowRight, Users, Ticket, CheckCircle2 } from "lucide-react";
 import { AppointmentStatusBadge } from "@/components/appointment-status-badge";
+import { apiRequest } from "@/lib/queryClient";
+import React, { useEffect, useState, useRef, useCallback } from "react";
+
+// Assuming this function exists in the appointment-status-badge component
+const appointmentStatusBadgeVariant = (status: string) => {
+  switch (status) {
+    case "scheduled": return "default";
+    case "start": return "secondary";
+    case "hold": return "secondary";
+    case "pause": return "destructive";
+    case "cancel": return "destructive";
+    default: return "outline";
+  }
+};
 
 type AppointmentWithDoctor = Appointment & {
   doctor: User;
@@ -20,6 +34,13 @@ type TokenProgress = {
 };
 
 export default function BookingHistoryPage() {
+  // State to store doctor arrival status
+  const [doctorArrivals, setDoctorArrivals] = useState<Record<string, boolean>>({});
+  // Ref to track if we've already fetched arrivals
+  const arrivedFetchedRef = useRef(false);
+  // Ref to store interval ID
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
   const { data: appointments, isLoading } = useQuery<AppointmentWithDoctor[]>({
     queryKey: ["/api/patient/appointments"],
     // Refresh every 30 seconds to keep token status current
@@ -43,7 +64,80 @@ export default function BookingHistoryPage() {
       return { doctorId, clinicId };
     });
 
-  // Fetch token progress for each doctor-clinic pair
+  // Create a stable string representation of today's scheduled appointments to use in dependency array
+  const scheduledAppointmentsKey = todayAppointments
+    .filter(apt => apt.status === "scheduled")
+    .map(apt => `${apt.doctorId}-${apt.clinicId}`)
+    .sort()
+    .join('|');
+
+  // Fetch doctor arrival status - memoize this function to avoid recreating it on every render
+  const fetchDoctorArrivals = useCallback(async () => {
+    // Skip if no scheduled appointments
+    const scheduledAppts = todayAppointments.filter(apt => apt.status === "scheduled");
+    if (scheduledAppts.length === 0) return;
+    
+    const arrivalsMap: Record<string, boolean> = {};
+    
+    // Create a Set to track unique doctor-clinic pairs to avoid duplicate requests
+    const processed = new Set<string>();
+    
+    for (const appointment of scheduledAppts) {
+      const key = `${appointment.doctorId}-${appointment.clinicId}`;
+      
+      // Skip if we've already processed this doctor-clinic pair
+      if (processed.has(key)) continue;
+      processed.add(key);
+      
+      try {
+        const res = await fetch(
+          `/api/doctors/${appointment.doctorId}/arrival?clinicId=${appointment.clinicId}&date=${new Date().toISOString()}`
+        );
+        const data = await res.json();
+        arrivalsMap[key] = data.hasArrived;
+      } catch (error) {
+        console.error("Error fetching doctor arrival:", error);
+      }
+    }
+    
+    setDoctorArrivals(arrivalsMap);
+  }, [todayAppointments]);
+
+  // Setup the initial fetch and interval
+  useEffect(() => {
+    // Only run this effect if we have scheduled appointments and haven't fetched yet
+    const hasScheduledAppointments = todayAppointments.some(apt => apt.status === "scheduled");
+    
+    if (hasScheduledAppointments) {
+      // Run the initial fetch if we haven't already
+      if (!arrivedFetchedRef.current) {
+        fetchDoctorArrivals();
+        arrivedFetchedRef.current = true;
+      }
+      
+      // Clear any existing interval before setting a new one
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+      
+      // Set up interval for periodic refresh (every 30 seconds)
+      intervalRef.current = setInterval(fetchDoctorArrivals, 30000);
+      
+      // Clean up interval on unmount or when dependencies change
+      return () => {
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
+      };
+    }
+  }, [fetchDoctorArrivals, scheduledAppointmentsKey]);
+
+  // Helper function to check if a doctor has arrived
+  const hasDoctorArrived = (doctorId: number, clinicId: number) => {
+    return doctorArrivals[`${doctorId}-${clinicId}`] || false;
+  };
+
   const { data: tokenProgressMap } = useQuery<Record<string, TokenProgress>>({
     queryKey: ["token-progress", uniquePairs],
     queryFn: async () => {
@@ -106,6 +200,9 @@ export default function BookingHistoryPage() {
                           ? Math.max(0, appointment.tokenNumber - progress.currentToken - 1)
                           : null;
 
+                        // Check if doctor has arrived using the helper function
+                        const doctorHasArrived = hasDoctorArrived(appointment.doctorId, appointment.clinicId);
+
                         return (
                           <Card key={appointment.id} className="overflow-hidden">
                             <CardContent className="p-4">
@@ -118,89 +215,72 @@ export default function BookingHistoryPage() {
                                 </div>
                                 <Badge
                                   variant={
-                                    appointment.status === "scheduled"
-                                      ? "default"
-                                      : appointment.status === "completed"
-                                      ? "outline"
-                                      : appointment.status === "in_progress"
-                                      ? "secondary"
-                                      : "destructive"
+                                    appointment.status === "completed" ? "outline" :
+                                    appointmentStatusBadgeVariant(appointment.status)
                                   }
                                 >
-                                  {appointment.status.charAt(0).toUpperCase() + 
-                                    appointment.status.slice(1)}
+                                  <AppointmentStatusBadge status={appointment.status} />
                                 </Badge>
                               </div>
-
-                              <div className="bg-muted p-4 rounded-lg">
-                                <div className="grid grid-cols-2 gap-4 mb-4">
+                              
+                              <div className="space-y-4">
+                                <div className="flex items-center justify-between text-sm">
                                   <div className="flex items-center gap-2">
-                                    <Clock className="h-4 w-4" />
-                                    <span>{format(new Date(appointment.date), "p")}</span>
+                                    <Clock className="h-4 w-4 text-muted-foreground" />
+                                    <span>{format(new Date(appointment.date), "h:mm a")}</span>
                                   </div>
-                                  <div className="flex items-center gap-2 justify-end">
-                                    <Ticket className="h-4 w-4" />
-                                    <span className="font-medium">
-                                      Token {String(progress?.currentToken || 0).padStart(3, '0')}/{String(maxTokenNumber).padStart(3, '0')}
-                                    </span>
+                                  <div className="flex items-center gap-2">
+                                    <Ticket className="h-4 w-4 text-muted-foreground" />
+                                    <span>Token #{appointment.tokenNumber}</span>
                                   </div>
                                 </div>
-
-                                <div className="space-y-3">
-                                  <div className="flex items-center justify-between text-sm">
-                                    <div className="flex items-center gap-1">
-                                      <span>Your Token:</span>
-                                      <span className="font-medium">
-                                        #{String(appointment.tokenNumber).padStart(3, '0')}
-                                      </span>
-                                    </div>
-                                    {/* <div className="text-sm text-muted-foreground">
-                                      Status: {progress?.status ? progress.status.charAt(0).toUpperCase() + progress.status.slice(1) : 'Unknown'}
-                                    </div> */}
+                                
+                                {appointment.status === "cancel" ? (
+                                  <div className="text-sm text-center text-red-600 font-medium mt-1">
+                                    Appointment cancelled
                                   </div>
-
-                                  <Progress 
-                                    value={
-                                      maxTokenNumber > 0 && progress?.currentToken !== undefined
-                                        ? (progress.currentToken / maxTokenNumber) * 100
-                                        : 0
-                                    } 
-                                    className="h-2"
-                                  />
-
-                                  {appointment.status === "completed" ? (
-                                    <div className="text-sm text-center text-muted-foreground mt-2">
-                                      Consultation completed
+                                ) : appointment.status === "completed" ? (
+                                  <div>
+                                    <div className="flex justify-between text-sm mb-1">
+                                      <span className="text-muted-foreground">Current token: {appointment.tokenNumber}</span>
+                                      <span className="text-muted-foreground">Your token: {appointment.tokenNumber}</span>
                                     </div>
-                                  ) : appointment.status === "start" ? (
-                                    <div className="text-sm text-center text-primary font-medium mt-2">
-                                      You are currently being consulted
+                                    <Progress value={100} className="h-2" />
+                                    <div className="text-sm text-center mt-1">
+                                      <span className="text-gray-600 font-medium">Consultation completed</span>
                                     </div>
-                                  ) : appointment.status === "hold" ? (
-                                    <div className="text-sm text-center text-amber-500 font-medium mt-2">
-                                      Your appointment is on hold: {appointment.statusNotes}
+                                  </div>
+                                ) : progress?.currentToken !== undefined && (
+                                  <div>
+                                    <div className="flex justify-between text-sm mb-1">
+                                      <span className="text-muted-foreground">Current token: {progress.currentToken}</span>
+                                      <span className="text-muted-foreground">Your token: {appointment.tokenNumber}</span>
                                     </div>
-                                  ) : appointment.status === "pause" ? (
-                                    <div className="text-sm text-center text-amber-500 font-medium mt-2">
-                                      Your appointment is paused: {appointment.statusNotes}
+                                    <Progress value={(progress.currentToken / maxTokenNumber) * 100} className="h-2" />
+                                    <div className="text-sm text-center mt-1">
+                                      {appointment.status === "start" ? (
+                                        <span className="text-blue-600 font-medium">Currently being consulted</span>
+                                      ) : appointment.status === "hold" ? (
+                                        <span className="text-yellow-600 font-medium">Appointment on hold</span>
+                                      ) : appointment.status === "pause" ? (
+                                        <span className="text-orange-600 font-medium">Appointment paused</span>
+                                      ) : tokensAhead === 0 ? (
+                                        <span className="text-green-600 font-medium">You're next!</span>
+                                      ) : tokensAhead && tokensAhead > 0 ? (
+                                        <span>{tokensAhead} token{tokensAhead > 1 ? 's' : ''} ahead of you</span>
+                                      ) : (
+                                        <span className="text-muted-foreground">Waiting for your appointment</span>
+                                      )}
                                     </div>
-                                  ) : appointment.status === "cancel" ? (
-                                    <div className="text-sm text-center text-red-500 font-medium mt-2">
-                                      Your appointment was cancelled: {appointment.statusNotes}
-                                    </div>
-                                  ) : tokensAhead !== null && tokensAhead > 0 ? (
-                                    <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground mt-2">
-                                      <Users className="h-4 w-4" />
-                                      <span>
-                                        {tokensAhead} {tokensAhead === 1 ? 'patient' : 'patients'} ahead of you
-                                      </span>
-                                    </div>
-                                  ) : tokensAhead === 0 ? (
-                                    <div className="text-sm text-center text-primary font-medium mt-2">
-                                      You're next! Please be ready.
-                                    </div>
-                                  ) : null}
-                                </div>
+                                  </div>
+                                )}
+                                
+                                {doctorHasArrived && (
+                                  <div className="text-sm text-center text-green-600 font-medium mt-2 flex items-center justify-center gap-2">
+                                    <CheckCircle2 className="h-4 w-4" />
+                                    Your doctor has arrived at the clinic
+                                  </div>
+                                )}
                               </div>
                             </CardContent>
                           </Card>

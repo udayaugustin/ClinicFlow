@@ -117,6 +117,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...req.body,
         patientId: req.user.id,
         clinicId,
+        scheduleId: schedule.id,
         date: appointmentDate,
         tokenNumber: req.body.tokenNumber
       };
@@ -495,8 +496,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'Invalid doctor ID' });
       }
 
+      // Get the doctor's schedules
       const schedules = await storage.getDoctorSchedules(doctorId);
-      res.json(schedules);
+      
+      // Apply filtering if query params are present
+      let filteredSchedules = [...schedules];
+      
+      // Filter by day of week if provided
+      if (req.query.day !== undefined) {
+        const dayOfWeek = parseInt(req.query.day as string);
+        if (!isNaN(dayOfWeek)) {
+          filteredSchedules = filteredSchedules.filter(s => s.dayOfWeek === dayOfWeek);
+        }
+      }
+      
+      // Filter by clinic ID if provided
+      if (req.query.clinicId !== undefined) {
+        const clinicId = parseInt(req.query.clinicId as string);
+        if (!isNaN(clinicId)) {
+          filteredSchedules = filteredSchedules.filter(s => s.clinicId === clinicId);
+        }
+      }
+      
+      res.json(filteredSchedules);
     } catch (error) {
       console.error('Error fetching doctor schedules:', error);
       res.status(500).json({ message: 'Failed to fetch doctor schedules' });
@@ -671,6 +693,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error fetching available time slots:', error);
       res.status(500).json({ message: 'Failed to fetch available time slots' });
+    }
+  });
+
+  // Add a new endpoint for doctor arrival status
+  app.patch("/api/doctors/:id/arrival", async (req, res) => {
+    if (!req.user || req.user.role !== "attender") return res.sendStatus(403);
+    
+    try {
+      const doctorId = parseInt(req.params.id);
+      const { hasArrived, clinicId, scheduleId, date } = req.body;
+      
+      if (hasArrived === undefined || !clinicId || !date) {
+        return res.status(400).json({ 
+          message: 'Missing required fields: hasArrived, clinicId, and date are required' 
+        });
+      }
+      
+      const parsedScheduleId = scheduleId ? parseInt(scheduleId) : null;
+      
+      const presenceRecord = await storage.updateDoctorArrivalStatus(
+        doctorId,
+        parseInt(clinicId),
+        parsedScheduleId,
+        new Date(date),
+        hasArrived
+      );
+      
+      res.json(presenceRecord);
+    } catch (error) {
+      console.error('Error updating doctor arrival status:', error);
+      res.status(500).json({ message: 'Failed to update doctor arrival status' });
+    }
+  });
+  
+  // Add an endpoint to get doctor arrival status
+  app.get("/api/doctors/:id/arrival", async (req, res) => {
+    try {
+      const doctorId = parseInt(req.params.id);
+      const { clinicId, date } = req.query;
+      
+      if (!clinicId || !date) {
+        return res.status(400).json({ 
+          message: 'Missing required query parameters: clinicId and date' 
+        });
+      }
+      
+      const presenceRecord = await storage.getDoctorArrivalStatus(
+        doctorId,
+        parseInt(clinicId as string),
+        new Date(date as string)
+      );
+      
+      if (!presenceRecord) {
+        return res.json({
+          doctorId,
+          clinicId: parseInt(clinicId as string),
+          date: new Date(date as string).toISOString(),
+          hasArrived: false,
+          scheduleId: null
+        });
+      }
+      
+      res.json(presenceRecord);
+    } catch (error) {
+      console.error('Error fetching doctor arrival status:', error);
+      res.status(500).json({ message: 'Failed to fetch doctor arrival status' });
     }
   });
 

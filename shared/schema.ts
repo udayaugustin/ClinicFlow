@@ -47,16 +47,15 @@ export const doctorDetails = pgTable("doctor_details", {
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
-export const doctorAvailability = pgTable("doctor_availability", {
+export const doctorDailyPresence = pgTable("doctor_daily_presence", {
   id: serial("id").primaryKey(),
-  doctorId: integer("doctor_id").references(() => users.id),
-  clinicId: integer("clinic_id").references(() => clinics.id),
-  dayOfWeek: integer("day_of_week").notNull(), // 0-6 for Sunday-Saturday
-  startTime: varchar("start_time", { length: 10 }).notNull(), // Format: HH:MM
-  endTime: varchar("end_time", { length: 10 }).notNull(), // Format: HH:MM
-  isAvailable: boolean("is_available").default(true),
-  maxTokens: integer("max_tokens").default(20),
+  doctorId: integer("doctor_id").references(() => users.id).notNull(),
+  clinicId: integer("clinic_id").references(() => clinics.id).notNull(),
+  scheduleId: integer("schedule_id").references(() => doctorSchedules.id),
+  date: timestamp("date").notNull(),
+  hasArrived: boolean("has_arrived").default(false),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
 export const attenderDoctors = pgTable("attender_doctors", {
@@ -84,6 +83,7 @@ export const appointments = pgTable("appointments", {
   patientId: integer("patient_id").references(() => users.id),
   doctorId: integer("doctor_id").references(() => users.id),
   clinicId: integer("clinic_id").references(() => clinics.id),
+  scheduleId: integer("schedule_id").references(() => doctorSchedules.id),
   date: timestamp("date").notNull(),
   tokenNumber: integer("token_number").notNull(),
   status: varchar("status", { length: 50 }).default("scheduled"),
@@ -141,6 +141,10 @@ export const appointmentsRelations = relations(appointments, ({ one }) => ({
     fields: [appointments.clinicId],
     references: [clinics.id],
   }),
+  schedule: one(doctorSchedules, {
+    fields: [appointments.scheduleId],
+    references: [doctorSchedules.id],
+  }),
 }));
 
 export const attenderDoctorsRelations = relations(attenderDoctors, ({ one }) => ({
@@ -167,14 +171,18 @@ export const doctorDetailsRelations = relations(doctorDetails, ({ one }) => ({
   }),
 }));
 
-export const doctorAvailabilityRelations = relations(doctorAvailability, ({ one }) => ({
+export const doctorDailyPresenceRelations = relations(doctorDailyPresence, ({ one }) => ({
   doctor: one(users, {
-    fields: [doctorAvailability.doctorId],
+    fields: [doctorDailyPresence.doctorId],
     references: [users.id],
   }),
   clinic: one(clinics, {
-    fields: [doctorAvailability.clinicId],
+    fields: [doctorDailyPresence.clinicId],
     references: [clinics.id],
+  }),
+  schedule: one(doctorSchedules, {
+    fields: [doctorDailyPresence.scheduleId],
+    references: [doctorSchedules.id],
   }),
 }));
 
@@ -192,7 +200,7 @@ export const doctorSchedulesRelations = relations(doctorSchedules, ({ one }) => 
 export const insertUserSchema = createInsertSchema(users);
 export const insertClinicSchema = createInsertSchema(clinics);
 export const insertAppointmentSchema = createInsertSchema(appointments);
-export const insertDoctorAvailabilitySchema = createInsertSchema(doctorAvailability);
+export const insertDoctorAvailabilitySchema = createInsertSchema(doctorDailyPresence);
 export const insertAttenderDoctorSchema = createInsertSchema(attenderDoctors);
 export const insertDoctorDetailSchema = createInsertSchema(doctorDetails);
 export const insertDoctorScheduleSchema = createInsertSchema(doctorSchedules);
@@ -202,7 +210,7 @@ export type User = typeof users.$inferSelect;
 export type Clinic = typeof clinics.$inferSelect;
 export type Appointment = typeof appointments.$inferSelect;
 export type AttenderDoctor = typeof attenderDoctors.$inferSelect;
-export type DoctorAvailability = typeof doctorAvailability.$inferSelect;
+export type DoctorAvailability = typeof doctorDailyPresence.$inferSelect;
 export type DoctorDetail = typeof doctorDetails.$inferSelect;
 export type DoctorSchedule = typeof doctorSchedules.$inferSelect;
 export type InsertDoctorSchedule = z.infer<typeof insertDoctorScheduleSchema>;
