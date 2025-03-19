@@ -15,7 +15,7 @@ import {
   type DoctorSchedule,
   type DoctorAvailability,
 } from "@shared/schema";
-import { eq, or, and, sql, inArray, lte, gte, count } from "drizzle-orm";
+import { eq, or, and, sql, inArray, lte, gte, count, not, gt, lt } from "drizzle-orm";
 import { db } from "./db";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
@@ -123,6 +123,26 @@ export interface IStorage {
     clinicId: number,
     date: Date
   ): Promise<typeof doctorDailyPresence.$inferSelect | undefined>;
+
+  // Add this new method to the interface
+  createWalkInAppointment(appointment: {
+    doctorId: number;
+    clinicId: number;
+    scheduleId?: number;
+    date: Date;
+    guestName: string;
+    guestPhone?: string;
+    isWalkIn: boolean;
+    status?: string;
+  }): Promise<Appointment>;
+
+  // Add this new method to count walk-in patients ahead
+  countWalkInPatientsAhead(
+    doctorId: number,
+    clinicId: number,
+    currentToken: number,
+    patientToken: number
+  ): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -837,6 +857,7 @@ export class DatabaseStorage implements IStorage {
       dayEnd.setHours(23, 59, 59, 999);
 
       // Get all appointments for the doctor at the specific clinic on this date
+      // Include both registered patient appointments and walk-ins
       const todayAppointments = await db
         .select()
         .from(appointments)
@@ -858,8 +879,8 @@ export class DatabaseStorage implements IStorage {
         };
       }
 
-      // Find appointment in progress
-      const inProgressAppointment = todayAppointments.find(apt => apt.status === 'in_progress');
+      // Find appointment in progress (can be either walk-in or regular)
+      const inProgressAppointment = todayAppointments.find(apt => apt.status === 'start');
       
       if (inProgressAppointment) {
         console.log('Found in-progress appointment:', inProgressAppointment);
@@ -878,6 +899,7 @@ export class DatabaseStorage implements IStorage {
 
       if (lastCompleted) {
         // Find the next scheduled appointment after the last completed one
+        // Include both walk-ins and regular appointments
         const nextAppointment = todayAppointments.find(apt => 
           apt.tokenNumber > lastCompleted.tokenNumber && 
           apt.status === 'scheduled'
@@ -886,35 +908,43 @@ export class DatabaseStorage implements IStorage {
         return {
           currentToken: lastCompleted.tokenNumber,
           status: 'completed',
-          appointment: nextAppointment
+          appointment: nextAppointment || lastCompleted
         };
       }
 
-      // If no appointments are completed or in progress, return the first scheduled appointment
-      const firstScheduled = todayAppointments.find(apt => apt.status === 'scheduled');
-      return {
-        currentToken: 0,
-        status: 'not_started',
-        appointment: firstScheduled
-      };
+      // If no completed appointment, return the earliest scheduled appointment
+      const earliestPending = todayAppointments.find(apt => apt.status === 'scheduled');
+      
+      if (earliestPending) {
+        console.log('Found earliest pending appointment:', earliestPending);
+        return {
+          currentToken: 0, // No current token yet
+          status: 'not_started',
+          appointment: earliestPending
+        };
+      }
 
+      // If no scheduled appointments, find the last appointment in any other state
+      const lastAppointment = todayAppointments[todayAppointments.length - 1];
+      
+      console.log('Last appointment in any state:', lastAppointment);
+      return {
+        currentToken: lastAppointment.tokenNumber,
+        status: lastAppointment.status as any,
+        appointment: lastAppointment
+      };
     } catch (error) {
       console.error('Error in getCurrentTokenProgress:', error);
-      
-      // If we have retries left and it's a connection error, retry
-      if (retryCount > 0 && (
-        error instanceof Error && 
-        (error.message.includes('ETIMEDOUT') || 
-         error.message.includes('connection') ||
-         error.message.includes('network'))
-      )) {
-        console.log(`Retrying getCurrentTokenProgress... (${retryCount} attempts left)`);
-        // Wait for 1 second before retrying
-        await new Promise(resolve => setTimeout(resolve, 1000));
+      if (retryCount > 0) {
+        console.log(`Retrying... (${retryCount} attempts left)`);
+        // Short delay before retry
+        await new Promise(resolve => setTimeout(resolve, 200));
         return this.getCurrentTokenProgress(doctorId, clinicId, date, retryCount - 1);
       }
-      
-      throw error;
+      return {
+        currentToken: 0,
+        status: 'no_appointments'
+      };
     }
   }
 
@@ -1297,6 +1327,137 @@ export class DatabaseStorage implements IStorage {
       console.error('Error getting doctor arrival status:', error);
       throw error;
     }
+  }
+
+  async createWalkInAppointment(appointment: {
+    doctorId: number;
+    clinicId: number;
+    scheduleId?: number;
+    date: Date;
+    guestName: string;
+    guestPhone?: string;
+    isWalkIn: boolean;
+    status?: string;
+  }): Promise<Appointment> {
+    // Get the day of week for the appointment date
+    const appointmentDate = new Date(appointment.date);
+    const dayOfWeek = appointmentDate.getDay();
+    
+    // Get the doctor's schedule for this day and clinic if not provided
+    let scheduleId = appointment.scheduleId;
+    
+    if (!scheduleId) {
+      const [schedule] = await db
+        .select()
+        .from(doctorSchedules)
+        .where(
+          and(
+            eq(doctorSchedules.doctorId, appointment.doctorId),
+            eq(doctorSchedules.clinicId, appointment.clinicId),
+            eq(doctorSchedules.dayOfWeek, dayOfWeek),
+            eq(doctorSchedules.isActive, true)
+          )
+        );
+        
+      if (!schedule) {
+        throw new Error("No active schedule found for this doctor on the selected day");
+      }
+      
+      scheduleId = schedule.id;
+    }
+    
+    // Get current token count for this date
+    const startOfDay = new Date(appointmentDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    
+    const endOfDay = new Date(appointmentDate);
+    endOfDay.setHours(23, 59, 59, 999);
+    
+    // Get the schedule to check max tokens
+    const [schedule] = await db
+      .select()
+      .from(doctorSchedules)
+      .where(eq(doctorSchedules.id, scheduleId));
+    
+    if (!schedule) {
+      throw new Error("Schedule not found");
+    }
+    
+    // Get the appointment count
+    const count = await this.getAppointmentCountForDoctor(
+      appointment.doctorId,
+      appointment.clinicId,
+      startOfDay,
+      endOfDay
+    );
+    
+    // Check if token limit has been reached
+    if (schedule.maxTokens !== null && count >= schedule.maxTokens) {
+      throw new Error(`Maximum number of tokens (${schedule.maxTokens}) has been reached for this schedule`);
+    }
+    
+    // Get the next token number
+    const tokenNumber = await this.getNextTokenNumber(
+      appointment.doctorId,
+      appointment.clinicId,
+      appointment.date
+    );
+    
+    // Create the appointment - explicitly set patientId to null for walk-ins
+    const [created] = await db
+      .insert(appointments)
+      .values({
+        doctorId: appointment.doctorId,
+        clinicId: appointment.clinicId,
+        scheduleId,
+        patientId: null, // Explicitly set to null for walk-ins
+        date: appointment.date,
+        tokenNumber,
+        guestName: appointment.guestName,
+        guestPhone: appointment.guestPhone || null,
+        isWalkIn: true,
+        status: appointment.status || "scheduled"
+      })
+      .returning();
+    
+    return created;
+  }
+
+  async countWalkInPatientsAhead(
+    doctorId: number,
+    clinicId: number,
+    currentToken: number,
+    patientToken: number
+  ): Promise<number> {
+    // Get the current date (start and end of day)
+    const today = new Date();
+    const startOfDay = new Date(today);
+    startOfDay.setHours(0, 0, 0, 0);
+    
+    const endOfDay = new Date(today);
+    endOfDay.setHours(23, 59, 59, 999);
+    
+    // Find walk-in appointments with token numbers between currentToken and patientToken
+    const result = await db
+      .select({
+        count: count(),
+      })
+      .from(appointments)
+      .where(
+        and(
+          eq(appointments.doctorId, doctorId),
+          eq(appointments.clinicId, clinicId),
+          eq(appointments.isWalkIn, true),
+          gt(appointments.tokenNumber, currentToken),
+          lt(appointments.tokenNumber, patientToken),
+          gte(appointments.date, startOfDay),
+          lte(appointments.date, endOfDay),
+          // Only count active appointments (not cancelled)
+          not(eq(appointments.status, "cancel"))
+        )
+      );
+    
+    return result[0]?.count || 0;
   }
 }
 

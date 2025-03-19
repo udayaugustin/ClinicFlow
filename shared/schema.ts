@@ -88,6 +88,10 @@ export const appointments = pgTable("appointments", {
   tokenNumber: integer("token_number").notNull(),
   status: varchar("status", { length: 50 }).default("scheduled"),
   statusNotes: text("status_notes"), // For recording reasons for status changes
+  // Guest patient fields for walk-in appointments
+  guestName: varchar("guest_name", { length: 255 }),
+  guestPhone: varchar("guest_phone", { length: 20 }),
+  isWalkIn: boolean("is_walk_in").default(false),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 

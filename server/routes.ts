@@ -117,7 +117,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...req.body,
         patientId: req.user.id,
         clinicId,
-        scheduleId: schedule.id,
         date: appointmentDate,
         tokenNumber: req.body.tokenNumber
       };
@@ -265,46 +264,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get token progress for a doctor on a specific date
+  // Token progress endpoint for patients to check their position in queue
   app.get("/api/doctors/:id/token-progress", async (req, res) => {
     try {
       const doctorId = parseInt(req.params.id);
-      const date = req.query.date ? new Date(req.query.date as string) : new Date();
-      const clinicId = parseInt(req.query.clinicId as string);
-
-      console.log('Token Progress Request:', {
-        doctorId,
-        clinicId,
-        date,
-        params: req.params,
-        query: req.query
+      const { clinicId } = req.query;
+      
+      if (!clinicId) {
+        return res.status(400).json({ message: 'clinicId is required' });
+      }
+      
+      const progress = await storage.getCurrentTokenProgress(
+        doctorId, 
+        parseInt(clinicId as string), 
+        new Date()
+      );
+      
+      // Get the current date
+      const today = new Date();
+      const startOfDay = new Date(today);
+      startOfDay.setHours(0, 0, 0, 0);
+      
+      const endOfDay = new Date(today);
+      endOfDay.setHours(23, 59, 59, 999);
+      
+      // Count walk-in patients ahead for registered patients
+      let walkInPatients = 0;
+      
+      if (req.user && req.user.role === "patient") {
+        // Get the patient's appointment
+        const patientAppointments = await storage.getPatientAppointments(req.user.id);
+        const todayAppointment = patientAppointments.find(apt => 
+          apt.doctorId === doctorId && 
+          apt.clinicId === parseInt(clinicId as string) &&
+          new Date(apt.date) >= startOfDay &&
+          new Date(apt.date) <= endOfDay
+        );
+        
+        if (todayAppointment) {
+          // Count walk-in patients with token numbers between current token and patient's token
+          walkInPatients = await storage.countWalkInPatientsAhead(
+            doctorId,
+            parseInt(clinicId as string),
+            progress.currentToken,
+            todayAppointment.tokenNumber
+          );
+        }
+      }
+      
+      // Add walk-in count to the response
+      res.json({
+        ...progress,
+        walkInPatients
       });
-
-      if (!clinicId || isNaN(clinicId)) {
-        return res.status(400).json({ message: 'Clinic ID is required' });
-      }
-
-      if (!doctorId || isNaN(doctorId)) {
-        return res.status(400).json({ message: 'Invalid doctor ID' });
-      }
-
-      const progress = await storage.getCurrentTokenProgress(doctorId, clinicId, date);
-      console.log('Token Progress Response:', progress);
-      res.json(progress);
     } catch (error) {
       console.error('Error fetching token progress:', error);
-      if (error instanceof Error) {
-        res.status(500).json({ 
-          message: 'Failed to fetch token progress',
-          error: error.message,
-          stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-        });
-      } else {
-        res.status(500).json({ 
-          message: 'Failed to fetch token progress',
-          error: 'Unknown error'
-        });
-      }
+      res.status(500).json({ message: 'Failed to fetch token progress' });
     }
   });
 
@@ -759,6 +774,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error fetching doctor arrival status:', error);
       res.status(500).json({ message: 'Failed to fetch doctor arrival status' });
+    }
+  });
+
+  // Add a new endpoint for attenders to create walk-in appointments
+  app.post("/api/attender/walk-in-appointments", async (req, res) => {
+    if (!req.user || req.user.role !== "attender") return res.sendStatus(403);
+    
+    try {
+      const { doctorId, clinicId, scheduleId, date, guestName, guestPhone } = req.body;
+      
+      // Validate required fields
+      if (!doctorId || !clinicId || !date || !guestName) {
+        return res.status(400).json({ 
+          message: 'Missing required fields: doctorId, clinicId, date, and guestName are required' 
+        });
+      }
+      
+      // Validate the doctor exists and is managed by this attender
+      const managedDoctors = await storage.getAttenderDoctors(req.user.id);
+      const canManageDoctor = managedDoctors.some(md => md.doctorId === Number(doctorId));
+      
+      if (!canManageDoctor) {
+        return res.status(403).json({ message: 'You are not authorized to manage this doctor' });
+      }
+      
+      // Create appointment date object
+      const appointmentDate = new Date(date);
+      
+      // Create the walk-in appointment
+      const appointmentData = {
+        doctorId: Number(doctorId),
+        clinicId: Number(clinicId),
+        scheduleId: scheduleId ? Number(scheduleId) : undefined,
+        date: appointmentDate,
+        guestName,
+        guestPhone,
+        isWalkIn: true,
+        status: "scheduled"
+      };
+      
+      const appointment = await storage.createWalkInAppointment(appointmentData);
+      res.status(201).json(appointment);
+    } catch (error) {
+      console.error('Error creating walk-in appointment:', error);
+      res.status(400).json({ 
+        message: error instanceof Error ? error.message : 'Invalid appointment data' 
+      });
     }
   });
 

@@ -43,3 +43,6 @@ After setting up, you can log in with these test accounts:
 - Doctor: username: `doctor1`, password: `password123`
 - Patient: username: `patient1`, password: `password123`
 - Attender: username: `attender1`, password: `password123`
+
+
+DATABASE_URL="postgresql://neondb_owner:npg_tXArKyUqD90B@ep-dry-cell-a5brg9b5.us-east-2.aws.neon.tech/neondb?sslmode=require" npm run db:migrate
