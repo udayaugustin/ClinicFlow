@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { format, isSameDay } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, CheckCircle2, XCircle, Clock, Calendar as CalendarIcon, Building } from "lucide-react";
+import { AlertCircle, CheckCircle2, XCircle, Clock, Calendar as CalendarIcon, Building, Plus } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -22,6 +22,9 @@ import {
 } from "@/components/ui/tooltip";
 import { InfoIcon } from "lucide-react";
 import { AppointmentActions } from "@/components/appointment-actions";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 
 // Updated type definition without presence info in schedules
 type DoctorSchedule = {
@@ -49,6 +52,21 @@ export default function AttenderDashboard() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [isWalkInDialogOpen, setIsWalkInDialogOpen] = useState(false);
+  const [walkInFormValues, setWalkInFormValues] = useState({
+    doctorId: 0,
+    clinicId: 0,
+    scheduleId: 0,
+    guestName: "",
+    guestPhone: ""
+  });
+  const [walkInCurrentDoctor, setWalkInCurrentDoctor] = useState<{
+    doctorId: number;
+    doctorName: string;
+    clinicId: number;
+    scheduleId: number;
+    date: Date;
+  } | null>(null);
 
   // Main query for fetching doctor data with schedules and appointments
   const { data: managedDoctors, isLoading, error } = useQuery<DoctorWithAppointments[]>({
@@ -272,6 +290,110 @@ export default function AttenderDashboard() {
     });
   };
 
+  // Add this mutation
+  const createWalkInAppointmentMutation = useMutation({
+    mutationFn: async ({ 
+      doctorId, 
+      clinicId, 
+      scheduleId, 
+      date, 
+      guestName, 
+      guestPhone 
+    }: { 
+      doctorId: number;
+      clinicId: number;
+      scheduleId: number;
+      date: Date;
+      guestName: string;
+      guestPhone?: string;
+    }) => {
+      const res = await apiRequest("POST", "/api/attender/walk-in-appointments", {
+        doctorId,
+        clinicId,
+        scheduleId,
+        date,
+        guestName,
+        guestPhone
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      // Invalidate relevant queries
+      queryClient.invalidateQueries({ queryKey: ["/api/attender/doctors"] });
+      toast({
+        title: "Success",
+        description: "Walk-in appointment created successfully",
+      });
+      // Close the dialog
+      setIsWalkInDialogOpen(false);
+      // Reset the form
+      setWalkInFormValues({
+        doctorId: 0,
+        clinicId: 0,
+        scheduleId: 0,
+        guestName: "",
+        guestPhone: ""
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  });
+
+  // Add this handler function
+  const handleCreateWalkInAppointment = () => {
+    if (!walkInCurrentDoctor) return;
+    
+    if (!walkInFormValues.guestName.trim()) {
+      toast({
+        title: "Error",
+        description: "Patient name is required",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    createWalkInAppointmentMutation.mutate({
+      doctorId: walkInCurrentDoctor.doctorId,
+      clinicId: walkInCurrentDoctor.clinicId,
+      scheduleId: walkInCurrentDoctor.scheduleId,
+      date: walkInCurrentDoctor.date,
+      guestName: walkInFormValues.guestName,
+      guestPhone: walkInFormValues.guestPhone
+    });
+  };
+
+  // Add this function to open the walk-in dialog with doctor info
+  const openWalkInDialog = (doctorId: number, doctorName: string, clinicId: number, scheduleId: number) => {
+    // Create a date object for the current date
+    const appointmentDate = new Date(selectedDate);
+    
+    // Set the doctor info
+    setWalkInCurrentDoctor({
+      doctorId,
+      doctorName,
+      clinicId,
+      scheduleId,
+      date: appointmentDate
+    });
+    
+    // Update form values
+    setWalkInFormValues({
+      doctorId,
+      clinicId,
+      scheduleId,
+      guestName: "",
+      guestPhone: ""
+    });
+    
+    // Open the dialog
+    setIsWalkInDialogOpen(true);
+  };
+
   if (!user) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -396,128 +518,200 @@ export default function AttenderDashboard() {
                             <p className="text-muted-foreground">No schedules for this doctor on {format(selectedDate, "EEEE")}.</p>
                           </div>
                         ) : (
-                          // Display each schedule as a separate section
-                          schedulesForDay.map(schedule => {
-                            // Filter appointments that belong to this schedule
-                            const scheduleAppointments = schedule.appointments
-                              .filter(apt => isSameDay(new Date(apt.date), selectedDate))
-                              .sort((a, b) => a.tokenNumber - b.tokenNumber);
-                              
-                            return (
-                              <Card key={schedule.id} className="mb-6">
-                                <CardHeader className="pb-0">
-                                  <div className="flex justify-between items-center">
-                                    <div>
-                                      <CardTitle className="flex items-center gap-2">
-                                        <Building className="h-5 w-5" />
-                                        Clinic Hours: {schedule.startTime} - {schedule.endTime}
-                                      </CardTitle>
-                                      <p className="text-sm text-muted-foreground mt-1">
-                                        Maximum Tokens: {schedule.maxTokens || "Unlimited"}
-                                      </p>
-                                    </div>
-                                    <Button
-                                      variant={getPresenceData(doctorData.doctor.id, schedule.id).hasArrived ? "default" : "outline"}
-                                      className="gap-2"
-                                      onClick={() => handleToggleDoctorArrival(
-                                        doctorData.doctor.id,
-                                        schedule.clinicId,
-                                        schedule.id,
-                                        !getPresenceData(doctorData.doctor.id, schedule.id).hasArrived
-                                      )}
+                          // Implement nested tabs for schedules
+                          <Tabs defaultValue={schedulesForDay[0]?.id?.toString()} className="w-full">
+                            <div className="overflow-x-auto py-4">
+                              <TabsList className="flex space-x-4 p-1 min-w-max bg-transparent">
+                                {schedulesForDay.map(schedule => {
+                                  // Get presence status for visual indication
+                                  const hasArrived = getPresenceData(doctorData.doctor.id, schedule.id).hasArrived;
+                                  
+                                  // Count appointments for this schedule that are not canceled
+                                  const activeAppointments = schedule.appointments
+                                    .filter(apt => 
+                                      isSameDay(new Date(apt.date), selectedDate) && 
+                                      apt.status !== "cancel"
+                                    ).length;
+                                  
+                                  return (
+                                    <TabsTrigger 
+                                      key={schedule.id} 
+                                      value={schedule.id.toString()}
+                                      className="min-w-[240px] flex-col items-start px-4 py-3 rounded-lg border data-[state=active]:border-blue-300 data-[state=active]:bg-blue-50 data-[state=active]:shadow-sm"
                                     >
-                                      {getPresenceData(doctorData.doctor.id, schedule.id).hasArrived ? (
-                                        <>
-                                          <CheckCircle2 className="h-4 w-4" />
-                                          Doctor Present
-                                        </>
-                                      ) : (
-                                        <>
-                                          <Clock className="h-4 w-4" />
-                                          Mark as Arrived
-                                        </>
-                                      )}
-                                    </Button>
-                                  </div>
-                                </CardHeader>
-                                <CardContent className="pt-4">
-                                  <div className="overflow-x-auto">
-                                    <table className="w-full">
-                                      <thead>
-                                        <tr className="border-b">
-                                          <th className="text-left py-4 px-4">Token #</th>
-                                          <th className="text-left py-4 px-4">Patient</th>
-                                          <th className="text-left py-4 px-4">Time</th>
-                                          <th className="text-left py-4 px-4">Status</th>
-                                          <th className="text-left py-4 px-4">Actions</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {scheduleAppointments.length === 0 ? (
-                                          <tr>
-                                            <td colSpan={5} className="text-center py-8 text-muted-foreground">
-                                              No appointments scheduled for {format(selectedDate, "PPP")}
-                                            </td>
-                                          </tr>
+                                      <div className="flex items-center w-full mb-2">
+                                        <Clock className="h-5 w-5 text-blue-500 mr-2" />
+                                        <span className="text-base font-medium">{schedule.startTime} - {schedule.endTime}</span>
+                                      </div>
+                                      <div className="flex items-center gap-3 w-full">
+                                        {hasArrived ? (
+                                          <div className="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">Doctor Present</div>
                                         ) : (
-                                          scheduleAppointments.map((appointment) => (
-                                            <tr 
-                                              key={appointment.id} 
-                                              className={`border-b ${appointment.status === "in_progress" ? "bg-blue-50" : ""}`}
-                                            >
-                                              <td className="py-4 px-4">{appointment.tokenNumber}</td>
-                                              <td className="py-4 px-4">{appointment.patient?.name}</td>
-                                              <td className="py-4 px-4">{format(new Date(appointment.date), "hh:mm a")}</td>
-                                              <td className="py-4 px-4">
-                                                <Badge
-                                                  variant={
-                                                    appointment.status === "completed" ? "outline" :
-                                                    appointment.status === "start" ? "default" :
-                                                    appointment.status === "hold" ? "secondary" :
-                                                    appointment.status === "pause" ? "destructive" :
-                                                    appointment.status === "cancel" ? "destructive" :
-                                                    "outline"
-                                                  }
-                                                >
-                                                  {appointment.status === "scheduled" ? "Scheduled" :
-                                                   appointment.status === "start" ? "In Progress" :
-                                                   appointment.status === "hold" ? "On Hold" :
-                                                   appointment.status === "pause" ? "Paused" :
-                                                   appointment.status === "cancel" ? "Cancelled" :
-                                                   appointment.status === "completed" ? "Completed" :
-                                                   "Unknown"}
-                                                </Badge>
-                                                {appointment.statusNotes && (
-                                                  <Tooltip>
-                                                    <TooltipTrigger asChild>
-                                                      <InfoIcon className="inline-block ml-2 h-4 w-4 text-muted-foreground cursor-help" />
-                                                    </TooltipTrigger>
-                                                    <TooltipContent>
-                                                      <p>{appointment.statusNotes}</p>
-                                                    </TooltipContent>
-                                                  </Tooltip>
-                                                )}
-                                              </td>
-                                              <td className="py-4 px-4">
-                                                <AppointmentActions
-                                                  appointment={appointment}
-                                                  onMarkAsStarted={() => handleMarkInProgress(appointment.id)}
-                                                  onMarkAsCompleted={() => handleMarkAsCompleted(appointment.id)}
-                                                  onHold={() => handleHoldAppointment(appointment.id)}
-                                                  onPause={() => handlePauseAppointment(appointment.id)}
-                                                  onCancel={() => handleCancelAppointment(appointment.id)}
-                                                />
-                                              </td>
-                                            </tr>
-                                          ))
+                                          <div className="px-3 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">Awaiting Doctor</div>
                                         )}
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                </CardContent>
-                              </Card>
-                            );
-                          })
+                                        <div className="px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                          {activeAppointments} Patient{activeAppointments !== 1 ? 's' : ''}
+                                        </div>
+                                      </div>
+                                    </TabsTrigger>
+                                  );
+                                })}
+                              </TabsList>
+                            </div>
+
+                            {schedulesForDay.map(schedule => {
+                              // Filter appointments that belong to this schedule
+                              const scheduleAppointments = schedule.appointments
+                                .filter(apt => isSameDay(new Date(apt.date), selectedDate))
+                                .sort((a, b) => a.tokenNumber - b.tokenNumber);
+                                
+                              return (
+                                <TabsContent 
+                                  key={schedule.id} 
+                                  value={schedule.id.toString()}
+                                >
+                                  <Card>
+                                    <CardHeader className="pb-0">
+                                      <div className="flex justify-between items-center">
+                                        <div>
+                                          <CardTitle className="flex items-center gap-2">
+                                            <Building className="h-5 w-5" />
+                                            Clinic Hours: {schedule.startTime} - {schedule.endTime}
+                                          </CardTitle>
+                                          <p className="text-sm text-muted-foreground mt-1">
+                                            Maximum Tokens: {schedule.maxTokens || "Unlimited"}
+                                          </p>
+                                        </div>
+                                        <div className="flex gap-2 items-center mt-2">
+                                          <Button
+                                            variant={getPresenceData(doctorData.doctor.id, schedule.id).hasArrived ? "default" : "outline"}
+                                            className="gap-2"
+                                            onClick={() => handleToggleDoctorArrival(
+                                              doctorData.doctor.id,
+                                              schedule.clinicId,
+                                              schedule.id,
+                                              !getPresenceData(doctorData.doctor.id, schedule.id).hasArrived
+                                            )}
+                                          >
+                                            {getPresenceData(doctorData.doctor.id, schedule.id).hasArrived ? (
+                                              <>
+                                                <CheckCircle2 className="h-4 w-4" />
+                                                Doctor Present
+                                              </>
+                                            ) : (
+                                              <>
+                                                <Clock className="h-4 w-4" />
+                                                Mark as Arrived
+                                              </>
+                                            )}
+                                          </Button>
+                                          
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="gap-2"
+                                            onClick={() => openWalkInDialog(
+                                              doctorData.doctor.id, 
+                                              doctorData.doctor.name, 
+                                              schedule.clinicId, 
+                                              schedule.id
+                                            )}
+                                          >
+                                            <Plus className="h-4 w-4" />
+                                            New Walk-in
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    </CardHeader>
+                                    <CardContent className="pt-4">
+                                      <div className="overflow-x-auto">
+                                        <table className="w-full">
+                                          <thead>
+                                            <tr className="border-b">
+                                              <th className="text-left py-4 px-4">Token #</th>
+                                              <th className="text-left py-4 px-4">Patient</th>
+                                              <th className="text-left py-4 px-4">Time</th>
+                                              <th className="text-left py-4 px-4">Status</th>
+                                              <th className="text-left py-4 px-4">Actions</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {scheduleAppointments.length === 0 ? (
+                                              <tr>
+                                                <td colSpan={5} className="text-center py-8 text-muted-foreground">
+                                                  No appointments scheduled for {format(selectedDate, "PPP")}
+                                                </td>
+                                              </tr>
+                                            ) : (
+                                              scheduleAppointments.map((appointment) => (
+                                                <tr 
+                                                  key={appointment.id} 
+                                                  className={`border-b ${appointment.status === "in_progress" ? "bg-blue-50" : ""}`}
+                                                >
+                                                  <td className="py-4 px-4">{appointment.tokenNumber}</td>
+                                                  <td className="py-4 px-4">
+                                                    {appointment.isWalkIn ? (
+                                                      <div>
+                                                        <div className="font-medium">{appointment.guestName}</div>
+                                                        <Badge variant="outline" className="mt-1">Walk-in</Badge>
+                                                      </div>
+                                                    ) : (
+                                                      <div className="font-medium">{appointment.patient?.name}</div>
+                                                    )}
+                                                  </td>
+                                                  <td className="py-4 px-4">{format(new Date(appointment.date), "hh:mm a")}</td>
+                                                  <td className="py-4 px-4">
+                                                    <Badge
+                                                      variant={
+                                                        appointment.status === "completed" ? "outline" :
+                                                        appointment.status === "start" ? "default" :
+                                                        appointment.status === "hold" ? "secondary" :
+                                                        appointment.status === "pause" ? "destructive" :
+                                                        appointment.status === "cancel" ? "destructive" :
+                                                        "outline"
+                                                      }
+                                                    >
+                                                      {appointment.status === "scheduled" ? "Scheduled" :
+                                                      appointment.status === "start" ? "In Progress" :
+                                                      appointment.status === "hold" ? "On Hold" :
+                                                      appointment.status === "pause" ? "Paused" :
+                                                      appointment.status === "cancel" ? "Cancelled" :
+                                                      appointment.status === "completed" ? "Completed" :
+                                                      "Unknown"}
+                                                    </Badge>
+                                                    {appointment.statusNotes && (
+                                                      <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                          <InfoIcon className="inline-block ml-2 h-4 w-4 text-muted-foreground cursor-help" />
+                                                        </TooltipTrigger>
+                                                        <TooltipContent>
+                                                          <p>{appointment.statusNotes}</p>
+                                                        </TooltipContent>
+                                                      </Tooltip>
+                                                    )}
+                                                  </td>
+                                                  <td className="py-4 px-4">
+                                                    <AppointmentActions
+                                                      appointment={appointment}
+                                                      onMarkAsStarted={() => handleMarkInProgress(appointment.id)}
+                                                      onMarkAsCompleted={() => handleMarkAsCompleted(appointment.id)}
+                                                      onHold={() => handleHoldAppointment(appointment.id)}
+                                                      onPause={() => handlePauseAppointment(appointment.id)}
+                                                      onCancel={() => handleCancelAppointment(appointment.id)}
+                                                    />
+                                                  </td>
+                                                </tr>
+                                              ))
+                                            )}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    </CardContent>
+                                  </Card>
+                                </TabsContent>
+                              );
+                            })}
+                          </Tabs>
                         )}
                       </TabsContent>
                     );
@@ -528,6 +722,62 @@ export default function AttenderDashboard() {
           </div>
         </main>
       </TooltipProvider>
+      <Dialog open={isWalkInDialogOpen} onOpenChange={setIsWalkInDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Create Walk-in Appointment</DialogTitle>
+            <DialogDescription>
+              {walkInCurrentDoctor && (
+                <p>Creating appointment for Dr. {walkInCurrentDoctor.doctorName} on {format(selectedDate, "PPP")}</p>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="guestName" className="text-right col-span-1">
+                Patient Name
+              </Label>
+              <Input
+                id="guestName"
+                placeholder="Enter patient name"
+                className="col-span-3"
+                value={walkInFormValues.guestName}
+                onChange={(e) => setWalkInFormValues({
+                  ...walkInFormValues,
+                  guestName: e.target.value
+                })}
+              />
+            </div>
+            
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="guestPhone" className="text-right col-span-1">
+                Phone Number
+              </Label>
+              <Input
+                id="guestPhone"
+                placeholder="Enter phone number (optional)"
+                className="col-span-3"
+                value={walkInFormValues.guestPhone}
+                onChange={(e) => setWalkInFormValues({
+                  ...walkInFormValues,
+                  guestPhone: e.target.value
+                })}
+              />
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button
+              type="submit"
+              onClick={handleCreateWalkInAppointment}
+              disabled={createWalkInAppointmentMutation.isPending}
+            >
+              {createWalkInAppointmentMutation.isPending ? "Creating..." : "Create Appointment"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

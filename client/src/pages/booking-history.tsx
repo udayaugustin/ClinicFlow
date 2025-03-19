@@ -31,6 +31,35 @@ type TokenProgress = {
   currentToken: number;
   status: 'start' | 'completed' | 'scheduled' | 'hold' | 'pause' | 'cancel' | 'not_started' | 'no_appointments';
   appointment?: Appointment;
+  walkInPatients?: number;
+};
+
+// Helper function to calculate tokens ahead of a patient
+const calculateTokensAhead = (
+  appointment: AppointmentWithDoctor,
+  progress: TokenProgress | undefined,
+  allAppointments: AppointmentWithDoctor[]
+) => {
+  if (!progress?.currentToken) return null;
+  
+  // Filter out appointments that should be counted
+  const validAppointments = allAppointments.filter(apt => {
+    // Only count appointments with active statuses
+    return apt.status !== "cancel" && 
+           apt.status !== "pause" && 
+           apt.status !== "hold" &&
+           // Only count appointments between current token and patient token
+           apt.tokenNumber > progress.currentToken && 
+           apt.tokenNumber < appointment.tokenNumber;
+  });
+  
+  // Count of regular appointments between current token and patient token
+  const appointmentsAhead = validAppointments.length;
+  
+  // Add walk-in patients count
+  const walkInCount = progress.walkInPatients || 0;
+  
+  return appointmentsAhead + walkInCount;
 };
 
 export default function BookingHistoryPage() {
@@ -184,7 +213,33 @@ export default function BookingHistoryPage() {
                   <div className="mb-8">
                     <h2 className="text-xl font-semibold mb-4">Today's Appointments</h2>
                     <div className="space-y-4">
-                      {todayAppointments.map((appointment) => {
+                      {todayAppointments
+                        // Sort appointments by status priority
+                        .sort((a, b) => {
+                          // Define status priority (higher number = higher priority)
+                          const getStatusPriority = (status: string): number => {
+                            switch (status) {
+                              case "start": return 5;     // Currently in consultation (highest priority)
+                              case "scheduled": return 4; // Scheduled but not started (next in line)
+                              case "hold": return 3;      // On hold (temporarily waiting)
+                              case "pause": return 2;     // Paused (longer wait)
+                              case "completed": return 1; // Completed (low priority)
+                              case "cancel": return 0;    // Canceled (lowest priority)
+                              default: return 0;
+                            }
+                          };
+                          
+                          // Compare based on status priority
+                          const priorityDiff = getStatusPriority(b.status) - getStatusPriority(a.status);
+                          
+                          // If same status, sort by token number (lower number first)
+                          if (priorityDiff === 0) {
+                            return a.tokenNumber - b.tokenNumber;
+                          }
+                          
+                          return priorityDiff;
+                        })
+                        .map((appointment) => {
                         const progress = tokenProgressMap?.[`${appointment.doctorId}-${appointment.clinicId}`];
 
                         // Get all appointments for this doctor at this clinic today
@@ -196,9 +251,12 @@ export default function BookingHistoryPage() {
                           ...doctorClinicAppointments.map(apt => apt.tokenNumber)
                         );
 
-                        const tokensAhead = progress?.currentToken !== undefined
-                          ? Math.max(0, appointment.tokenNumber - progress.currentToken - 1)
-                          : null;
+                        // Use our helper function to calculate tokens ahead
+                        const tokensAhead = calculateTokensAhead(
+                          appointment, 
+                          progress, 
+                          doctorClinicAppointments
+                        );
 
                         // Check if doctor has arrived using the helper function
                         const doctorHasArrived = hasDoctorArrived(appointment.doctorId, appointment.clinicId);
@@ -206,6 +264,13 @@ export default function BookingHistoryPage() {
                         return (
                           <Card key={appointment.id} className="overflow-hidden">
                             <CardContent className="p-4">
+                              {appointment.status === "start" && (
+                                <div className="bg-blue-100 -mx-4 -mt-4 px-4 py-2 mb-3">
+                                  <p className="text-blue-700 font-medium text-sm text-center">
+                                    Currently in consultation
+                                  </p>
+                                </div>
+                              )}
                               <div className="flex items-center justify-between mb-4">
                                 <div>
                                   <h3 className="font-medium">{appointment.doctor.name}</h3>
@@ -267,7 +332,12 @@ export default function BookingHistoryPage() {
                                       ) : tokensAhead === 0 ? (
                                         <span className="text-green-600 font-medium">You're next!</span>
                                       ) : tokensAhead && tokensAhead > 0 ? (
-                                        <span>{tokensAhead} token{tokensAhead > 1 ? 's' : ''} ahead of you</span>
+                                        <span>
+                                          {tokensAhead} token{tokensAhead > 1 ? 's' : ''} ahead of you
+                                          {progress?.walkInPatients && progress.walkInPatients > 0 ? 
+                                            ` (includes ${progress.walkInPatients} walk-in patient${progress.walkInPatients > 1 ? 's' : ''})` : 
+                                            ''}
+                                        </span>
                                       ) : (
                                         <span className="text-muted-foreground">Waiting for your appointment</span>
                                       )}
