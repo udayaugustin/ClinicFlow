@@ -1,10 +1,12 @@
-import type { Express } from "express";
-import { createServer, type Server } from "http";
-import { setupAuth } from "./auth";
-import { storage, type IStorage } from "./storage";
+import express, { Express } from 'express';
+import { createServer, Server } from 'http';
+import cors from 'cors';
+import { storage, getTokens } from './storage';
+import { createSessionMiddleware, setupAuth } from './auth';
 import { insertAppointmentSchema, insertAttenderDoctorSchema, type AttenderDoctor, type User } from "@shared/schema";
 import { insertDoctorDetailSchema } from "@shared/schema";
 import { z } from "zod";
+import { notificationService } from './services/notification';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   setupAuth(app);
@@ -149,6 +151,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         status as any, 
         statusNotes
       );
+      
+      // Generate notification for the status change - wrapped in try/catch
+      try {
+        if (updatedAppointment.patientId) { // Only notify registered patients
+          await notificationService.generateStatusNotification(updatedAppointment, status, statusNotes);
+        }
+        
+        // If the appointment status is "start", notify the next patients
+        if (status === "start") {
+          await notificationService.notifyNextPatients(updatedAppointment);
+        }
+      } catch (notificationError) {
+        // Log the error but don't fail the request
+        console.error('Error sending notifications:', notificationError);
+      }
+      
       res.json(updatedAppointment);
     } catch (error) {
       console.error('Error updating appointment status:', error);
@@ -719,6 +737,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const doctorId = parseInt(req.params.id);
       const { hasArrived, clinicId, scheduleId, date } = req.body;
       
+      console.log('Doctor arrival update request:', { doctorId, hasArrived, clinicId, scheduleId, date });
+      
       if (hasArrived === undefined || !clinicId || !date) {
         return res.status(400).json({ 
           message: 'Missing required fields: hasArrived, clinicId, and date are required' 
@@ -726,14 +746,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const parsedScheduleId = scheduleId ? parseInt(scheduleId) : null;
+      const dateObj = new Date(date);
       
+      console.log('Updating doctor arrival status in storage');
       const presenceRecord = await storage.updateDoctorArrivalStatus(
         doctorId,
         parseInt(clinicId),
         parsedScheduleId,
-        new Date(date),
+        dateObj,
         hasArrived
       );
+      console.log('Doctor presence record updated:', presenceRecord);
+      
+      // Send notifications to patients if the doctor has arrived
+      if (hasArrived) {
+        console.log('Doctor has arrived, sending notifications to patients');
+        try {
+          await notificationService.notifyDoctorArrival(
+            doctorId,
+            parseInt(clinicId),
+            dateObj,
+            parsedScheduleId
+          );
+          console.log(`Successfully sent arrival notifications for doctor ${doctorId}`);
+        } catch (notificationError) {
+          console.error('Error sending doctor arrival notifications:', notificationError);
+          // Continue execution - don't fail the API call if notifications fail
+        }
+      } else {
+        console.log('Doctor marked as not arrived, skipping notifications');
+      }
       
       res.json(presenceRecord);
     } catch (error) {
@@ -821,6 +863,71 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(400).json({ 
         message: error instanceof Error ? error.message : 'Invalid appointment data' 
       });
+    }
+  });
+
+  // Notification Endpoints
+
+  // Get unread notifications for the authenticated user
+  app.get('/api/notifications', async (req, res) => {
+    if (!req.user) return res.sendStatus(401);
+    try {
+      const notifications = await notificationService.getUnreadNotifications(req.user.id);
+      res.json(notifications);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      res.status(500).json({ error: errorMessage });
+    }
+  });
+
+  // Get all notifications for the authenticated user
+  app.get('/api/notifications/all', async (req, res) => {
+    if (!req.user) return res.sendStatus(401);
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const offset = req.query.offset ? parseInt(req.query.offset as string) : 0;
+      
+      const notifications = await notificationService.getAllNotifications(req.user.id, limit, offset);
+      res.json(notifications);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      res.status(500).json({ error: errorMessage });
+    }
+  });
+
+  // Mark a notification as read
+  app.patch('/api/notifications/:id/read', async (req, res) => {
+    if (!req.user) return res.sendStatus(401);
+    try {
+      const notification = await notificationService.markAsRead(parseInt(req.params.id));
+      res.json(notification);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      res.status(500).json({ error: errorMessage });
+    }
+  });
+
+  // Mark all notifications as read
+  app.post('/api/notifications/read-all', async (req, res) => {
+    if (!req.user) return res.sendStatus(401);
+    try {
+      const result = await notificationService.markAllAsRead(req.user.id);
+      res.json(result);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      res.status(500).json({ error: errorMessage });
+    }
+  });
+
+  // Delete a notification
+  app.delete('/api/notifications/:id', async (req, res) => {
+    if (!req.user) return res.sendStatus(401);
+    try {
+      const result = await notificationService.deleteNotification(parseInt(req.params.id));
+      res.json(result);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      res.status(500).json({ error: errorMessage });
     }
   });
 

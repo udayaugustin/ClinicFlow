@@ -9,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { LogOut, User, Calendar, UserPlus, Clock } from "lucide-react";
+import { NotificationPopover } from "./notifications/notification-popover";
 
 export function NavHeader() {
   const { user, logoutMutation } = useAuth();
@@ -22,6 +23,9 @@ export function NavHeader() {
   
   // Check if user can access schedules (hospital_admin, attender, or doctor)
   const canAccessSchedules = user?.role === "hospital_admin" || user?.role === "attender" || user?.role === "doctor";
+
+  // Check if user can receive notifications (patients and doctors)
+  const canReceiveNotifications = user?.role === "patient" || user?.role === "doctor";
 
   return (
     <header className="border-b">
@@ -57,6 +61,10 @@ export function NavHeader() {
                   </Link>
                 </Button>
               )}
+              
+              {/* Show notification bell for patients and doctors */}
+              {canReceiveNotifications && <NotificationPopover />}
+              
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="relative h-10 w-10 rounded-full">
