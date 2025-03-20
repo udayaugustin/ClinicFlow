@@ -13,6 +13,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, CheckCircle2, XCircle } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { AppointmentStatusBadge } from "@/components/appointment-status-badge";
 
 type AppointmentWithPatient = Appointment & {
   patient: User;
@@ -150,20 +151,10 @@ export default function DoctorBookingPage() {
                             {format(new Date(appointment.date), "p")}
                           </td>
                           <td className="py-4 px-4">
-                            <Badge
-                              variant={
-                                appointment.status === "scheduled"
-                                  ? "default"
-                                  : appointment.status === "completed"
-                                  ? "outline"
-                                  : appointment.status === "in_progress"
-                                  ? "secondary"
-                                  : "destructive"
-                              }
-                            >
-                              {appointment.status.charAt(0).toUpperCase() + 
-                                appointment.status.slice(1)}
-                            </Badge>
+                            <AppointmentStatusBadge 
+                              status={appointment.status}
+                              statusNotes={appointment.statusNotes} 
+                            />
                           </td>
                         </tr>
                       ))
