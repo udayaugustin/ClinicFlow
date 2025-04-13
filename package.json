@@ -11,7 +11,8 @@
     "db:push": "drizzle-kit push",
     "db:migrate": "tsx migrations/run.ts",
     "db:generate": "drizzle-kit generate:pg",
-    "reset-password": "tsx scripts/reset-password.ts"
+    "reset-password": "tsx scripts/reset-password.ts",
+    "create-attender": "tsx scripts/create-attender.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
