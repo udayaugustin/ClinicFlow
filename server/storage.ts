@@ -143,6 +143,19 @@ export interface IStorage {
     currentToken: number,
     patientToken: number
   ): Promise<number>;
+
+  updateDoctor(
+    doctorId: number,
+    user: Omit<InsertUser, "role" | "password" | "username" | "phone">,
+    details: {
+      consultationFee: number | string;
+      consultationDuration: number;
+      qualifications?: string;
+      experience?: number;
+      registrationNumber?: string;
+      isEnabled?: boolean;
+    }
+  ): Promise<User & { details: DoctorDetail }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1458,6 +1471,50 @@ export class DatabaseStorage implements IStorage {
       );
     
     return result[0]?.count || 0;
+  }
+
+  async updateDoctor(
+    doctorId: number,
+    user: Omit<InsertUser, "role" | "password" | "username" | "phone">,
+    details: {
+      consultationFee: number | string;
+      consultationDuration: number;
+      qualifications?: string;
+      experience?: number;
+      registrationNumber?: string;
+      isEnabled?: boolean;
+    }
+  ): Promise<User & { details: DoctorDetail }> {
+    // Start a transaction
+    return await db.transaction(async (tx) => {
+      // Update the user first
+      const [updatedUser] = await tx
+        .update(users)
+        .set(user)
+        .where(eq(users.id, doctorId))
+        .returning();
+      
+      // Then update the doctor details
+      const [updatedDetails] = await tx
+        .update(doctorDetails)
+        .set({
+          consultationFee: typeof details.consultationFee === 'string' 
+            ? details.consultationFee 
+            : details.consultationFee.toString(),
+          consultationDuration: details.consultationDuration,
+          qualifications: details.qualifications || null,
+          experience: details.experience || null,
+          registrationNumber: details.registrationNumber || null,
+          isEnabled: details.isEnabled ?? true
+        })
+        .where(eq(doctorDetails.doctorId, doctorId))
+        .returning();
+      
+      return {
+        ...updatedUser,
+        details: updatedDetails
+      };
+    });
   }
 }
 

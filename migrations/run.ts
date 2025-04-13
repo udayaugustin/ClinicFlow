@@ -1,11 +1,22 @@
-import dotenv from 'dotenv';
-import { pool } from '../server/db';
-import fs from 'fs/promises';
-import path from 'path';
+import { config } from 'dotenv';
 import { fileURLToPath } from 'url';
+import * as path from 'path';
+import * as fs from 'fs/promises';
 
 // Load environment variables from .env file
-dotenv.config();
+const result = config();
+if (result.error) {
+  console.error('Error loading .env file:', result.error);
+  process.exit(1);
+}
+
+console.log('Environment loaded:', {
+  DATABASE_URL: process.env.DATABASE_URL ? 'Set' : 'Not set',
+  NODE_ENV: process.env.NODE_ENV
+});
+
+// Import pool after environment is loaded
+import { pool } from '../server/db';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

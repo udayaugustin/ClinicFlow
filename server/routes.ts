@@ -931,6 +931,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Update doctor (complete record)
+  app.patch("/api/doctors/:id", async (req, res) => {
+    try {
+      // Check if user is authorized (must be hospital_admin or attender)
+      if (!req.user || (req.user.role !== "hospital_admin" && req.user.role !== "attender")) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const doctorId = parseInt(req.params.id);
+
+      // Validate request body
+      const updateDoctorSchema = z.object({
+        user: z.object({
+          name: z.string(),
+          specialty: z.string(),
+          bio: z.string().optional(),
+          imageUrl: z.string().optional(),
+          address: z.string().optional(),
+          city: z.string().optional(),
+          state: z.string().optional(),
+          zipCode: z.string().optional(),
+          latitude: z.string().optional(),
+          longitude: z.string().optional(),
+          clinicId: z.number(),
+        }),
+        details: z.object({
+          consultationFee: z.number().or(z.string().transform(val => parseFloat(val))),
+          consultationDuration: z.number().or(z.string().transform(val => parseInt(val))),
+          qualifications: z.string().optional(),
+          experience: z.number().optional().or(z.string().transform(val => parseInt(val))),
+          registrationNumber: z.string().optional(),
+          isEnabled: z.boolean().optional(),
+        }),
+      });
+
+      const validatedData = updateDoctorSchema.parse(req.body);
+
+      // Update the doctor
+      const doctor = await storage.updateDoctor(
+        doctorId,
+        validatedData.user,
+        validatedData.details
+      );
+
+      res.json(doctor);
+    } catch (error) {
+      console.error("Error updating doctor:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to update doctor" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

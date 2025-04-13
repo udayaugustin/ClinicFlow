@@ -219,4 +219,37 @@ New features should follow these principles:
 4. Ensure backward compatibility with existing clients
 5. Consider mobile responsiveness for all UI changes
 
-This document serves as a high-level guide to understanding the ClinicFlow application architecture. For detailed implementation details, refer to the source code and inline documentation. 
+## Password Management
+
+### Password Reset Tool
+A command-line tool is available to reset user passwords:
+
+```bash
+npm run reset-password -- <username> <new_password>
+```
+
+Example usage:
+```bash
+# Reset a patient's password
+npm run reset-password -- test.patient newpassword123
+
+# Reset a doctor's password
+npm run reset-password -- doctor newpassword123
+
+# Reset an attender's password
+npm run reset-password -- attender newpassword123
+```
+
+The tool:
+1. Uses the same scrypt hashing as the authentication system
+2. Properly formats the hash with salt
+3. Updates the user's password in the database
+4. Provides clear feedback about the new credentials
+
+This is useful for:
+- Resetting forgotten passwords
+- Setting up new user accounts
+- Emergency access recovery
+- System administration tasks
+
+Note: This is a high-level guide to understanding the ClinicFlow application architecture. For detailed implementation details, refer to the source code and inline documentation. 

@@ -1,3 +1,28 @@
+-- Add missing columns to clinics table if they don't exist
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT FROM information_schema.columns 
+    WHERE table_name = 'clinics' AND column_name = 'city'
+  ) THEN
+    ALTER TABLE clinics ADD COLUMN city VARCHAR(100);
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT FROM information_schema.columns 
+    WHERE table_name = 'clinics' AND column_name = 'state'
+  ) THEN
+    ALTER TABLE clinics ADD COLUMN state VARCHAR(50);
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT FROM information_schema.columns 
+    WHERE table_name = 'clinics' AND column_name = 'zip_code'
+  ) THEN
+    ALTER TABLE clinics ADD COLUMN zip_code VARCHAR(20);
+  END IF;
+END $$;
+
 -- Add unique constraint on clinic name if it doesn't exist
 DO $$
 BEGIN

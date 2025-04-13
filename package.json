@@ -10,7 +10,8 @@
     "check": "tsc",
     "db:push": "drizzle-kit push",
     "db:migrate": "tsx migrations/run.ts",
-    "db:generate": "drizzle-kit generate:pg"
+    "db:generate": "drizzle-kit generate:pg",
+    "reset-password": "tsx scripts/reset-password.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",

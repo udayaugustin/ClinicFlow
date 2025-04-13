@@ -1,12 +1,16 @@
--- Add hospital_admin role to users table
-DO $$
-BEGIN
-  -- Check if any users have the role 'hospital_admin'
-  IF NOT EXISTS (
-    SELECT 1 FROM users WHERE role = 'hospital_admin'
-  ) THEN
-    -- Create a default hospital admin user if none exists
-    INSERT INTO users (name, username, password, role)
-    VALUES ('Hospital Admin', 'admin', '$2a$10$JdJMnQZRZMDSNPZmQRD1UOHRqq7HGQ9W5v.o5JRwzpRNL9xgbSgRm', 'hospital_admin');
-  END IF;
-END $$; 
+-- Update user roles
+INSERT INTO users (name, username, email, password, role)
+    VALUES ('Hospital Admin', 'admin', 'admin@clinicflow.com', '$2a$10$JdJMnQZRZMDSNPZmQRD1UOHRqq7HGQ9W5v.o5JRwzpRNL9xgbSgRm', 'hospital_admin')
+ON CONFLICT (username) DO UPDATE SET role = EXCLUDED.role;
+
+INSERT INTO users (name, username, email, password, role)
+    VALUES ('Clinic Attender', 'attender', 'attender@clinicflow.com', '$2a$10$JdJMnQZRZMDSNPZmQRD1UOHRqq7HGQ9W5v.o5JRwzpRNL9xgbSgRm', 'attender')
+ON CONFLICT (username) DO UPDATE SET role = EXCLUDED.role;
+
+INSERT INTO users (name, username, email, password, role)
+    VALUES ('Doctor', 'doctor', 'doctor@clinicflow.com', '$2a$10$JdJMnQZRZMDSNPZmQRD1UOHRqq7HGQ9W5v.o5JRwzpRNL9xgbSgRm', 'doctor')
+ON CONFLICT (username) DO UPDATE SET role = EXCLUDED.role;
+
+INSERT INTO users (name, username, email, password, role)
+    VALUES ('Patient', 'patient', 'patient@clinicflow.com', '$2a$10$JdJMnQZRZMDSNPZmQRD1UOHRqq7HGQ9W5v.o5JRwzpRNL9xgbSgRm', 'patient')
+ON CONFLICT (username) DO UPDATE SET role = EXCLUDED.role; 

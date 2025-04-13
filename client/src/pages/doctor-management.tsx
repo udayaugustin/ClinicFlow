@@ -26,6 +26,7 @@ type Doctor = {
   username: string;
   specialty: string;
   clinicId: number;
+  bio?: string;
   details?: DoctorDetails;
 };
 
@@ -51,7 +52,6 @@ export default function DoctorManagementPage() {
     user: {
       name: "",
       username: "",
-      password: "",
       specialty: "",
       bio: "",
       clinicId: 0,
@@ -102,6 +102,43 @@ export default function DoctorManagementPage() {
       });
       resetForm();
       setActiveTab("list");
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Update doctor mutation
+  const updateDoctorMutation = useMutation({
+    mutationFn: async (data: { id: number, data: typeof formData }) => {
+      const response = await fetch(`/api/doctors/${data.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data.data),
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to update doctor");
+      }
+      
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/doctors"] });
+      toast({
+        title: "Success",
+        description: "Doctor updated successfully",
+      });
+      resetForm();
+      setActiveTab("list");
+      setSelectedDoctor(null);
     },
     onError: (error) => {
       toast({
@@ -184,7 +221,11 @@ export default function DoctorManagementPage() {
   // Handle form submission
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    createDoctorMutation.mutate(formData);
+    if (selectedDoctor) {
+      updateDoctorMutation.mutate({ id: selectedDoctor.id, data: formData });
+    } else {
+      createDoctorMutation.mutate(formData);
+    }
   };
 
   // Reset form
@@ -193,7 +234,6 @@ export default function DoctorManagementPage() {
       user: {
         name: "",
         username: "",
-        password: "",
         specialty: "",
         bio: "",
         clinicId: 0,
@@ -212,10 +252,42 @@ export default function DoctorManagementPage() {
 
   // Handle doctor status toggle
   const handleToggleStatus = (doctorId: number, currentStatus: boolean) => {
+    if (currentStatus === undefined) {
+      toast({
+        title: "Error",
+        description: "Cannot toggle status: Current status is unknown",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     toggleDoctorStatusMutation.mutate({
       doctorId,
       isEnabled: !currentStatus,
     });
+  };
+
+  // Handle edit button click
+  const handleEditClick = (doctor: Doctor) => {
+    setFormData({
+      user: {
+        name: doctor.name,
+        username: doctor.username,
+        specialty: doctor.specialty || "",
+        bio: doctor.bio || "",
+        clinicId: doctor.clinicId,
+      },
+      details: {
+        consultationFee: doctor.details?.consultationFee || 0,
+        consultationDuration: doctor.details?.consultationDuration || 30,
+        qualifications: doctor.details?.qualifications || "",
+        experience: doctor.details?.experience || 0,
+        registrationNumber: doctor.details?.registrationNumber || "",
+        isEnabled: doctor.details?.isEnabled !== undefined ? doctor.details.isEnabled : true,
+      },
+    });
+    setSelectedDoctor(doctor);
+    setActiveTab("form");
   };
 
   if (isLoadingClinics || isLoadingDoctors) {
@@ -241,7 +313,7 @@ export default function DoctorManagementPage() {
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="mb-6">
                 <TabsTrigger value="list">Doctor List</TabsTrigger>
-                <TabsTrigger value="create">Create Doctor</TabsTrigger>
+                <TabsTrigger value="form">{selectedDoctor ? "Edit Doctor" : "Create Doctor"}</TabsTrigger>
               </TabsList>
               
               <TabsContent value="list">
@@ -274,13 +346,19 @@ export default function DoctorManagementPage() {
                             {doctor.details?.consultationDuration || "N/A"} min
                           </td>
                           <td className="py-4 px-4">
-                            {doctor.details?.isEnabled ? (
-                              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                                Active
-                              </Badge>
+                            {doctor.details?.isEnabled !== undefined ? (
+                              doctor.details.isEnabled ? (
+                                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                                  Active
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                                  Inactive
+                                </Badge>
+                              )
                             ) : (
-                              <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
-                                Inactive
+                              <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200">
+                                Unknown
                               </Badge>
                             )}
                           </td>
@@ -289,7 +367,7 @@ export default function DoctorManagementPage() {
                               <Button
                                 variant="outline"
                                 size="icon"
-                                onClick={() => setSelectedDoctor(doctor)}
+                                onClick={() => handleEditClick(doctor)}
                               >
                                 <Edit className="h-4 w-4" />
                               </Button>
@@ -313,14 +391,14 @@ export default function DoctorManagementPage() {
                 </div>
               </TabsContent>
               
-              <TabsContent value="create">
+              <TabsContent value="form">
                 <form onSubmit={handleSubmit} className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-6">
                       <h3 className="text-lg font-medium">Basic Information</h3>
                       
                       <div className="space-y-2">
-                        <Label htmlFor="name">Full Name</Label>
+                        <Label htmlFor="name">Name</Label>
                         <Input
                           id="name"
                           name="name"
@@ -336,18 +414,6 @@ export default function DoctorManagementPage() {
                           id="username"
                           name="username"
                           value={formData.user.username}
-                          onChange={handleUserInputChange}
-                          required
-                        />
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <Label htmlFor="password">Password</Label>
-                        <Input
-                          id="password"
-                          name="password"
-                          type="password"
-                          value={formData.user.password}
                           onChange={handleUserInputChange}
                           required
                         />
@@ -382,7 +448,7 @@ export default function DoctorManagementPage() {
                       <div className="space-y-2">
                         <Label htmlFor="clinicId">Clinic</Label>
                         <Select
-                          value={formData.user.clinicId.toString()}
+                          value={(formData.user.clinicId || "").toString()}
                           onValueChange={(value) => 
                             handleUserInputChange({
                               target: { name: "clinicId", value },
@@ -496,8 +562,17 @@ export default function DoctorManagementPage() {
                       Cancel
                     </Button>
                     <Button type="submit">
-                      <PlusCircle className="mr-2 h-4 w-4" />
-                      Create Doctor
+                      {selectedDoctor ? (
+                        <>
+                          <Edit className="mr-2 h-4 w-4" />
+                          Update Doctor
+                        </>
+                      ) : (
+                        <>
+                          <PlusCircle className="mr-2 h-4 w-4" />
+                          Create Doctor
+                        </>
+                      )}
                     </Button>
                   </div>
                 </form>
