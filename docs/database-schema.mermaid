@@ -1,0 +1,123 @@
+erDiagram
+    users {
+        int id PK
+        string name
+        string username UK
+        string password
+        string role
+        string phone
+        string email UK
+        string specialty
+        string bio
+        string imageUrl
+        string address
+        string city
+        string state
+        string zipCode
+        string latitude
+        string longitude
+        int clinicId FK
+        timestamp createdAt
+    }
+
+    clinics {
+        int id PK
+        string name
+        string address
+        string city
+        string state
+        string zipCode
+        string phone
+        string email
+        timestamp createdAt
+    }
+
+    appointments {
+        int id PK
+        int patientId FK
+        int doctorId FK
+        int clinicId FK
+        int scheduleId FK
+        timestamp date
+        int tokenNumber
+        string status
+        string statusNotes
+        string guestName
+        string guestPhone
+        boolean isWalkIn
+        timestamp createdAt
+    }
+
+    doctor_details {
+        int id PK
+        int doctorId FK
+        decimal consultationFee
+        int consultationDuration
+        string qualifications
+        int experience
+        string registrationNumber
+        boolean isEnabled
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
+    doctor_schedules {
+        int id PK
+        int doctorId FK
+        int clinicId FK
+        int dayOfWeek
+        string startTime
+        string endTime
+        boolean isActive
+        int maxTokens
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
+    doctor_daily_presence {
+        int id PK
+        int doctorId FK
+        int clinicId FK
+        int scheduleId FK
+        timestamp date
+        boolean hasArrived
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
+    attender_doctors {
+        int id PK
+        int attenderId FK
+        int doctorId FK
+        int clinicId FK
+        timestamp createdAt
+    }
+
+    notifications {
+        int id PK
+        int userId FK
+        int appointmentId FK
+        string title
+        string message
+        string type
+        boolean isRead
+        timestamp createdAt
+    }
+
+    users ||--o{ appointments : "as patient"
+    users ||--o{ appointments : "as doctor"
+    users ||--o{ doctor_details : "has"
+    users ||--o{ doctor_schedules : "has"
+    users ||--o{ doctor_daily_presence : "tracks"
+    users ||--o{ attender_doctors : "as attender"
+    users ||--o{ attender_doctors : "as doctor"
+    users ||--o{ notifications : "receives"
+    
+    clinics ||--o{ users : "employs"
+    clinics ||--o{ appointments : "hosts"
+    clinics ||--o{ doctor_schedules : "hosts"
+    clinics ||--o{ doctor_daily_presence : "location"
+    clinics ||--o{ attender_doctors : "location"
+    
+    doctor_schedules ||--o{ appointments : "contains"
+    doctor_schedules ||--o{ doctor_daily_presence : "references"

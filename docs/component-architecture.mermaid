@@ -1,0 +1,55 @@
+graph TB
+    subgraph "Frontend (React)"
+        UI[UI Components]
+        Pages[Page Components]
+        Hooks[Custom Hooks]
+        Query[TanStack Query]
+        State[State Management]
+        Forms[Form Handling]
+        
+        UI --> Pages
+        Pages --> Query
+        Pages --> Forms
+        Hooks --> Query
+        Hooks --> State
+        Forms --> State
+    end
+    
+    subgraph "Backend (Express)"
+        Routes[API Routes]
+        Auth[Authentication]
+        Storage[Storage Layer]
+        Services[Services]
+        DB[Database Access]
+        Validation[Input Validation]
+        
+        Routes --> Auth
+        Routes --> Storage
+        Routes --> Services
+        Routes --> Validation
+        Storage --> DB
+        Services --> Storage
+    end
+    
+    subgraph "Database (PostgreSQL)"
+        Tables[Database Tables]
+        Relations[Table Relations]
+        Migrations[Schema Migrations]
+        
+        Tables --> Relations
+        Migrations --> Tables
+    end
+    
+    Query --> Routes
+    Auth --> Query
+    DB --> Tables
+
+    subgraph "Key Components"
+        direction LR
+        A[NavHeader] --> B[Authentication]
+        C[DoctorCard] --> D[Appointment Booking]
+        E[AttenderDashboard] --> F[Appointment Management]
+        G[NotificationSystem] --> H[Real-time Updates]
+        I[TokenSystem] --> J[Queue Management]
+        K[ScheduleSystem] --> L[Availability Tracking]
+    end
