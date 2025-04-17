@@ -45,4 +45,4 @@ After setting up, you can log in with these test accounts:
 - Attender: username: `attender1`, password: `password123`
 
 
-DATABASE_URL="postgresql://neondb_owner:npg_tXArKyUqD90B@ep-dry-cell-a5brg9b5.us-east-2.aws.neon.tech/neondb?sslmode=require" npm run db:migrate
+DATABASE_URL=postgresql://uday:Admin2011!!@82.25.109.202:5432/clinicalflow npm run db:migrate

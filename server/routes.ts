@@ -708,20 +708,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/doctors/:id/available-slots", async (req, res) => {
     try {
       const doctorId = parseInt(req.params.id);
+      console.log('Fetching available slots for doctor:', doctorId);
+      
       if (isNaN(doctorId)) {
+        console.log('Invalid doctor ID:', req.params.id);
         return res.status(400).json({ message: 'Invalid doctor ID' });
       }
 
       // Get date from query parameter or use current date
       const dateParam = req.query.date as string;
       const date = dateParam ? new Date(dateParam) : new Date();
+      console.log('Using date:', date);
       
       // Validate the date
       if (isNaN(date.getTime())) {
+        console.log('Invalid date format:', dateParam);
         return res.status(400).json({ message: 'Invalid date format' });
       }
 
+      // First check if doctor exists
+      const doctor = await storage.getUser(doctorId);
+      if (!doctor) {
+        console.log('Doctor not found:', doctorId);
+        return res.status(404).json({ message: 'Doctor not found' });
+      }
+      if (doctor.role !== 'doctor') {
+        console.log('User is not a doctor:', doctor.role);
+        return res.status(400).json({ message: 'User is not a doctor' });
+      }
+
+      console.log('Fetching available time slots for doctor:', doctorId, 'on date:', date);
       const result = await storage.getDoctorAvailableTimeSlots(doctorId, date);
+      console.log('Available slots result:', JSON.stringify(result, null, 2));
       res.json(result);
     } catch (error) {
       console.error('Error fetching available time slots:', error);
