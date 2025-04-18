@@ -25,7 +25,6 @@ type DoctorSchedule = {
   id: number;
   doctorId: number;
   clinicId: number;
-  dayOfWeek: number;
   startTime: string;
   endTime: string;
   isActive: boolean;
@@ -86,6 +85,7 @@ export default function PatientBookingPage() {
         doctorId: parseInt(doctorId!),
         date: appointmentDate.toISOString(),
         clinicId: selectedSchedule.clinicId,
+        scheduleId: selectedSchedule.id,
       });
       return res.json();
     },

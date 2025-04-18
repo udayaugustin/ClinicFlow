@@ -41,7 +41,7 @@ export interface IStorage {
   getClinics(): Promise<Clinic[]>;
   getAppointments(userId: number): Promise<(Appointment & { doctor: User; patient?: User })[]>;
   createAppointment(appointment: Omit<Appointment, "id" | "tokenNumber">): Promise<Appointment>;
-  getNextTokenNumber(doctorId: number, clinicId: number, date: Date): Promise<number>;
+  getNextTokenNumber(doctorId: number, clinicId: number, scheduleId: number): Promise<number>;
   sessionStore: session.Store;
 
   getAttenderDoctors(attenderId: number): Promise<(AttenderDoctor & { doctor: User })[]>;
@@ -104,8 +104,7 @@ export interface IStorage {
   getAppointmentCountForDoctor(
     doctorId: number,
     clinicId: number,
-    startDate: Date,
-    endDate: Date
+    scheduleId: number
   ): Promise<number>;
 
   // Add these to the IStorage interface
@@ -343,13 +342,7 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  async getNextTokenNumber(doctorId: number, clinicId: number, date: Date): Promise<number> {
-    const startOfDay = new Date(date);
-    startOfDay.setHours(0, 0, 0, 0);
-
-    const endOfDay = new Date(date);
-    endOfDay.setHours(23, 59, 59, 999);
-
+  async getNextTokenNumber(doctorId: number, clinicId: number, scheduleId: number): Promise<number> {
     const [result] = await db
       .select({
         maxToken: sql<number>`COALESCE(MAX(token_number), 0)`,
@@ -359,7 +352,7 @@ export class DatabaseStorage implements IStorage {
         and(
           eq(appointments.doctorId, doctorId),
           eq(appointments.clinicId, clinicId),
-          sql`date >= ${startOfDay} AND date < ${endOfDay}`
+          eq(appointments.scheduleId, scheduleId)
         )
       );
 
@@ -390,8 +383,7 @@ export class DatabaseStorage implements IStorage {
       .where(
         and(
           eq(doctorSchedules.doctorId, appointment.doctorId),
-          eq(doctorSchedules.clinicId, clinicId),
-          eq(doctorSchedules.dayOfWeek, dayOfWeek),
+          eq(doctorSchedules.clinicId, clinicId),          
           eq(doctorSchedules.isActive, true)
         )
       );
@@ -400,13 +392,7 @@ export class DatabaseStorage implements IStorage {
       throw new Error("No active schedule found for this doctor on the selected day");
     }
     
-    // Get current token count for this date
-    const startOfDay = new Date(appointmentDate);
-    startOfDay.setHours(0, 0, 0, 0);
-    
-    const endOfDay = new Date(appointmentDate);
-    endOfDay.setHours(23, 59, 59, 999);
-    
+    // Get current token count
     const [tokenCount] = await db
       .select({
         count: count(),
@@ -416,7 +402,7 @@ export class DatabaseStorage implements IStorage {
         and(
           eq(appointments.doctorId, appointment.doctorId),
           eq(appointments.clinicId, clinicId),
-          sql`date >= ${startOfDay} AND date < ${endOfDay}`
+          eq(appointments.scheduleId, schedule.id)
         )
       );
       
@@ -428,7 +414,7 @@ export class DatabaseStorage implements IStorage {
     const tokenNumber = await this.getNextTokenNumber(
       appointment.doctorId,
       clinicId,
-      appointment.date
+      schedule.id
     );
 
     const [created] = await db
@@ -1211,8 +1197,7 @@ export class DatabaseStorage implements IStorage {
   async getAppointmentCountForDoctor(
     doctorId: number,
     clinicId: number,
-    startDate: Date,
-    endDate: Date
+    scheduleId: number
   ): Promise<number> {
     try {
       const [result] = await db
@@ -1224,7 +1209,7 @@ export class DatabaseStorage implements IStorage {
           and(
             eq(appointments.doctorId, doctorId),
             eq(appointments.clinicId, clinicId),
-            sql`date >= ${startDate} AND date < ${endDate}`
+            eq(appointments.scheduleId, scheduleId)
           )
         );
       
@@ -1358,33 +1343,22 @@ export class DatabaseStorage implements IStorage {
       scheduleId = schedule.id;
     }
     
-    // Get current token count for this date
-    const startOfDay = new Date(appointmentDate);
-    startOfDay.setHours(0, 0, 0, 0);
-    
-    const endOfDay = new Date(appointmentDate);
-    endOfDay.setHours(23, 59, 59, 999);
-    
-    // Get the schedule to check max tokens
-    const [schedule] = await db
-      .select()
-      .from(doctorSchedules)
-      .where(eq(doctorSchedules.id, scheduleId));
-    
-    if (!schedule) {
-      throw new Error("Schedule not found");
-    }
-    
-    // Get the appointment count
-    const count = await this.getAppointmentCountForDoctor(
-      appointment.doctorId,
-      appointment.clinicId,
-      startOfDay,
-      endOfDay
-    );
-    
+    // Get current token count
+    const [tokenCount] = await db
+      .select({
+        count: count(),
+      })
+      .from(appointments)
+      .where(
+        and(
+          eq(appointments.doctorId, appointment.doctorId),
+          eq(appointments.clinicId, clinicId),
+          eq(appointments.scheduleId, schedule.id)
+        )
+      );
+      
     // Check if token limit has been reached
-    if (schedule.maxTokens !== null && count >= schedule.maxTokens) {
+    if (schedule.maxTokens !== null && tokenCount.count >= schedule.maxTokens) {
       throw new Error(`Maximum number of tokens (${schedule.maxTokens}) has been reached for this schedule`);
     }
     
@@ -1392,7 +1366,7 @@ export class DatabaseStorage implements IStorage {
     const tokenNumber = await this.getNextTokenNumber(
       appointment.doctorId,
       appointment.clinicId,
-      appointment.date
+      schedule.id
     );
     
     // Create the appointment - explicitly set patientId to null for walk-ins

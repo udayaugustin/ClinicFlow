@@ -93,17 +93,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Get current token count for this date
-      const startOfDay = new Date(appointmentDate);
-      startOfDay.setHours(0, 0, 0, 0);
-      
-      const endOfDay = new Date(appointmentDate);
-      endOfDay.setHours(23, 59, 59, 999);
-      
       const appointments = await storage.getAppointmentCountForDoctor(
         Number(req.body.doctorId),
         clinicId,
-        startOfDay,
-        endOfDay
+        schedule.id
       );
       
       // Check if token limit has been reached
