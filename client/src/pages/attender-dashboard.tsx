@@ -36,6 +36,8 @@ type DoctorSchedule = {
   endTime: string;
   isActive: boolean;
   maxTokens?: number;
+  isPaused?: boolean;
+  pauseReason?: string;
   createdAt?: string;
   updatedAt?: string;
   appointments: (Appointment & { patient?: User })[];
@@ -141,6 +143,33 @@ export default function AttenderDashboard() {
     },
   });
 
+  // Add a mutation for toggling schedule pause status
+  const toggleSchedulePauseMutation = useMutation({
+    mutationFn: async ({ 
+      scheduleId, 
+      isPaused, 
+      pauseReason 
+    }: { 
+      scheduleId: number;
+      isPaused: boolean;
+      pauseReason?: string;
+    }) => {
+      const res = await apiRequest("PATCH", `/api/schedules/${scheduleId}/pause`, { 
+        isPaused,
+        pauseReason,
+        date: selectedDate.toISOString()
+      });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/attender/${user?.id}/doctors/appointments`] });
+      toast({
+        title: "Success",
+        description: data.isPaused ? "Schedule paused successfully" : "Schedule resumed successfully",
+      });
+    },
+  });
+
   // Add a query for fetching doctor presence data for the selected date
   const { data: doctorPresences } = useQuery({
     queryKey: ['doctorPresences', managedDoctors, selectedDate],
@@ -223,13 +252,6 @@ export default function AttenderDashboard() {
     const notes = prompt("Please enter reason for holding:");
     if (notes !== null) {
       handleUpdateStatus(appointmentId, "hold", notes);
-    }
-  };
-  
-  const handlePauseAppointment = (appointmentId: number) => {
-    const notes = prompt("Please enter reason for pausing:");
-    if (notes !== null) {
-      handleUpdateStatus(appointmentId, "pause", notes);
     }
   };
   
@@ -394,6 +416,18 @@ export default function AttenderDashboard() {
     setIsWalkInDialogOpen(true);
   };
 
+  // Handler for toggling schedule pause
+  const handleToggleSchedulePause = (scheduleId: number, isPaused: boolean) => {
+    const reason = isPaused ? prompt("Please enter reason for pausing the schedule:") : undefined;
+    if (isPaused && !reason) return; // Don't pause if no reason provided
+    
+    toggleSchedulePauseMutation.mutate({ 
+      scheduleId, 
+      isPaused, 
+      pauseReason: reason 
+    });
+  };
+
   if (!user) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -489,10 +523,9 @@ export default function AttenderDashboard() {
                   </TabsList>
 
                   {managedDoctors?.map((doctorData) => {
-                    // Filter schedules for the selected date
-                    const dayOfWeek = selectedDate.getDay();
+                    // Filter schedules for the selected date by checking if schedule.date matches selectedDate
                     const schedulesForDay = doctorData.schedules?.filter(
-                      schedule => schedule.dayOfWeek === dayOfWeek
+                      schedule => isSameDay(new Date(schedule.date), selectedDate)
                     ) || [];
                     
                     // Filter appointments for the selected date
@@ -587,6 +620,21 @@ export default function AttenderDashboard() {
                                           <p className="text-sm text-muted-foreground mt-1">
                                             Maximum Tokens: {schedule.maxTokens || "Unlimited"}
                                           </p>
+                                          {schedule.isPaused && (
+                                            <div className="mt-2 flex items-center gap-2">
+                                              <Badge variant="destructive">Schedule Paused</Badge>
+                                              {schedule.pauseReason && (
+                                                <Tooltip>
+                                                  <TooltipTrigger>
+                                                    <InfoIcon className="h-4 w-4 text-muted-foreground" />
+                                                  </TooltipTrigger>
+                                                  <TooltipContent>
+                                                    <p>{schedule.pauseReason}</p>
+                                                  </TooltipContent>
+                                                </Tooltip>
+                                              )}
+                                            </div>
+                                          )}
                                         </div>
                                         <div className="flex gap-2 items-center mt-2">
                                           <Button
@@ -613,6 +661,25 @@ export default function AttenderDashboard() {
                                           </Button>
                                           
                                           <Button
+                                            variant={schedule.isPaused ? "destructive" : "outline"}
+                                            size="sm"
+                                            className="gap-2"
+                                            onClick={() => handleToggleSchedulePause(schedule.id, !schedule.isPaused)}
+                                          >
+                                            {schedule.isPaused ? (
+                                              <>
+                                                <Clock className="h-4 w-4" />
+                                                Resume Schedule
+                                              </>
+                                            ) : (
+                                              <>
+                                                <XCircle className="h-4 w-4" />
+                                                Pause Schedule
+                                              </>
+                                            )}
+                                          </Button>
+
+                                          <Button
                                             variant="outline"
                                             size="sm"
                                             className="gap-2"
@@ -622,6 +689,7 @@ export default function AttenderDashboard() {
                                               schedule.clinicId, 
                                               schedule.id
                                             )}
+                                            disabled={schedule.isPaused}
                                           >
                                             <Plus className="h-4 w-4" />
                                             New Walk-in
@@ -702,7 +770,6 @@ export default function AttenderDashboard() {
                                                       onMarkAsStarted={() => handleMarkInProgress(appointment.id)}
                                                       onMarkAsCompleted={() => handleMarkAsCompleted(appointment.id)}
                                                       onHold={() => handleHoldAppointment(appointment.id)}
-                                                      onPause={() => handlePauseAppointment(appointment.id)}
                                                       onCancel={() => handleCancelAppointment(appointment.id)}
                                                     />
                                                   </td>

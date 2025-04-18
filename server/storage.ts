@@ -373,8 +373,7 @@ export class DatabaseStorage implements IStorage {
     }
     
     // Get the day of week for the appointment date
-    const appointmentDate = new Date(appointment.date);
-    const dayOfWeek = appointmentDate.getDay();
+    const appointmentDate = new Date(appointment.date);    
     
     // Get the doctor's schedule for this day and clinic
     const [schedule] = await db
@@ -740,8 +739,7 @@ export class DatabaseStorage implements IStorage {
       const doctorsWithAppointments = await Promise.all(
         doctorRelations.map(async (relation) => {
           const { doctor } = relation;
-          const today = new Date();
-          const dayOfWeek = today.getDay();
+          const today = new Date();          
 
           // Get doctor's schedules for today
           const schedules = await db
@@ -750,10 +748,11 @@ export class DatabaseStorage implements IStorage {
             .where(
               and(
                 eq(doctorSchedules.doctorId, doctor.id),
-                eq(doctorSchedules.dayOfWeek, dayOfWeek),
-                eq(doctorSchedules.isActive, true)
+                eq(doctorSchedules.isActive, true),
+                eq(doctorSchedules.date, today)
               )
-            );
+            )
+            .orderBy(doctorSchedules.startTime);
 
           // Get appointments for this doctor
           const appointmentsForDoctor = await db
@@ -790,23 +789,7 @@ export class DatabaseStorage implements IStorage {
               if (apt.scheduleId === schedule.id) {
                 return true;
               }
-              
-              // As a fallback for legacy appointments without scheduleId, use time range
-              if (!apt.scheduleId) {
-                const aptTime = new Date(apt.date);
-                const aptHour = aptTime.getHours();
-                const aptMinute = aptTime.getMinutes();
-                
-                // Create a comparable time value (hours * 60 + minutes)
-                const aptTimeValue = aptHour * 60 + aptMinute;
-                const scheduleStartTime = this.parseTime(schedule.startTime);
-                const scheduleEndTime = this.parseTime(schedule.endTime);
-                
-                return aptTimeValue >= scheduleStartTime && 
-                       aptTimeValue <= scheduleEndTime &&
-                       apt.clinicId === schedule.clinicId;
-              }
-              
+                         
               return false;
             });
             
@@ -1317,8 +1300,7 @@ export class DatabaseStorage implements IStorage {
     status?: string;
   }): Promise<Appointment> {
     // Get the day of week for the appointment date
-    const appointmentDate = new Date(appointment.date);
-    const dayOfWeek = appointmentDate.getDay();
+    const appointmentDate = new Date(appointment.date);    
     
     // Get the doctor's schedule for this day and clinic if not provided
     let scheduleId = appointment.scheduleId;
@@ -1331,7 +1313,6 @@ export class DatabaseStorage implements IStorage {
           and(
             eq(doctorSchedules.doctorId, appointment.doctorId),
             eq(doctorSchedules.clinicId, appointment.clinicId),
-            eq(doctorSchedules.dayOfWeek, dayOfWeek),
             eq(doctorSchedules.isActive, true)
           )
         );

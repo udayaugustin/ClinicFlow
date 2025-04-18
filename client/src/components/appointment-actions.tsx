@@ -7,7 +7,6 @@ type AppointmentActionsProps = {
   onMarkAsStarted: () => void;
   onMarkAsCompleted: () => void;
   onHold: () => void;
-  onPause: () => void;
   onCancel: () => void;
 };
 
@@ -16,7 +15,6 @@ export function AppointmentActions({
   onMarkAsStarted,
   onMarkAsCompleted,
   onHold,
-  onPause,
   onCancel
 }: AppointmentActionsProps) {
   const status = appointment.status;
@@ -37,13 +35,6 @@ export function AppointmentActions({
             onClick={onHold}
           >
             Hold
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={onPause}
-          >
-            Pause
           </Button>
           <Button
             size="sm"
@@ -70,17 +61,10 @@ export function AppointmentActions({
           >
             Hold
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={onPause}
-          >
-            Pause
-          </Button>
         </>
       )}
       
-      {(status === "hold" || status === "pause") && (
+      {status === "hold" && (
         <Button
           size="sm"
           onClick={onMarkAsStarted}
