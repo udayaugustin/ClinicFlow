@@ -77,21 +77,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'Invalid doctor or clinic' });
       }
 
-      // Get the appointment date and extract day of week
+      // Get the appointment date
       const appointmentDate = new Date(req.body.date);
-      const dayOfWeek = appointmentDate.getDay();
       const clinicId = req.body.clinicId || doctor.clinicId;
 
-      // Get the doctor's schedule for this day and clinic
-      const schedules = await storage.getDoctorSchedules(Number(req.body.doctorId));
+      // Get the doctor's schedule for this specific date and clinic
+      const schedules = await storage.getDoctorSchedules(Number(req.body.doctorId), appointmentDate);
       const schedule = schedules.find(s => 
         s.clinicId === clinicId && 
-        s.dayOfWeek === dayOfWeek && 
         s.isActive
       );
 
       if (!schedule) {
-        return res.status(400).json({ message: 'No active schedule found for this doctor on the selected day' });
+        return res.status(400).json({ message: 'No active schedule found for this doctor on the selected date' });
       }
 
       // Get current token count for this date
@@ -120,14 +118,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         patientId: req.user.id,
         clinicId,
         date: appointmentDate,
-        tokenNumber: req.body.tokenNumber
+        tokenNumber: req.body.tokenNumber,
+        scheduleId: schedule.id
       };
 
       const appointment = await storage.createAppointment(appointmentData);
       res.status(201).json(appointment);
     } catch (error) {
       console.error('Error creating appointment:', error);
-      res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid appointment data' });
+      res.status(500).json({ message: 'Failed to create appointment' });
     }
   });
 
@@ -530,20 +529,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Get the doctor's schedules
-      const schedules = await storage.getDoctorSchedules(doctorId);
-      
-      // Apply filtering if query params are present
-      let filteredSchedules = [...schedules];
-      
-      // Filter by day of week if provided
-      if (req.query.day !== undefined) {
-        const dayOfWeek = parseInt(req.query.day as string);
-        if (!isNaN(dayOfWeek)) {
-          filteredSchedules = filteredSchedules.filter(s => s.dayOfWeek === dayOfWeek);
-        }
-      }
+      const date = req.query.date ? new Date(req.query.date as string) : undefined;
+      const schedules = await storage.getDoctorSchedules(doctorId, date);
       
       // Filter by clinic ID if provided
+      let filteredSchedules = [...schedules];
       if (req.query.clinicId !== undefined) {
         const clinicId = parseInt(req.query.clinicId as string);
         if (!isNaN(clinicId)) {
@@ -572,7 +562,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Validate the schedule data
       const scheduleSchema = z.object({
         clinicId: z.number(),
-        dayOfWeek: z.number().min(0).max(6),
+        date: z.string().transform(str => new Date(str)), // Accept ISO date string
         startTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/),
         endTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/),
         isActive: z.boolean().optional().default(true),
@@ -580,11 +570,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       const validData = scheduleSchema.parse(req.body);
-      
+
       // Check if the doctor exists
       const doctor = await storage.getUser(doctorId);
       if (!doctor || doctor.role !== 'doctor') {
         return res.status(404).json({ message: 'Doctor not found' });
+      }
+
+      // Check for overlapping schedules on the same date
+      const existingSchedules = await storage.getDoctorSchedules(doctorId);
+      const overlappingSchedule = existingSchedules.find(schedule => {
+        const scheduleDate = new Date(schedule.date);
+        const newDate = new Date(validData.date);
+        
+        // Check if dates match
+        if (scheduleDate.toDateString() !== newDate.toDateString()) {
+          return false;
+        }
+
+        // Convert times to minutes for easier comparison
+        const getMinutes = (time: string) => {
+          const [hours, minutes] = time.split(':').map(Number);
+          return hours * 60 + minutes;
+        };
+
+        const existingStart = getMinutes(schedule.startTime);
+        const existingEnd = getMinutes(schedule.endTime);
+        const newStart = getMinutes(validData.startTime);
+        const newEnd = getMinutes(validData.endTime);
+
+        // Check for overlap
+        return (
+          (newStart >= existingStart && newStart < existingEnd) || // New start time falls within existing schedule
+          (newEnd > existingStart && newEnd <= existingEnd) || // New end time falls within existing schedule
+          (newStart <= existingStart && newEnd >= existingEnd) // New schedule completely encompasses existing schedule
+        );
+      });
+
+      if (overlappingSchedule) {
+        return res.status(400).json({ 
+          message: 'Schedule overlaps with an existing schedule for this date' 
+        });
       }
 
       // Create the schedule
@@ -614,25 +640,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'Invalid schedule ID' });
       }
 
-      // Validate the schedule data
-      const scheduleSchema = z.object({
-        clinicId: z.number().optional(),
-        dayOfWeek: z.number().min(0).max(6).optional(),
+      // Validate the update data
+      const updateSchema = z.object({
+        date: z.string().transform(str => new Date(str)).optional(),
         startTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/).optional(),
         endTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/).optional(),
         isActive: z.boolean().optional(),
         maxTokens: z.number().min(1).optional(),
       });
 
-      const validData = scheduleSchema.parse(req.body);
-      
+      const validData = updateSchema.parse(req.body);
+
       // Update the schedule
       const schedule = await storage.updateDoctorSchedule(scheduleId, validData);
+      if (!schedule) {
+        return res.status(404).json({ message: 'Schedule not found' });
+      }
+
       res.json(schedule);
     } catch (error) {
       console.error('Error updating doctor schedule:', error);
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: 'Invalid schedule data', errors: error.errors });
+        return res.status(400).json({ message: 'Invalid update data', errors: error.errors });
       }
       res.status(500).json({ message: 'Failed to update doctor schedule' });
     }
@@ -657,30 +686,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get available doctors by clinic, day, and time
+  // Get available doctors by clinic and time
   app.get("/api/clinics/:clinicId/available-doctors", async (req, res) => {
     try {
       const clinicId = parseInt(req.params.clinicId);
-      const { day, time } = req.query;
+      const { date, time } = req.query;
       
       if (isNaN(clinicId)) {
         return res.status(400).json({ message: 'Invalid clinic ID' });
       }
       
-      if (!day || typeof day !== 'string' || !time || typeof time !== 'string') {
-        return res.status(400).json({ message: 'Day and time parameters are required' });
+      if (!date || typeof date !== 'string' || !time || typeof time !== 'string') {
+        return res.status(400).json({ message: 'Date and time parameters are required' });
       }
       
-      const dayNum = parseInt(day);
-      if (isNaN(dayNum) || dayNum < 0 || dayNum > 6) {
-        return res.status(400).json({ message: 'Day must be a number between 0 (Sunday) and 6 (Saturday)' });
+      const scheduleDate = new Date(date);
+      if (isNaN(scheduleDate.getTime())) {
+        return res.status(400).json({ message: 'Invalid date format' });
       }
       
       if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(time)) {
         return res.status(400).json({ message: 'Time must be in format HH:MM in 24-hour format' });
       }
       
-      const doctors = await storage.getAvailableDoctors(clinicId, dayNum, time);
+      const doctors = await storage.getAvailableDoctors(clinicId, scheduleDate, time);
       res.json(doctors);
     } catch (error) {
       console.error('Error fetching available doctors:', error);

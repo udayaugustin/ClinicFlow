@@ -1,5 +1,5 @@
 import { relations, sql } from "drizzle-orm";
-import { boolean, decimal, integer, pgTable, serial, text, timestamp, varchar } from "drizzle-orm/pg-core";
+import { boolean, decimal, integer, pgTable, serial, text, timestamp, varchar, date } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -101,7 +101,7 @@ export const doctorSchedules = pgTable("doctor_schedules", {
   id: serial("id").primaryKey(),
   doctorId: integer("doctor_id").notNull().references(() => users.id),
   clinicId: integer("clinic_id").notNull().references(() => clinics.id),
-  dayOfWeek: integer("day_of_week").notNull(), // 0-6 for Sunday-Saturday
+  date: date("date").notNull(),
   startTime: varchar("start_time", { length: 5 }).notNull(), // Format: "HH:MM" in 24-hour format
   endTime: varchar("end_time", { length: 5 }).notNull(), // Format: "HH:MM" in 24-hour format
   isActive: boolean("is_active").default(true),
@@ -209,7 +209,13 @@ export const insertAppointmentSchema = createInsertSchema(appointments);
 export const insertDoctorAvailabilitySchema = createInsertSchema(doctorDailyPresence);
 export const insertAttenderDoctorSchema = createInsertSchema(attenderDoctors);
 export const insertDoctorDetailSchema = createInsertSchema(doctorDetails);
-export const insertDoctorScheduleSchema = createInsertSchema(doctorSchedules);
+export const insertDoctorScheduleSchema = createInsertSchema(doctorSchedules, {
+  date: z.date(),
+  startTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/),
+  endTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/),
+  maxTokens: z.number().min(1).default(20),
+  isActive: z.boolean().default(true),
+});
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;

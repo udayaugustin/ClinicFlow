@@ -13,7 +13,7 @@ import {
   type Clinic,
   type DoctorDetail,
   type DoctorSchedule,
-  type DoctorAvailability,
+  type InsertDoctorSchedule,
 } from "@shared/schema";
 import { eq, or, and, sql, inArray, lte, gte, count, not, gt, lt } from "drizzle-orm";
 import { db } from "./db";
@@ -86,12 +86,8 @@ export interface IStorage {
 
   // Doctor schedules methods
   createDoctorSchedule(schedule: InsertDoctorSchedule): Promise<DoctorSchedule>;
-  getDoctorSchedules(doctorId: number): Promise<DoctorSchedule[]>;
+  getDoctorSchedules(doctorId: number, date?: Date): Promise<DoctorSchedule[]>;
   getDoctorSchedulesByClinic(clinicId: number): Promise<(DoctorSchedule & { doctor: User })[]>;
-  getDoctorSchedulesByDay(day: number): Promise<(DoctorSchedule & { doctor: User, clinic: Clinic })[]>;
-  updateDoctorSchedule(id: number, schedule: Partial<InsertDoctorSchedule>): Promise<DoctorSchedule>;
-  deleteDoctorSchedule(id: number): Promise<void>;
-  getAvailableDoctors(clinicId: number, day: number, time: string): Promise<User[]>;
   getDoctorAvailableTimeSlots(doctorId: number, date: Date): Promise<{ 
     schedules: (DoctorSchedule & { clinic: Clinic, currentTokenCount?: number })[], 
     availableSlots: { 
@@ -101,6 +97,9 @@ export interface IStorage {
       clinicName: string
     }[] 
   }>;
+  updateDoctorSchedule(id: number, schedule: Partial<InsertDoctorSchedule>): Promise<DoctorSchedule>;
+  deleteDoctorSchedule(id: number): Promise<void>;
+  getAvailableDoctors(clinicId: number, date: Date, time: string): Promise<User[]>;
 
   getAppointmentCountForDoctor(
     doctorId: number,
@@ -1056,75 +1055,39 @@ export class DatabaseStorage implements IStorage {
 
   // Doctor schedules methods
   async createDoctorSchedule(schedule: InsertDoctorSchedule): Promise<DoctorSchedule> {
-    const [result] = await db.insert(doctorSchedules).values(schedule).returning();
-    return result;
+    return db.insert(doctorSchedules).values(schedule).returning();
   }
 
-  async getDoctorSchedules(doctorId: number): Promise<DoctorSchedule[]> {
-    return db
+  async getDoctorSchedules(doctorId: number, date?: Date): Promise<DoctorSchedule[]> {
+    let query = db
       .select()
       .from(doctorSchedules)
       .where(eq(doctorSchedules.doctorId, doctorId))
-      .orderBy(doctorSchedules.dayOfWeek, doctorSchedules.startTime);
+      .orderBy(doctorSchedules.date, doctorSchedules.startTime);
+
+    if (date) {
+      // If date is provided, filter schedules for that specific date
+      query = query.where(eq(doctorSchedules.date, date));
+    }
+
+    return query;
   }
 
   async getDoctorSchedulesByClinic(clinicId: number): Promise<(DoctorSchedule & { doctor: User })[]> {
-    return db
+    const results = await db
       .select({
-        ...doctorSchedules,
+        schedule: doctorSchedules,
         doctor: users,
       })
       .from(doctorSchedules)
       .innerJoin(users, eq(doctorSchedules.doctorId, users.id))
       .where(eq(doctorSchedules.clinicId, clinicId))
-      .orderBy(doctorSchedules.dayOfWeek, doctorSchedules.startTime);
-  }
-
-  async getDoctorSchedulesByDay(day: number): Promise<(DoctorSchedule & { doctor: User, clinic: Clinic })[]> {
-    const results = await db
-      .select()
-      .from(doctorSchedules)
-      .innerJoin(users, eq(doctorSchedules.doctorId, users.id))
-      .innerJoin(clinics, eq(doctorSchedules.clinicId, clinics.id))
-      .where(eq(doctorSchedules.dayOfWeek, day))
-      .orderBy(doctorSchedules.startTime);
+      .orderBy(doctorSchedules.date, doctorSchedules.startTime);
 
     return results.map(row => ({
-      ...row.doctor_schedules,
-      doctor: row.users,
-      clinic: row.clinics
+      ...row.schedule,
+      doctor: row.doctor,
     }));
-  }
-
-  async updateDoctorSchedule(id: number, schedule: Partial<InsertDoctorSchedule>): Promise<DoctorSchedule> {
-    const [result] = await db
-      .update(doctorSchedules)
-      .set({ ...schedule, updatedAt: new Date() })
-      .where(eq(doctorSchedules.id, id))
-      .returning();
-    return result;
-  }
-
-  async deleteDoctorSchedule(id: number): Promise<void> {
-    await db.delete(doctorSchedules).where(eq(doctorSchedules.id, id));
-  }
-
-  async getAvailableDoctors(clinicId: number, day: number, time: string): Promise<User[]> {
-    const results = await db
-      .select()
-      .from(doctorSchedules)
-      .innerJoin(users, eq(doctorSchedules.doctorId, users.id))
-      .where(
-        and(
-          eq(doctorSchedules.clinicId, clinicId),
-          eq(doctorSchedules.dayOfWeek, day),
-          lte(doctorSchedules.startTime, time),
-          gte(doctorSchedules.endTime, time),
-          eq(doctorSchedules.isActive, true)
-        )
-      );
-
-    return results.map(row => row.users);
   }
 
   async getDoctorAvailableTimeSlots(doctorId: number, date: Date): Promise<{ 
@@ -1136,29 +1099,29 @@ export class DatabaseStorage implements IStorage {
       clinicName: string
     }[] 
   }> {
-    // Get the day of week (0-6) for the given date
-    const dayOfWeek = date.getDay();
-    
-    // Get all schedules for the doctor on this day of week
+    // Get all schedules for the doctor on this specific date
     const results = await db
-      .select()
+      .select({
+        schedule: doctorSchedules,
+        clinic: clinics,
+      })
       .from(doctorSchedules)
       .innerJoin(clinics, eq(doctorSchedules.clinicId, clinics.id))
       .where(
         and(
           eq(doctorSchedules.doctorId, doctorId),
-          eq(doctorSchedules.dayOfWeek, dayOfWeek),
+          sql`DATE(${doctorSchedules.date}) = DATE(${date.toISOString()})`,
           eq(doctorSchedules.isActive, true)
         )
       )
       .orderBy(doctorSchedules.startTime);
-    
+  
     // Transform the results
     const schedules = results.map(row => ({
-      ...row.doctor_schedules,
-      clinic: row.clinics
+      ...row.schedule,
+      clinic: row.clinic,
     }));
-    
+  
     // Get existing appointments for this doctor on this date
     const appointmentsForDate = await db
       .select()
@@ -1169,15 +1132,7 @@ export class DatabaseStorage implements IStorage {
           sql`DATE(${appointments.date}) = DATE(${date.toISOString()})`
         )
       );
-    
-    // Extract booked time slots from the appointments
-    const bookedTimes = new Set(
-      appointmentsForDate.map(appt => {
-        const apptTime = new Date(appt.date);
-        return `${String(apptTime.getHours()).padStart(2, '0')}:${String(apptTime.getMinutes()).padStart(2, '0')}`;
-      })
-    );
-
+  
     // Create a map of clinic to appointment count
     const clinicAppointmentCount = new Map<number, number>();
     appointmentsForDate.forEach(appt => {
@@ -1186,47 +1141,71 @@ export class DatabaseStorage implements IStorage {
         clinicAppointmentCount.set(appt.clinicId, count + 1);
       }
     });
-    
-    // Add the current token count to each schedule
-    const schedulesWithTokenCount = schedules.map(schedule => ({
-      ...schedule,
-      currentTokenCount: clinicAppointmentCount.get(schedule.clinicId) || 0
-    }));
-    
-    // Generate available time slots from schedules
-    const availableSlots = [];
-    
-    for (const schedule of schedules) {
-      // Parse start and end time
-      const [startHour, startMinute] = schedule.startTime.split(':').map(Number);
-      const [endHour, endMinute] = schedule.endTime.split(':').map(Number);
-      
-      // Generate 30-minute slots
-      let slotTime = new Date(date);
-      slotTime.setHours(startHour, startMinute, 0, 0);
-      
-      const endTime = new Date(date);
-      endTime.setHours(endHour, endMinute, 0, 0);
-      
-      while (slotTime < endTime) {
-        const timeString = `${String(slotTime.getHours()).padStart(2, '0')}:${String(slotTime.getMinutes()).padStart(2, '0')}`;
-        
-        // Only add if the slot is not already booked
-        if (!bookedTimes.has(timeString)) {
-          availableSlots.push({
-            startTime: timeString,
-            endTime: `${String(slotTime.getHours()).padStart(2, '0')}:${String(slotTime.getMinutes() + 30).padStart(2, '0')}`,
-            clinicId: schedule.clinicId,
-            clinicName: schedule.clinic.name
-          });
-        }
-        
-        // Advance by 30 minutes
-        slotTime.setMinutes(slotTime.getMinutes() + 30);
-      }
+
+    // Add current token count to each schedule
+    schedules.forEach(schedule => {
+      schedule.currentTokenCount = clinicAppointmentCount.get(schedule.clinicId) || 0;
+    });
+
+    // Calculate available slots
+    const availableSlots = schedules
+      .filter(schedule => (schedule.currentTokenCount || 0) < schedule.maxTokens)
+      .map(schedule => ({
+        startTime: schedule.startTime,
+        endTime: schedule.endTime,
+        clinicId: schedule.clinic.id,
+        clinicName: schedule.clinic.name
+      }));
+
+    return { schedules, availableSlots };
+  }
+
+  async updateDoctorSchedule(id: number, schedule: Partial<InsertDoctorSchedule>): Promise<DoctorSchedule> {
+    const [updated] = await db
+      .update(doctorSchedules)
+      .set({ ...schedule, updatedAt: new Date() })
+      .where(eq(doctorSchedules.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteDoctorSchedule(id: number): Promise<void> {
+    await db.delete(doctorSchedules).where(eq(doctorSchedules.id, id));
+  }
+
+  async getAvailableDoctors(clinicId: number, date: Date, time: string): Promise<User[]> {
+    // First get all doctors who have schedules for this date and time
+    const availableDoctors = await db
+      .select({
+        doctorId: doctorSchedules.doctorId,
+      })
+      .from(doctorSchedules)
+      .where(
+        and(
+          eq(doctorSchedules.clinicId, clinicId),
+          eq(doctorSchedules.date, date),
+          eq(doctorSchedules.isActive, true),
+          lte(doctorSchedules.startTime, time),
+          gte(doctorSchedules.endTime, time)
+        )
+      );
+
+    if (availableDoctors.length === 0) {
+      return [];
     }
+
+    // Then get the actual doctor details
+    const doctorIds = availableDoctors.map(d => d.doctorId).filter((id): id is number => id !== null);
     
-    return { schedules: schedulesWithTokenCount, availableSlots };
+    return db
+      .select()
+      .from(users)
+      .where(
+        and(
+          inArray(users.id, doctorIds),
+          eq(users.role, "doctor")
+        )
+      );
   }
 
   async getAppointmentCountForDoctor(

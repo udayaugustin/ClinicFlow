@@ -12,6 +12,8 @@ import { useToast } from "@/components/ui/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, Edit, Trash2, Calendar, Clock } from "lucide-react";
+import { format } from "date-fns";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 
 // Define types
 type Clinic = {
@@ -29,7 +31,7 @@ type DoctorSchedule = {
   id: number;
   doctorId: number;
   clinicId: number;
-  dayOfWeek: number;
+  date: Date;
   startTime: string;
   endTime: string;
   isActive: boolean;
@@ -53,7 +55,7 @@ export default function DoctorSchedulesPage() {
   // Form state
   const [formData, setFormData] = useState({
     clinicId: 0,
-    dayOfWeek: 1, // Default to Monday
+    date: new Date(),
     startTime: "09:00",
     endTime: "17:00",
     isActive: true,
@@ -79,19 +81,39 @@ export default function DoctorSchedulesPage() {
       if (!response.ok) {
         throw new Error("Failed to fetch schedules");
       }
-      return response.json();
+      const data = await response.json();
+      // Transform the data to ensure dates are properly parsed
+      return data.map((schedule: any) => ({
+        ...schedule,
+        // Ensure we create a proper Date object from the ISO string
+        date: new Date(schedule.date)
+      }));
     },
   });
 
   // Create schedule mutation
   const createScheduleMutation = useMutation({
     mutationFn: async (data: typeof formData & { doctorId: number }) => {
+      // Validate the date
+      if (!data.date || data.date.getTime() === 0 || isNaN(data.date.getTime())) {
+        throw new Error("Please select a valid date");
+      }
+
+      // Format the date as ISO string, ensuring we're using the correct time
+      const selectedDate = new Date(data.date);
+      selectedDate.setHours(0, 0, 0, 0); // Reset time to start of day
+
+      const formattedData = {
+        ...data,
+        date: selectedDate.toISOString(),
+      };
+
       const response = await fetch(`/api/doctors/${data.doctorId}/schedules`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(data),
+        body: JSON.stringify(formattedData),
       });
       
       if (!response.ok) {
@@ -122,12 +144,26 @@ export default function DoctorSchedulesPage() {
   // Update schedule mutation
   const updateScheduleMutation = useMutation({
     mutationFn: async (data: { id: number, schedule: Partial<typeof formData> }) => {
+      // Validate the date
+      if (!data.schedule.date || data.schedule.date.getTime() === 0 || isNaN(data.schedule.date.getTime())) {
+        throw new Error("Please select a valid date");
+      }
+
+      // Format the date as ISO string, ensuring we're using the correct time
+      const selectedDate = new Date(data.schedule.date);
+      selectedDate.setHours(0, 0, 0, 0); // Reset time to start of day
+
+      const formattedSchedule = {
+        ...data.schedule,
+        date: selectedDate.toISOString(),
+      };
+
       const response = await fetch(`/api/doctors/schedules/${data.id}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(data.schedule),
+        body: JSON.stringify(formattedSchedule),
       });
       
       if (!response.ok) {
@@ -196,8 +232,8 @@ export default function DoctorSchedulesPage() {
 
   const handleSelectChange = (name: string, value: string) => {
     // Convert string values to numbers for number fields
-    if (name === 'clinicId' || name === 'dayOfWeek') {
-      setFormData({ ...formData, [name]: parseInt(value, 10) });
+    if (name === 'clinicId') {
+      setFormData({ ...formData, clinicId: parseInt(value, 10) });
     } else {
       setFormData({ ...formData, [name]: value });
     }
@@ -208,10 +244,29 @@ export default function DoctorSchedulesPage() {
   };
 
   const handleEditSchedule = (schedule: DoctorSchedule) => {
+    console.log('Original schedule date:', schedule.date);
+    console.log('Schedule date type:', typeof schedule.date);
+    
+    // Create a new date object and ensure it's valid
+    const scheduleDate = new Date(schedule.date);
+    if (isNaN(scheduleDate.getTime())) {
+      console.error('Invalid date received:', schedule.date);
+      toast({
+        title: "Error",
+        description: "Invalid date in schedule",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Set the time to start of day for consistency
+    scheduleDate.setHours(0, 0, 0, 0);
+    console.log('Parsed and normalized date:', scheduleDate);
+    
     setSelectedSchedule(schedule);
     setFormData({
       clinicId: schedule.clinicId,
-      dayOfWeek: schedule.dayOfWeek,
+      date: scheduleDate,
       startTime: schedule.startTime,
       endTime: schedule.endTime,
       isActive: schedule.isActive,
@@ -242,7 +297,6 @@ export default function DoctorSchedulesPage() {
     const processedData = {
       ...formData,
       clinicId: Number(formData.clinicId),
-      dayOfWeek: Number(formData.dayOfWeek),
       doctorId: selectedDoctor,
     };
 
@@ -257,9 +311,12 @@ export default function DoctorSchedulesPage() {
   };
 
   const resetForm = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Reset time to start of day
+    
     setFormData({
       clinicId: 0,
-      dayOfWeek: 1,
+      date: today,
       startTime: "09:00",
       endTime: "17:00",
       isActive: true,
@@ -348,7 +405,7 @@ export default function DoctorSchedulesPage() {
                   <TableCaption>List of doctor schedules</TableCaption>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Day</TableHead>
+                      <TableHead>Date</TableHead>
                       <TableHead>Clinic</TableHead>
                       <TableHead>Start Time</TableHead>
                       <TableHead>End Time</TableHead>
@@ -360,7 +417,11 @@ export default function DoctorSchedulesPage() {
                   <TableBody>
                     {schedules.map((schedule) => (
                       <TableRow key={schedule.id}>
-                        <TableCell>{dayNames[schedule.dayOfWeek]}</TableCell>
+                        <TableCell>
+                          {schedule.date instanceof Date 
+                            ? format(schedule.date, "PPP")
+                            : format(new Date(schedule.date), "PPP")}
+                        </TableCell>
                         <TableCell>{getClinicName(schedule.clinicId)}</TableCell>
                         <TableCell>{schedule.startTime}</TableCell>
                         <TableCell>{schedule.endTime}</TableCell>
@@ -449,23 +510,15 @@ export default function DoctorSchedulesPage() {
                   </div>
 
                   <div>
-                    <Label htmlFor="dayOfWeek">Day of Week</Label>
-                    <Select
-                      value={formData.dayOfWeek.toString()}
-                      onValueChange={(value) => handleSelectChange("dayOfWeek", value)}
-                      required
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select day" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {dayNames.map((day, index) => (
-                          <SelectItem key={index} value={index.toString()}>
-                            {day}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Label>Date</Label>
+                    <div className="mt-1">
+                      <CalendarComponent
+                        mode="single"
+                        selected={formData.date}
+                        onSelect={(date) => date && setFormData({ ...formData, date })}
+                        className="rounded-md border"
+                      />
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
