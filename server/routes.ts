@@ -81,15 +81,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const appointmentDate = new Date(req.body.date);
       const clinicId = req.body.clinicId || doctor.clinicId;
 
-      // Get the doctor's schedule for this specific date and clinic
-      const schedules = await storage.getDoctorSchedules(Number(req.body.doctorId), appointmentDate);
-      const schedule = schedules.find(s => 
-        s.clinicId === clinicId && 
-        s.isActive
+      // Get the specific schedule for this appointment
+      const schedule = await storage.getSpecificSchedule(
+        Number(req.body.doctorId),
+        clinicId,
+        Number(req.body.scheduleId),
+        appointmentDate
       );
 
       if (!schedule) {
-        return res.status(400).json({ message: 'No active schedule found for this doctor on the selected date' });
+        return res.status(400).json({ message: 'Invalid or inactive schedule for this appointment' });
       }
 
       // Get current token count for this date

@@ -88,6 +88,7 @@ export interface IStorage {
   createDoctorSchedule(schedule: InsertDoctorSchedule): Promise<DoctorSchedule>;
   getDoctorSchedules(doctorId: number, date?: Date): Promise<DoctorSchedule[]>;
   getDoctorSchedulesByClinic(clinicId: number): Promise<(DoctorSchedule & { doctor: User })[]>;
+  getSpecificSchedule(doctorId: number, clinicId: number, scheduleId: number, date: Date): Promise<DoctorSchedule | null>;
   getDoctorAvailableTimeSlots(doctorId: number, date: Date): Promise<{ 
     schedules: (DoctorSchedule & { clinic: Clinic, currentTokenCount?: number })[], 
     availableSlots: { 
@@ -382,7 +383,8 @@ export class DatabaseStorage implements IStorage {
       .where(
         and(
           eq(doctorSchedules.doctorId, appointment.doctorId),
-          eq(doctorSchedules.clinicId, clinicId),          
+          eq(doctorSchedules.clinicId, clinicId),
+          eq(doctorSchedules.id, appointment.scheduleId),
           eq(doctorSchedules.isActive, true)
         )
       );
@@ -1040,6 +1042,25 @@ export class DatabaseStorage implements IStorage {
     }
 
     return query;
+  }
+
+  async getSpecificSchedule(doctorId: number, clinicId: number, scheduleId: number, date: Date): Promise<DoctorSchedule | null> {
+    const dateStr = date.toISOString().split('T')[0];
+    
+    const [schedule] = await db
+      .select()
+      .from(doctorSchedules)
+      .where(
+        and(
+          eq(doctorSchedules.id, scheduleId),
+          eq(doctorSchedules.doctorId, doctorId),
+          eq(doctorSchedules.clinicId, clinicId),
+          eq(doctorSchedules.date, dateStr),
+          eq(doctorSchedules.isActive, true)
+        )
+      );
+
+    return schedule || null;
   }
 
   async getDoctorSchedulesByClinic(clinicId: number): Promise<(DoctorSchedule & { doctor: User })[]> {
