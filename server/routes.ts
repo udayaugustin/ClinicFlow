@@ -542,6 +542,81 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Schedule pause routes
+  app.patch("/api/schedules/:id/pause", async (req, res) => {
+    if (!req.user || !['hospital_admin', 'attender', 'doctor'].includes(req.user.role)) {
+      return res.status(403).json({ message: 'Unauthorized access' });
+    }
+    try {
+      const scheduleId = parseInt(req.params.id);
+      const { isPaused, pauseReason, date } = req.body;
+
+      if (isNaN(scheduleId)) {
+        return res.status(400).json({ error: "Invalid request body" });
+      }
+
+      await storage.pauseSchedule(scheduleId, pauseReason, new Date(date));
+
+      // Get all appointments for this schedule that are scheduled or in progress
+      const appointments = await storage.getAppointmentsBySchedule(scheduleId);
+      const affectedAppointments = appointments.filter(apt => 
+        ["scheduled", "start"].includes(apt.status || "")
+      );
+
+      // Notify all affected patients
+      for (const appointment of affectedAppointments) {
+        if (appointment.patientId) {
+          await notificationService.createNotification({
+            userId: appointment.patientId,
+            appointmentId: appointment.id,
+            title: "Schedule Paused",
+            message: `Your appointment has been temporarily paused. Reason: ${pauseReason}`,
+            type: "schedule_paused"
+          });
+        }
+      }
+
+      res.json({ message: "Schedule paused successfully" });
+    } catch (error) {
+      console.error("Error pausing schedule:", error);
+      res.status(500).json({ error: "Failed to pause schedule" });
+    }
+  });
+
+  app.patch("/api/schedules/:id/resume", async (req, res) => {
+    if (!req.user || !['hospital_admin', 'attender', 'doctor'].includes(req.user.role)) {
+      return res.status(403).json({ message: 'Unauthorized access' });
+    }
+    try {
+      const scheduleId = parseInt(req.params.id);
+      await storage.resumeSchedule(scheduleId);
+
+      // Get all appointments for this schedule that were affected
+      const appointments = await storage.getAppointmentsBySchedule(scheduleId);
+      const affectedAppointments = appointments.filter(apt => 
+        ["scheduled", "start"].includes(apt.status || "")
+      );
+
+      // Notify all affected patients
+      for (const appointment of affectedAppointments) {
+        if (appointment.patientId) {
+          await notificationService.createNotification({
+            userId: appointment.patientId,
+            appointmentId: appointment.id,
+            title: "Schedule Resumed",
+            message: "The doctor's schedule has resumed. Your appointment will proceed as planned.",
+            type: "schedule_resumed"
+          });
+        }
+      }
+
+      res.json({ message: "Schedule resumed successfully" });
+    } catch (error) {
+      console.error("Error resuming schedule:", error);
+      res.status(500).json({ error: "Failed to resume schedule" });
+    }
+  });
+
   app.post("/api/doctors/:id/schedules", async (req, res) => {
     if (!req.user || !['hospital_admin', 'attender'].includes(req.user.role)) {
       return res.status(403).json({ message: 'Unauthorized access' });

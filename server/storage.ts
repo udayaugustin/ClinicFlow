@@ -31,6 +31,11 @@ const sessionStore = new pgSession({
 });
 
 export interface IStorage {
+  // Schedule pause methods
+  pauseSchedule(scheduleId: number, reason: string): Promise<void>;
+  resumeSchedule(scheduleId: number): Promise<void>;
+  getAppointmentsBySchedule(scheduleId: number): Promise<Appointment[]>;
+
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
@@ -162,6 +167,36 @@ export class DatabaseStorage implements IStorage {
 
   constructor() {
     this.sessionStore = sessionStore;
+  }
+
+  async getAppointmentsBySchedule(scheduleId: number): Promise<Appointment[]> {
+    return db
+      .select()
+      .from(appointments)
+      .where(eq(appointments.scheduleId, scheduleId));
+  }
+
+  async pauseSchedule(scheduleId: number, reason: string): Promise<void> {
+    await db
+      .update(doctorSchedules)
+      .set({
+        isPaused: true,
+        pauseReason: reason,
+        pausedAt: sql`CURRENT_TIMESTAMP`,
+        resumedAt: null
+      })
+      .where(eq(doctorSchedules.id, scheduleId));
+  }
+
+  async resumeSchedule(scheduleId: number): Promise<void> {
+    await db
+      .update(doctorSchedules)
+      .set({
+        isPaused: false,
+        pauseReason: null,
+        resumedAt: sql`CURRENT_TIMESTAMP`
+      })
+      .where(eq(doctorSchedules.id, scheduleId));
   }
 
   async getUser(id: number): Promise<User | undefined> {

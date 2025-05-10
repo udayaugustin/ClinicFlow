@@ -154,18 +154,18 @@ export default function AttenderDashboard() {
       isPaused: boolean;
       pauseReason?: string;
     }) => {
-      const res = await apiRequest("PATCH", `/api/schedules/${scheduleId}/pause`, { 
-        isPaused,
-        pauseReason,
+      const endpoint = isPaused ? `/api/schedules/${scheduleId}/pause` : `/api/schedules/${scheduleId}/resume`;
+      const res = await apiRequest("PATCH", endpoint, { 
+        reason: pauseReason,
         date: selectedDate.toISOString()
       });
       return res.json();
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: [`/api/attender/${user?.id}/doctors/appointments`] });
       toast({
         title: "Success",
-        description: data.isPaused ? "Schedule paused successfully" : "Schedule resumed successfully",
+        description: variables.isPaused ? "Schedule paused successfully" : "Schedule resumed successfully",
       });
     },
   });
