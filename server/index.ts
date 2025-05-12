@@ -82,8 +82,8 @@ app.use((req, res, next) => {
   }
 
   // Try to use port 5000, but find next available if taken
-  const desiredPort = 5000;
-  const port = await findAvailablePort(desiredPort);
+const desiredPort = process.env.PORT ? parseInt(process.env.PORT) : 5000;
+const port = await findAvailablePort(desiredPort);
   
   server.listen({
     port,
