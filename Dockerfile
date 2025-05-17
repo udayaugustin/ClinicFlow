@@ -23,11 +23,12 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install production dependencies only
-RUN npm install --production
+# Install dependencies including Vite (needed for production)
+RUN npm install && npm install vite @vitejs/plugin-react @replit/vite-plugin-shadcn-theme-json @replit/vite-plugin-cartographer @replit/vite-plugin-runtime-error-modal
 
 # Copy built assets from builder stage
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/vite.config.* ./
 
 # Set environment variables
 ENV NODE_ENV=production \
