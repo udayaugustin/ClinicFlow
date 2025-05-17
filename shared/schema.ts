@@ -10,6 +10,10 @@ export const clinics = pgTable("clinics", {
   city: text("city"),
   state: text("state"),
   zipCode: text("zip_code"),
+  phone: text("phone"),
+  email: text("email"),
+  openingHours: text("opening_hours"),
+  description: text("description"),
   imageUrl: text("image_url"),
 });
 
@@ -18,7 +22,7 @@ export const users = pgTable("users", {
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
   name: text("name").notNull(),
-  role: text("role", { enum: ["patient", "doctor", "attender"] }).notNull(),
+  role: text("role", { enum: ["patient", "doctor", "attender", "super_admin"] }).notNull(),
   specialty: text("specialty"),
   bio: text("bio"),
   imageUrl: text("image_url"),
@@ -46,6 +50,12 @@ export const attenderDoctors = pgTable("attender_doctors", {
   clinicId: integer("clinic_id").notNull().references(() => clinics.id),
 });
 
+export const doctorClinics = pgTable("doctor_clinics", {
+  id: serial("id").primaryKey(),
+  doctorId: integer("doctor_id").notNull().references(() => users.id),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id),
+});
+
 export const appointments = pgTable("appointments", {
   id: serial("id").primaryKey(),
   patientId: integer("patient_id").notNull(),
@@ -64,6 +74,7 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   }),
   managedDoctors: many(attenderDoctors, { relationName: "attender" }),
   attenders: many(attenderDoctors, { relationName: "doctor" }),
+  clinics: many(doctorClinics),
 }));
 
 export const clinicsRelations = relations(clinics, ({ many }) => ({
@@ -110,10 +121,22 @@ export const doctorAvailabilityRelations = relations(doctorAvailability, ({ one 
   }),
 }));
 
+export const doctorClinicsRelations = relations(doctorClinics, ({ one }) => ({
+  doctor: one(users, {
+    fields: [doctorClinics.doctorId],
+    references: [users.id],
+  }),
+  clinic: one(clinics, {
+    fields: [doctorClinics.clinicId],
+    references: [clinics.id],
+  }),
+}));
+
 
 export const insertUserSchema = createInsertSchema(users);
 export const insertClinicSchema = createInsertSchema(clinics);
 export const insertAttenderDoctorSchema = createInsertSchema(attenderDoctors);
+export const insertDoctorClinicSchema = createInsertSchema(doctorClinics);
 export const insertAppointmentSchema = createInsertSchema(appointments, {
   date: z.string().transform((str) => new Date(str)),
   status: z.enum(["scheduled", "completed", "cancelled", "in_progress"]).default("scheduled"),
