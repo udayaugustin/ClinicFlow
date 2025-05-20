@@ -1,0 +1,101 @@
+#Exisiting Doctor Scheduling Feature Summary
+
+## Feature Overview
+The scheduling feature in BookMyDoctor allows attenders to create and manage when doctors are available to see patients. It defines:
+- Days and hours doctors work at specific clinics
+- Maximum number of appointments (tokens) allowed per schedule
+- Active/inactive status of schedules
+
+## Key Files
+
+### Frontend
+- **Main Page**: `/client/src/pages/doctor-schedules.tsx`
+  - Contains full implementation of schedule management UI 
+  - Uses React Query for data fetching
+  - Handles CRUD operations with mutations
+
+### Backend
+- **Route Definitions**: `/server/routes.ts`
+  - Contains all schedule-related API endpoints (lines 520-605)
+- **Database Operations**: `/server/storage.ts`
+  - Implementation of schedule CRUD operations (lines 940-988)
+- **Schema Definition**: `/shared/schema.ts`
+  - Database structure for `doctor_schedules` table (lines 131-141)
+
+## API Endpoints
+
+| Endpoint | Method | Description | Auth Required |
+|----------|--------|-------------|--------------|
+| `/api/doctors/:id/schedules` | GET | Get all schedules for a doctor | No |
+| `/api/doctors/:id/schedules` | POST | Create a new schedule | Yes (attender, admin) |
+| `/api/doctors/schedules/:id` | PATCH | Update a schedule | Yes (attender, admin) |
+| `/api/doctors/schedules/:id` | DELETE | Delete a schedule | Yes (attender, admin) |
+
+## Database Schema
+
+**Table**: `doctor_schedules`
+```
+id: serial (PK)
+doctorId: integer (FK to users)
+clinicId: integer (FK to clinics)
+dayOfWeek: integer (0-6)
+startTime: varchar (HH:MM format)
+endTime: varchar (HH:MM format)
+isActive: boolean
+maxTokens: integer
+createdAt: timestamp
+updatedAt: timestamp
+```
+
+## Core Functions
+
+### Backend (storage.ts)
+```typescript
+// Create schedule
+async createDoctorSchedule(schedule: InsertDoctorSchedule): Promise<DoctorSchedule>
+
+// Get doctor schedules
+async getDoctorSchedules(doctorId: number): Promise<DoctorSchedule[]> 
+
+// Update schedule
+async updateDoctorSchedule(id: number, schedule: Partial<InsertDoctorSchedule>): Promise<DoctorSchedule>
+
+// Delete schedule
+async deleteDoctorSchedule(id: number): Promise<void>
+```
+
+### Frontend (doctor-schedules.tsx)
+```typescript
+// Key mutations
+const createScheduleMutation = useMutation({...})
+const updateScheduleMutation = useMutation({...})
+const deleteScheduleMutation = useMutation({...})
+
+// Data fetching
+const { data: schedules } = useQuery<DoctorSchedule[]>({
+  queryKey: ["/api/doctors", selectedDoctor, "schedules"],
+  enabled: selectedDoctor !== null,
+})
+```
+
+## Feature Flow
+
+1. Attender selects a doctor from dropdown
+2. System displays all schedules for that doctor
+3. Attender can:
+   - Create new schedule (Select clinic, day, times, token limit)
+   - Edit existing schedule
+   - Delete schedule
+4. Changes are immediately reflected in UI and database
+
+## Current Limitations
+
+1. No overlap detection (doctor can have conflicting schedules)
+2. Day-based only (no special dates)
+3. No break time support within schedules
+
+## Integration Points
+
+- **Appointment Booking**: Uses schedules to determine available slots
+- **Token Management**: Enforces maximum tokens per schedule
+- **Doctor Availability**: Determines when doctors are shown as available

@@ -1,0 +1,53 @@
+flowchart TD
+    subgraph "Patient Flow"
+        A[Patient Logs In] --> B{Search for Doctor}
+        B --> C[Select Doctor]
+        C --> D[View Available Slots]
+        D --> E[Book Appointment]
+        E --> F[Receive Token Number]
+        F --> G[Check Token Progress]
+        G --> H{Doctor Arrived?}
+        H -- Yes --> I[Wait For Token Call]
+        H -- No --> J[Receive Arrival Notification]
+        J --> I
+        I --> K[Appointment Status Updates]
+        K --> L[Appointment Completed]
+    end
+
+    subgraph "Doctor Flow"
+        AA[Doctor Logs In] --> BB[View Daily Schedule]
+        BB --> CC[Attender Marks Arrival]
+        CC --> DD[See Next Patient]
+        DD --> EE[Complete Appointment]
+        EE --> FF{More Patients?}
+        FF -- Yes --> DD
+        FF -- No --> GG[End Day]
+    end
+
+    subgraph "Attender Flow"
+        AAA[Attender Logs In] --> BBB[View Doctor List]
+        BBB --> CCC[Mark Doctor Arrival]
+        CCC --> DDD[Manage Appointments]
+        DDD --> EEE[Update Status]
+        DDD --> FFF[Add Walk-in Patient]
+        EEE --> GGG{Next Patient?}
+        FFF --> GGG
+        GGG -- Yes --> DDD
+        GGG -- No --> HHH[End Shift]
+    end
+
+    subgraph "Notification System"
+        AAAA[Status Change] --> BBBB[Generate Notification]
+        CCCC[Doctor Arrival] --> BBBB
+        DDDD[Next in Line] --> BBBB
+        BBBB --> EEEE[Store in Database]
+        EEEE --> FFFF[Client Polling]
+        FFFF --> GGGG[Display to User]
+    end
+
+    H -- Yes --- CCCC
+    DD --> AAAA
+    EEE --> AAAA
+    CCC --> CCCC
+    K -.-> FFFF
+    GGGG -.-> K

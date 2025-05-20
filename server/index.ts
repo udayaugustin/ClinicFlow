@@ -1,6 +1,31 @@
+import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { createServer } from "net";
+
+// Function to find an available port
+async function findAvailablePort(startPort: number): Promise<number> {
+  const isPortAvailable = (port: number): Promise<boolean> => {
+    return new Promise((resolve) => {
+      const server = createServer()
+        .listen(port, "0.0.0.0")
+        .once("error", () => {
+          resolve(false);
+        })
+        .once("listening", () => {
+          server.close();
+          resolve(true);
+        });
+    });
+  };
+
+  let port = startPort;
+  while (!(await isPortAvailable(port))) {
+    port++;
+  }
+  return port;
+}
 
 const app = express();
 app.use(express.json());
@@ -56,14 +81,15 @@ app.use((req, res, next) => {
     serveStatic(app);
   }
 
-  // ALWAYS serve the app on port 5000
-  // this serves both the API and the client
-  const port = 5000;
+  // Try to use port 5000, but find next available if taken
+const desiredPort = process.env.PORT ? parseInt(process.env.PORT) : 5000;
+const port = await findAvailablePort(desiredPort);
+  
   server.listen({
     port,
     host: "0.0.0.0",
     reusePort: true,
   }, () => {
-    log(`serving on port ${port}`);
+    log(`serving on port ${port}${port !== desiredPort ? ` (fallback from ${desiredPort})` : ''}`);
   });
 })();

@@ -1,0 +1,5 @@
+ALTER TABLE doctor_schedules
+ADD COLUMN is_paused BOOLEAN DEFAULT FALSE,
+ADD COLUMN pause_reason TEXT,
+ADD COLUMN paused_at TIMESTAMP,
+ADD COLUMN resumed_at TIMESTAMP;

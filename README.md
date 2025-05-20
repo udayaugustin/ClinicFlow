@@ -43,3 +43,6 @@ After setting up, you can log in with these test accounts:
 - Doctor: username: `doctor1`, password: `password123`
 - Patient: username: `patient1`, password: `password123`
 - Attender: username: `attender1`, password: `password123`
+
+
+DATABASE_URL=postgresql://uday:Admin2011!!@82.25.109.202:5432/clinicalflow npm run db:migrate
