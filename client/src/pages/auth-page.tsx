@@ -37,8 +37,14 @@ export default function AuthPage() {
   const { user } = useAuth();
 
   if (user) {
-    // Redirect attenders to their dashboard, others to home
-    navigate(user.role === "attender" ? "/attender-dashboard" : "/");
+    // Redirect users based on their role
+    if (user.role === "attender") {
+      navigate("/attender-dashboard");
+    } else if (user.role === "super_admin") {
+      navigate("/super-admin-dashboard");
+    } else {
+      navigate("/");
+    }
     return null;
   }
 
@@ -58,6 +64,12 @@ export default function AuthPage() {
 
               <TabsContent value="login">
                 <LoginForm />
+                <p className="text-sm mt-4">
+                  Are you a super admin?{" "}
+                  <Link to="/super-admin-login" className="text-blue-600 hover:text-blue-800">
+                    Login here
+                  </Link>
+                </p>
               </TabsContent>
 
               <TabsContent value="register">

@@ -39,20 +39,32 @@ export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  updateUser(id: number, userData: Partial<InsertUser>): Promise<User>;
+  deleteUser(id: number): Promise<void>;
   getDoctors(): Promise<User[]>;
   getDoctorsBySpecialty(specialty: string): Promise<User[]>;
   getDoctorWithClinic(id: number): Promise<(User & { clinic?: Clinic }) | undefined>;
   getDoctorsNearLocation(lat: number, lng: number, radiusInMiles?: number): Promise<User[]>;
   getClinics(): Promise<Clinic[]>;
+  getClinic(id: number): Promise<Clinic | undefined>;
+  createClinic(clinic: typeof clinics.$inferInsert): Promise<Clinic>;
+  updateClinic(id: number, clinicData: Partial<typeof clinics.$inferInsert>): Promise<Clinic>;
+  deleteClinic(id: number): Promise<void>;
   getAppointments(userId: number): Promise<(Appointment & { doctor: User; patient?: User })[]>;
   createAppointment(appointment: Omit<Appointment, "id" | "tokenNumber">): Promise<Appointment>;
   getNextTokenNumber(doctorId: number, clinicId: number, scheduleId: number): Promise<number>;
   sessionStore: session.Store;
+  
+  // Doctor-Clinic relationships
+  getDoctorClinics(doctorId: number): Promise<Clinic[]>;
+  addDoctorToClinic(doctorId: number, clinicId: number): Promise<void>;
+  updateDoctorClinics(doctorId: number, clinicIds: number[]): Promise<void>;
 
   getAttenderDoctors(attenderId: number): Promise<(AttenderDoctor & { doctor: User })[]>;
   addDoctorToAttender(attenderId: number, doctorId: number, clinicId: number): Promise<AttenderDoctor>;
   removeDoctorFromAttender(attenderId: number, doctorId: number): Promise<void>;
   getAttendersByClinic(clinicId: number): Promise<User[]>;
+  getAttendersByRole(): Promise<User[]>;
   updateAppointmentStatus(
     appointmentId: number, 
     status: "scheduled" | "start" | "hold" | "pause" | "cancel" | "completed", 
@@ -214,6 +226,19 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+  async updateUser(id: number, userData: Partial<InsertUser>): Promise<User> {
+    const [updatedUser] = await db
+      .update(users)
+      .set(userData)
+      .where(eq(users.id, id))
+      .returning();
+    return updatedUser;
+  }
+
+  async deleteUser(id: number): Promise<void> {
+    await db.delete(users).where(eq(users.id, id));
+  }
+
   async getDoctors(): Promise<User[]> {
     return await db.select().from(users).where(eq(users.role, "doctor"));
   }
@@ -279,6 +304,57 @@ export class DatabaseStorage implements IStorage {
 
   async getClinics(): Promise<Clinic[]> {
     return await db.select().from(clinics);
+  }
+
+  async getClinic(id: number): Promise<Clinic | undefined> {
+    const [clinic] = await db.select().from(clinics).where(eq(clinics.id, id));
+    return clinic;
+  }
+
+  async createClinic(clinicData: typeof clinics.$inferInsert): Promise<Clinic> {
+    // Convert camelCase to snake_case for database fields
+    const formattedData = {
+      name: clinicData.name,
+      address: clinicData.address,
+      city: clinicData.city,
+      state: clinicData.state,
+      zip_code: clinicData.zipCode,
+      phone: clinicData.phone,
+      email: clinicData.email,
+      opening_hours: clinicData.openingHours,
+      description: clinicData.description,
+      image_url: clinicData.imageUrl
+    };
+    
+    const [clinic] = await db.insert(clinics).values(formattedData).returning();
+    return clinic;
+  }
+
+  async updateClinic(id: number, clinicData: Partial<typeof clinics.$inferInsert>): Promise<Clinic> {
+    // Convert camelCase to snake_case for database fields
+    const formattedData: Record<string, any> = {};
+    
+    if (clinicData.name !== undefined) formattedData.name = clinicData.name;
+    if (clinicData.address !== undefined) formattedData.address = clinicData.address;
+    if (clinicData.city !== undefined) formattedData.city = clinicData.city;
+    if (clinicData.state !== undefined) formattedData.state = clinicData.state;
+    if (clinicData.zipCode !== undefined) formattedData.zip_code = clinicData.zipCode;
+    if (clinicData.phone !== undefined) formattedData.phone = clinicData.phone;
+    if (clinicData.email !== undefined) formattedData.email = clinicData.email;
+    if (clinicData.openingHours !== undefined) formattedData.opening_hours = clinicData.openingHours;
+    if (clinicData.description !== undefined) formattedData.description = clinicData.description;
+    if (clinicData.imageUrl !== undefined) formattedData.image_url = clinicData.imageUrl;
+    
+    const [updatedClinic] = await db
+      .update(clinics)
+      .set(formattedData)
+      .where(eq(clinics.id, id))
+      .returning();
+    return updatedClinic;
+  }
+
+  async deleteClinic(id: number): Promise<void> {
+    await db.delete(clinics).where(eq(clinics.id, id));
   }
 
   async getAppointments(userId: number): Promise<(Appointment & { doctor: User; patient?: User })[]> {
@@ -459,7 +535,7 @@ export class DatabaseStorage implements IStorage {
         ...appointment,
         clinicId,
         tokenNumber,
-        status: appointment.status || "scheduled"
+        status: appointment.status || "scheduled" as "scheduled" | "completed" | "cancelled" | "in_progress"
       })
       .returning();
 
@@ -562,15 +638,30 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAttendersByClinic(clinicId: number): Promise<User[]> {
-    return await db
-      .select()
-      .from(users)
-      .where(
-        and(
-          eq(users.clinicId, clinicId),
-          eq(users.role, "attender")
-        )
-      );
+    try {
+      return await db
+        .select()
+        .from(users)
+        .where(and(
+          eq(users.role, "attender"),
+          eq(users.clinicId, clinicId)
+        ));
+    } catch (error) {
+      console.error('Error fetching attenders by clinic:', error);
+      throw error;
+    }
+  }
+
+  async getAttendersByRole(): Promise<User[]> {
+    try {
+      return await db
+        .select()
+        .from(users)
+        .where(eq(users.role, "attender"));
+    } catch (error) {
+      console.error('Error fetching attenders by role:', error);
+      throw error;
+    }
   }
 
   async updateAppointmentStatus(
@@ -716,6 +807,72 @@ export class DatabaseStorage implements IStorage {
       return availability;
     } catch (error) {
       console.error('Error getting doctor availability:', error);
+      throw error;
+    }
+  }
+
+  async getDoctorClinics(doctorId: number): Promise<Clinic[]> {
+    try {
+      const result = await db
+        .select({
+          clinic: clinics
+        })
+        .from(doctorClinics)
+        .innerJoin(clinics, eq(doctorClinics.clinicId, clinics.id))
+        .where(eq(doctorClinics.doctorId, doctorId));
+      
+      return result.map(r => r.clinic);
+    } catch (error) {
+      console.error('Error fetching doctor clinics:', error);
+      throw error;
+    }
+  }
+  
+  async getDoctorsByClinic(clinicId: number): Promise<User[]> {
+    try {
+      const result = await db
+        .select({
+          doctor: users
+        })
+        .from(doctorClinics)
+        .innerJoin(users, eq(doctorClinics.doctorId, users.id))
+        .where(eq(doctorClinics.clinicId, clinicId));
+      
+      return result.map(r => r.doctor);
+    } catch (error) {
+      console.error('Error fetching clinic doctors:', error);
+      throw error;
+    }
+  }
+
+  async addDoctorToClinic(doctorId: number, clinicId: number): Promise<void> {
+    try {
+      await db.insert(doctorClinics).values({
+        doctorId,
+        clinicId,
+      });
+    } catch (error) {
+      console.error('Error adding doctor to clinic:', error);
+      throw error;
+    }
+  }
+
+  async updateDoctorClinics(doctorId: number, clinicIds: number[]): Promise<void> {
+    try {
+      // Delete existing relationships
+      await db.delete(doctorClinics).where(eq(doctorClinics.doctorId, doctorId));
+      
+      // Add new relationships
+      if (clinicIds.length > 0) {
+        await db.insert(doctorClinics).values(
+          clinicIds.map(clinicId => ({
+            doctorId,
+            clinicId,
+          }))
+        );
+      }
+    } catch (error) {
+      console.error('Error updating doctor clinics:', error);
       throw error;
     }
   }

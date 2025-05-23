@@ -10,6 +10,8 @@ export const clinics = pgTable("clinics", {
   city: varchar("city", { length: 100 }),
   state: varchar("state", { length: 100 }),
   zipCode: varchar("zip_code", { length: 20 }),
+  openingHours: text("opening_hours"),
+  description: text("description"),
   phone: varchar("phone", { length: 20 }),
   email: varchar("email", { length: 255 }),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
@@ -80,6 +82,12 @@ export const appointmentStatuses = [
 
 export type AppointmentStatus = typeof appointmentStatuses[number];
 
+export const doctorClinics = pgTable("doctor_clinics", {
+  id: serial("id").primaryKey(),
+  doctorId: integer("doctor_id").notNull().references(() => users.id),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id),
+});
+
 export const appointments = pgTable("appointments", {
   id: serial("id").primaryKey(),
   patientId: integer("patient_id").references(() => users.id),
@@ -128,6 +136,7 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   }),
   appointments: many(appointments),
   schedules: many(doctorSchedules),
+  clinics: many(doctorClinics),
 }));
 
 export const clinicsRelations = relations(clinics, ({ many }) => ({
@@ -178,6 +187,17 @@ export const doctorDetailsRelations = relations(doctorDetails, ({ one }) => ({
   doctor: one(users, {
     fields: [doctorDetails.doctorId],
     references: [users.id],
+  }),
+}));
+
+export const doctorClinicsRelations = relations(doctorClinics, ({ one }) => ({
+  doctor: one(users, {
+    fields: [doctorClinics.doctorId],
+    references: [users.id],
+  }),
+  clinic: one(clinics, {
+    fields: [doctorClinics.clinicId],
+    references: [clinics.id],
   }),
 }));
 

@@ -15,7 +15,8 @@
     "create-attender": "tsx scripts/create-attender.ts",
     "list": "node scripts/dev.js list",
     "generate": "node scripts/dev.js generate",
-    "parse-prd": "node scripts/dev.js parse-prd"
+    "parse-prd": "node scripts/dev.js parse-prd",
+    "create-super-admin": "ts-node create-super-admin.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
@@ -62,7 +63,7 @@
     "connect-pg-simple": "^10.0.0",
     "cors": "^2.8.5",
     "date-fns": "^3.6.0",
-    "dotenv": "^16.4.7",
+    "dotenv": "^16.5.0",
     "drizzle-orm": "^0.39.3",
     "drizzle-zod": "^0.7.0",
     "embla-carousel-react": "^8.3.0",

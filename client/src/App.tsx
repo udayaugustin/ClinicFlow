@@ -13,6 +13,10 @@ import DoctorBookingPage from "@/pages/doctor-booking-page";
 import BookingHistoryPage from "@/pages/booking-history";
 import AttenderDashboard from "@/pages/attender-dashboard";
 import { useAuth } from "./hooks/use-auth";
+import SuperAdminDashboard from "@/pages/super-admin-dashboard";
+import DoctorCreation from "@/pages/doctor-creation";
+import ClinicCreation from "@/pages/clinic-creation";
+import ClinicView from "@/pages/clinic-view";
 import DoctorManagementPage from "./pages/doctor-management";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import DoctorSchedulesPage from "./pages/doctor-schedules";
@@ -54,6 +58,10 @@ function Router() {
       <Route path="/doctor/bookings" component={DoctorBookingPage} />
       <Route path="/appointments" component={BookingHistoryPage} />
       <Route path="/attender-dashboard" component={AttenderDashboard} />
+      <Route path="/super-admin-dashboard" component={SuperAdminDashboard} />
+      <Route path="/doctor-creation" component={DoctorCreation} />
+      <Route path="/clinic-creation" component={ClinicCreation} />
+      <Route path="/clinic/:id" component={ClinicView} />
       <Route path="/doctor-management" component={ProtectedDoctorManagement} />
       <Route path="/schedules" component={ProtectedDoctorSchedules} />
       <Route component={NotFound} />
