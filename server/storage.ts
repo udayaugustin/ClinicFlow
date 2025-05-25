@@ -6,6 +6,7 @@ import {
   users,
   attenderDoctors,
   doctorDetails,
+  doctorClinics,
   type User,
   type AttenderDoctor,
   type InsertUser,

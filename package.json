@@ -10,13 +10,14 @@
     "check": "tsc",
     "db:push": "drizzle-kit push",
     "db:migrate": "tsx migrations/run.ts",
-    "db:generate": "drizzle-kit generate:pg",
+    "db:generate": "drizzle-kit generate",
     "reset-password": "tsx scripts/reset-password.ts",
     "create-attender": "tsx scripts/create-attender.ts",
     "list": "node scripts/dev.js list",
     "generate": "node scripts/dev.js generate",
     "parse-prd": "node scripts/dev.js parse-prd",
-    "create-super-admin": "ts-node create-super-admin.ts"
+    "create-super-admin": "ts-node create-super-admin.ts",
+    "create-clinic-admin": "tsx server/create-clinic-admin.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

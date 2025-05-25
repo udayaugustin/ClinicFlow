@@ -21,6 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { specialties } from "@shared/schema";
 import { MultiSelect } from "@/components/ui/multi-select";
+import React from "react";
 
 // Doctor schema
 const doctorSchema = z.object({
@@ -28,6 +29,7 @@ const doctorSchema = z.object({
   password: z.string().min(6, "Password must be at least 6 characters"),
   name: z.string().min(1, "Name is required"),
   specialty: z.string().min(1, "Specialty is required"),
+  phone: z.string().min(1, "Phone number is required"),
   bio: z.string().optional(),
   imageUrl: z.string().optional(),
   clinicIds: z.array(z.number()).optional(),
@@ -100,6 +102,7 @@ export default function DoctorCreation() {
       password: "",
       name: "",
       specialty: "",
+      phone: "",
       bio: "",
       imageUrl: "",
       clinicIds: [],
@@ -113,6 +116,7 @@ export default function DoctorCreation() {
       username: "",
       name: "",
       specialty: "",
+      phone: "",
       bio: "",
       imageUrl: "",
       clinicIds: [],
@@ -149,7 +153,12 @@ export default function DoctorCreation() {
   // Update doctor mutation
   const updateDoctorMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number, data: DoctorUpdateData }) => {
-      const res = await apiRequest("PUT", `/api/doctors/${id}`, data);
+      // Format the data to include doctorClinics property if clinicIds is present
+      const formattedData = {
+        ...data,
+        doctorClinics: data.clinicIds // Map clinicIds to doctorClinics for the API
+      };
+      const res = await apiRequest("PUT", `/api/doctors/${id}`, formattedData);
       return await res.json();
     },
     onSuccess: () => {
@@ -224,6 +233,7 @@ export default function DoctorCreation() {
           username: doctor.username,
           name: doctor.name,
           specialty: doctor.specialty || "",
+          phone: doctor.phone || "",
           bio: doctor.bio || "",
           imageUrl: doctor.imageUrl || "",
           clinicIds: clinics.map((clinic) => clinic.id),
@@ -243,6 +253,7 @@ export default function DoctorCreation() {
           username: doctor.username,
           name: doctor.name,
           specialty: doctor.specialty || "",
+          phone: doctor.phone || "",
           bio: doctor.bio || "",
           imageUrl: doctor.imageUrl || "",
           clinicIds: [],
@@ -456,6 +467,23 @@ export default function DoctorCreation() {
                 
                 <FormField
                   control={form.control}
+                  name="phone"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Phone Number</FormLabel>
+                      <FormControl>
+                        <Input 
+                          placeholder="Enter phone number" 
+                          {...field} 
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                
+                <FormField
+                  control={form.control}
                   name="bio"
                   render={({ field }) => (
                     <FormItem>
@@ -599,6 +627,23 @@ export default function DoctorCreation() {
                           ))}
                         </SelectContent>
                       </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                
+                <FormField
+                  control={editForm.control}
+                  name="phone"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Phone Number</FormLabel>
+                      <FormControl>
+                        <Input 
+                          placeholder="Enter phone number" 
+                          {...field} 
+                        />
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}

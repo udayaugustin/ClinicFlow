@@ -4,25 +4,18 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { DashboardHeader } from "@/components/dashboard-header";
 import { PlusCircle, Hospital, User } from "lucide-react";
+import React from "react";
 
 export default function SuperAdminDashboard() {
   const { user } = useAuth();
   const [_, navigate] = useLocation();
-
-  // Redirect if not logged in or not a super admin
-  if (!user) {
-    navigate("/auth");
-    return null;
-  }
-
-  if (user.role !== "super_admin") {
-    navigate("/");
-    return null;
-  }
+  
+  // No need for redirects as this component will only be rendered for super admins
+  // from the home page
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <DashboardHeader title="Super Admin Dashboard" />
+      {/* <DashboardHeader title="Super Admin Dashboard" /> */}
       
       <main className="container mx-auto py-6 px-4">
         <h1 className="text-2xl font-bold mb-6">Welcome, {user.name}</h1>

@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { LogOut, User, Calendar, UserPlus, Clock } from "lucide-react";
 import { NotificationPopover } from "./notifications/notification-popover";
+import React from "react";
 
 export function NavHeader() {
   const { user, logoutMutation } = useAuth();
@@ -17,6 +18,12 @@ export function NavHeader() {
 
   // For attenders, don't show the navigation if they're on their dashboard
   const isAttenderDashboard = user?.role === "attender" && location === "/attender-dashboard";
+  
+  // Check if user is a clinic admin
+  const isClinicAdmin = user?.role === "clinic_admin";
+  
+  // Check if user is a super admin
+  const isSuperAdmin = user?.role === "super_admin";
   
   // Check if user can manage doctors (hospital_admin or attender)
   const canManageDoctors = user?.role === "hospital_admin" || user?.role === "attender";
@@ -30,14 +37,14 @@ export function NavHeader() {
   return (
     <header className="border-b">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-        <Link href={user?.role === "attender" ? "/attender-dashboard" : "/"}>
+        <Link href={user?.role === "attender" ? "/attender-dashboard" : isClinicAdmin ? "/clinic-admin-dashboard" : "/"}>
           <a className="text-2xl font-bold text-primary">MedClinic</a>
         </Link>
 
         <div className="flex items-center gap-4">
           {user ? (
             <>
-              {!isAttenderDashboard && user.role !== "attender" && (
+              {!isAttenderDashboard && user.role !== "attender" && !isClinicAdmin && !isSuperAdmin && (
                 <Button variant="ghost" asChild className="hidden md:flex">
                   <Link href="/appointments">
                     <Calendar className="mr-2 h-4 w-4" />
@@ -45,6 +52,14 @@ export function NavHeader() {
                   </Link>
                 </Button>
               )}
+              {/* {isClinicAdmin && (
+                <Button variant="ghost" asChild className="hidden md:flex">
+                  <Link href="/clinic-admin-dashboard">
+                    <Calendar className="mr-2 h-4 w-4" />
+                    Admin Dashboard
+                  </Link>
+                </Button>
+              )} */}
               {canManageDoctors && (
                 <Button variant="ghost" asChild className="hidden md:flex">
                   <Link href="/doctor-management">
@@ -81,7 +96,7 @@ export function NavHeader() {
                     <User size={16} />
                     <span>{user.name}</span>
                   </DropdownMenuItem>
-                  {!isAttenderDashboard && (
+                  {!isAttenderDashboard && !isClinicAdmin && !isSuperAdmin && (
                     <DropdownMenuItem asChild>
                       {user.role === "attender" ? (
                         <Link href="/attender-dashboard" className="gap-2">
@@ -96,6 +111,14 @@ export function NavHeader() {
                       )}
                     </DropdownMenuItem>
                   )}
+                  {/* {isClinicAdmin && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/clinic-admin-dashboard" className="gap-2">
+                        <Calendar size={16} />
+                        <span>Admin Dashboard</span>
+                      </Link>
+                    </DropdownMenuItem>
+                  )} */}
                   {canManageDoctors && (
                     <DropdownMenuItem asChild>
                       <Link href="/doctor-management" className="gap-2">

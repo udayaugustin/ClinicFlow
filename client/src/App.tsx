@@ -20,6 +20,7 @@ import ClinicView from "@/pages/clinic-view";
 import DoctorManagementPage from "./pages/doctor-management";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import DoctorSchedulesPage from "./pages/doctor-schedules";
+import ClinicAdminDashboard from "@/pages/clinic-admin-dashboard";
 
 // Wrap DoctorManagementPage with ProtectedRoute
 const ProtectedDoctorManagement = () => (
@@ -34,20 +35,23 @@ const ProtectedDoctorSchedules = () => (
   </ProtectedRoute>
 );
 
+const ProtectedClinicAdminDashboard = () => (
+  <ProtectedRoute allowedRoles={["clinic_admin", "hospital_admin", "clinicadmin"]}>
+    <ClinicAdminDashboard />
+  </ProtectedRoute>
+);
+
 function Router() {
   const { user } = useAuth();
 
-  // Redirect attenders to their dashboard
-  if (user?.role === "attender" && window.location.pathname === "/") {
-    window.location.href = "/attender-dashboard";
-    return null;
+  // Debug user role
+  if (user) {
+    console.log('Current user role:', user.role);
+    console.log('User details:', user);
   }
-
-  // Redirect doctors to their booking page
-  if (user?.role === "doctor" && window.location.pathname === "/") {
-    window.location.href = "/doctor/bookings";
-    return null;
-  }
+  
+  // No redirects needed - all users go to the home page
+  // The home page will conditionally render the appropriate dashboard based on user role
 
   return (
     <Switch>
@@ -58,12 +62,13 @@ function Router() {
       <Route path="/doctor/bookings" component={DoctorBookingPage} />
       <Route path="/appointments" component={BookingHistoryPage} />
       <Route path="/attender-dashboard" component={AttenderDashboard} />
-      <Route path="/super-admin-dashboard" component={SuperAdminDashboard} />
+      {/* <Route path="/super-admin-dashboard" component={SuperAdminDashboard} /> */}
       <Route path="/doctor-creation" component={DoctorCreation} />
       <Route path="/clinic-creation" component={ClinicCreation} />
       <Route path="/clinic/:id" component={ClinicView} />
       <Route path="/doctor-management" component={ProtectedDoctorManagement} />
       <Route path="/schedules" component={ProtectedDoctorSchedules} />
+      {/* <Route path="/clinic-admin-dashboard" component={ProtectedClinicAdminDashboard} /> */}
       <Route component={NotFound} />
     </Switch>
   );

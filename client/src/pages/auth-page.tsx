@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { z } from "zod";
+import React from "react";
 
 // Simple schema for login
 const loginSchema = z.object({
@@ -38,13 +39,13 @@ export default function AuthPage() {
 
   if (user) {
     // Redirect users based on their role
-    if (user.role === "attender") {
-      navigate("/attender-dashboard");
-    } else if (user.role === "super_admin") {
-      navigate("/super-admin-dashboard");
-    } else {
+    // if (user.role === "attender") {
+    //   navigate("/attender-dashboard");
+    // } else if (user.role === "super_admin") {
+    //   navigate("/super-admin-dashboard");
+    // } else {
       navigate("/");
-    }
+    // }
     return null;
   }
 
