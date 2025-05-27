@@ -3,8 +3,8 @@ import { createServer, Server } from 'http';
 import cors from 'cors';
 import { storage, getTokens } from './storage';
 import { createSessionMiddleware, setupAuth } from './auth';
-import { insertAppointmentSchema, insertAttenderDoctorSchema, type AttenderDoctor, type User } from "@shared/schema";
-import { insertDoctorDetailSchema } from "@shared/schema";
+import { insertAppointmentSchema, insertAttenderDoctorSchema, insertUserSchema, type AttenderDoctor, type User } from "../shared/schema";
+import { insertDoctorDetailSchema } from "../shared/schema";
 import { z } from "zod";
 import { notificationService } from './services/notification';
 
@@ -70,14 +70,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/doctors", async (req, res) => {
-    if (!req.user || req.user.role !== "super_admin") return res.sendStatus(403);
+    if (!req.user || (req.user.role !== "super_admin" && req.user.role !== "clinic_admin")) {
+      return res.sendStatus(403);
+    }
     try {
       const { clinicIds, ...doctorData } = req.body;
       
-      const userData = insertUserSchema.parse({
+      // Add default phone if not provided
+      const doctorDataWithDefaults = {
         ...doctorData,
+        phone: doctorData.phone || '0000000000', // Default phone number if not provided
         role: "doctor"
-      });
+      };
+      
+      const userData = insertUserSchema.parse(doctorDataWithDefaults);
       
       const doctor = await storage.createUser(userData);
       
@@ -94,7 +100,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.put("/api/doctors/:id", async (req, res) => {
-    if (!req.user || req.user.role !== "super_admin") return res.sendStatus(403);
+    if (!req.user || (req.user.role !== "super_admin" && req.user.role !== "clinic_admin")) return res.sendStatus(403);
     try {
       const doctorId = parseInt(req.params.id);
       const doctor = await storage.getUser(doctorId);
@@ -120,7 +126,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.delete("/api/doctors/:id", async (req, res) => {
-    if (!req.user || req.user.role !== "super_admin") return res.sendStatus(403);
+    if (!req.user || (req.user.role !== "super_admin" && req.user.role !== "clinic_admin")) return res.sendStatus(403);
     try {
       const doctorId = parseInt(req.params.id);
       const doctor = await storage.getUser(doctorId);
@@ -397,7 +403,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/attenders", async (req, res) => {
-    if (!req.user || (req.user.role !== "super_admin" && req.user.role !== "doctor")) {
+    if (!req.user || (req.user.role !== "super_admin" && req.user.role !== "doctor" && req.user.role !== "clinic_admin")) {
       return res.sendStatus(403);
     }
     try {
@@ -415,7 +421,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.put("/api/attenders/:id", async (req, res) => {
-    if (!req.user || (req.user.role !== "super_admin" && req.user.role !== "doctor")) {
+    if (!req.user || (req.user.role !== "super_admin" && req.user.role !== "doctor" && req.user.role !== "clinic_admin")) {
       return res.sendStatus(403);
     }
     try {
@@ -435,7 +441,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.delete("/api/attenders/:id", async (req, res) => {
-    if (!req.user || (req.user.role !== "super_admin" && req.user.role !== "doctor")) {
+    if (!req.user || (req.user.role !== "super_admin" && req.user.role !== "doctor" && req.user.role !== "clinic_admin")) {
       return res.sendStatus(403);
     }
     try {

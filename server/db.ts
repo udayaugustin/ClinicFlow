@@ -30,9 +30,9 @@ if (!process.env.DATABASE_URL) {
 
 const pool = new pkg.Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false
-  }
+  // ssl: {
+  //   rejectUnauthorized: false
+  // }
 });
 
 export const db = drizzle(pool, { schema });
