@@ -14,6 +14,7 @@ import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, Tabl
 import { Plus, Edit, Trash2, Calendar, Clock } from "lucide-react";
 import { format } from "date-fns";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import React from "react";
 
 // Define types
 type Clinic = {
@@ -54,7 +55,7 @@ export default function DoctorSchedulesPage() {
   
   // Form state
   const [formData, setFormData] = useState({
-    clinicId: 0,
+    clinicId: "", // Initialize as empty string instead of 0
     date: new Date(),
     startTime: "09:00",
     endTime: "17:00",
@@ -99,12 +100,18 @@ export default function DoctorSchedulesPage() {
         throw new Error("Please select a valid date");
       }
 
+      // Validate clinic ID
+      if (!data.clinicId) {
+        throw new Error("Please select a clinic");
+      }
+
       // Format the date as ISO string, ensuring we're using the correct time
       const selectedDate = new Date(data.date);
       selectedDate.setHours(0, 0, 0, 0); // Reset time to start of day
 
       const formattedData = {
         ...data,
+        clinicId: parseInt(data.clinicId as string), // Convert string to number
         date: selectedDate.toISOString(),
       };
 
@@ -233,7 +240,7 @@ export default function DoctorSchedulesPage() {
   const handleSelectChange = (name: string, value: string) => {
     // Convert string values to numbers for number fields
     if (name === 'clinicId') {
-      setFormData({ ...formData, clinicId: parseInt(value, 10) });
+      setFormData({ ...formData, clinicId: value });
     } else {
       setFormData({ ...formData, [name]: value });
     }
@@ -265,7 +272,7 @@ export default function DoctorSchedulesPage() {
     
     setSelectedSchedule(schedule);
     setFormData({
-      clinicId: schedule.clinicId,
+      clinicId: schedule.clinicId.toString(), // Convert to string for the form
       date: scheduleDate,
       startTime: schedule.startTime,
       endTime: schedule.endTime,
@@ -293,10 +300,19 @@ export default function DoctorSchedulesPage() {
       return;
     }
 
+    if (!formData.clinicId) {
+      toast({
+        title: "Error",
+        description: "Please select a clinic",
+        variant: "destructive",
+      });
+      return;
+    }
+
     // Create a copy of formData with number values properly converted
     const processedData = {
       ...formData,
-      clinicId: Number(formData.clinicId),
+      clinicId: parseInt(formData.clinicId as string), // Convert string to number
       doctorId: selectedDoctor,
     };
 
@@ -315,7 +331,7 @@ export default function DoctorSchedulesPage() {
     today.setHours(0, 0, 0, 0); // Reset time to start of day
     
     setFormData({
-      clinicId: 0,
+      clinicId: "",
       date: today,
       startTime: "09:00",
       endTime: "17:00",

@@ -10,15 +10,15 @@ async function hashPassword(password: string) {
   return `${buf.toString("hex")}.${salt}`;
 }
 
-async function createTestPatient() {
+async function createTestDoctor() {
   try {
     // Create predictable test credentials
-    const username = "testpatient3";
-    const password = "test123";
+    const username = "testdoctor";
+    const password = "doctor123";
 
     // Hash the password
     const hashedPassword = await hashPassword(password);
-    console.log("\nCreating test patient with credentials:");
+    console.log("\nCreating test doctor with credentials:");
     console.log("Username:", username);
     console.log("Password:", password);
     console.log("Hashed password:", hashedPassword);
@@ -26,29 +26,29 @@ async function createTestPatient() {
     // Check if user already exists
     const existingUser = await storage.getUserByUsername(username);
     if (existingUser) {
-      console.log("\nTest patient already exists with username:", username);
+      console.log("\nTest doctor already exists with username:", username);
       return existingUser;
     }
 
     const user = await storage.createUser({
       username,
       password: hashedPassword,
-      name: "Test Patient",
-      role: "patient",
-      clinicId: null,   // Patients don't have a clinic ID
-      specialty: null,
-      bio: null,
+      name: "Dr. John Smith",
+      role: "doctor",
+      clinicId: 1,  // Assuming clinic ID 1 exists, adjust as needed
+      specialty: "General Medicine",
+      bio: "Dr. John Smith is a general practitioner with over 10 years of experience in family medicine.",
       imageUrl: null,
-      address: "123 Test Street",
-      city: "Test City",
-      state: "Test State",
-      zipCode: "12345",
+      address: "456 Medical Avenue",
+      city: "Healthville",
+      state: "Wellness State",
+      zipCode: "54321",
       latitude: 40.7128,
       longitude: -74.0060,
     });
 
-    console.log("\nCreated patient:", user);
-    console.log("\nTest patient created successfully!");
+    console.log("\nCreated doctor:", user);
+    console.log("\nTest doctor created successfully!");
     console.log("----------------------------------------");
     console.log("LOGIN CREDENTIALS");
     console.log("Username:", username);
@@ -57,18 +57,18 @@ async function createTestPatient() {
 
     return user;
   } catch (error) {
-    console.error("Error creating test patient:", error);
+    console.error("Error creating test doctor:", error);
     throw error;
   }
 }
 
 // Execute and log results
-createTestPatient()
+createTestDoctor()
   .then(() => {
-    console.log("\nTest patient creation completed successfully!");
+    console.log("\nTest doctor creation completed successfully!");
     process.exit(0);
   })
   .catch(error => {
-    console.error("\nFailed to create test patient:", error);
+    console.error("\nFailed to create test doctor:", error);
     process.exit(1);
   });
