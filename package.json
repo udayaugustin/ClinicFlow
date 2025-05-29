@@ -17,7 +17,10 @@
     "generate": "node scripts/dev.js generate",
     "parse-prd": "node scripts/dev.js parse-prd",
     "create-super-admin": "ts-node create-super-admin.ts",
-    "create-clinic-admin": "tsx server/create-clinic-admin.ts"
+    "create-clinic-admin": "tsx server/create-clinic-admin.ts",
+    "create-test-doctor": "tsx server/create-test-doctor.ts",
+    "assign-doctor-to-attender": "tsx server/assign-doctor-to-attender.ts",
+    "create-test-patient": "tsx server/create-test-patient.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

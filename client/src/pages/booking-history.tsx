@@ -329,7 +329,7 @@ export default function BookingHistoryPage() {
                                         <span className="text-yellow-600 font-medium">Appointment on hold</span>
                                       ) : appointment.status === "pause" ? (
                                         <span className="text-orange-600 font-medium">Appointment paused</span>
-                                      ) : tokensAhead === 0 ? (
+                                      ) : appointment.tokenNumber === progress.currentToken + 1 ? (
                                         <span className="text-green-600 font-medium">You're next!</span>
                                       ) : tokensAhead && tokensAhead > 0 ? (
                                         <span>
@@ -345,7 +345,7 @@ export default function BookingHistoryPage() {
                                   </div>
                                 )}
                                 
-                                {doctorHasArrived && (
+                                {doctorHasArrived && appointment.status !== "completed" && (
                                   <div className="text-sm text-center text-green-600 font-medium mt-2 flex items-center justify-center gap-2">
                                     <CheckCircle2 className="h-4 w-4" />
                                     Your doctor has arrived at the clinic
