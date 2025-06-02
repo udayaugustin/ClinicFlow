@@ -823,8 +823,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ["scheduled", "start"].includes(apt.status || "")
       );
 
-      // Notify all affected patients
+      // Update all affected appointments to paused status
       for (const appointment of affectedAppointments) {
+        // Update the appointment status to "pause"
+        await storage.updateAppointmentStatus(appointment.id, "pause", pauseReason || "Schedule paused");
+        
         if (appointment.patientId) {
           await notificationService.createNotification({
             userId: appointment.patientId,
@@ -851,14 +854,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const scheduleId = parseInt(req.params.id);
       await storage.resumeSchedule(scheduleId);
 
-      // Get all appointments for this schedule that were affected
+      // Get all appointments for this schedule that are in paused status
       const appointments = await storage.getAppointmentsBySchedule(scheduleId);
       const affectedAppointments = appointments.filter(apt => 
-        ["scheduled", "start"].includes(apt.status || "")
+        apt.status === "pause"
       );
 
-      // Notify all affected patients
+      // Update all paused appointments back to scheduled status
       for (const appointment of affectedAppointments) {
+        // Update the appointment status back to "scheduled"
+        await storage.updateAppointmentStatus(appointment.id, "scheduled", "Schedule resumed");
+        
         if (appointment.patientId) {
           await notificationService.createNotification({
             userId: appointment.patientId,
