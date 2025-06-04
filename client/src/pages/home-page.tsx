@@ -13,7 +13,7 @@ import { useAuth } from "../hooks/use-auth";
 export default function HomePage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [specialty, setSpecialty] = useState("");
-  const { user } = useAuth();
+  const { user, isLoading: isAuthLoading } = useAuth();
 
   const { data: doctors, isLoading } = useQuery<User[]>({
     queryKey: [specialty ? `/api/doctors/${specialty}` : "/api/doctors"],
@@ -33,7 +33,7 @@ export default function HomePage() {
         onSpecialtyChange={setSpecialty}
       />
       
-      {!user ? (
+      {/* {!user ? ( */}
         <main className="container mx-auto px-4 py-8">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {isLoading ? (
@@ -51,12 +51,12 @@ export default function HomePage() {
             )}
           </div>
         </main>
-      ) : (
+      {/* ) : (
         <>
           {user.role === "super_admin" && <SuperAdminDashboard />}
           {(user.role === "clinic_admin" || user.role === "clinicadmin" || user.role === "hospital_admin") && <ClinicAdminDashboard />}
         </>
-      )}
+      )} */}
     </div>
   );
 }
