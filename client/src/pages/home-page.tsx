@@ -33,7 +33,8 @@ export default function HomePage() {
         onSpecialtyChange={setSpecialty}
       />
       
-      {/* {!user ? ( */}
+      {!user ? (
+        // No user logged in - show the doctor list for everyone
         <main className="container mx-auto px-4 py-8">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {isLoading ? (
@@ -51,12 +52,32 @@ export default function HomePage() {
             )}
           </div>
         </main>
-      {/* ) : (
+      ) : (
+        // User is logged in - show appropriate dashboard based on role
         <>
           {user.role === "super_admin" && <SuperAdminDashboard />}
           {(user.role === "clinic_admin" || user.role === "clinicadmin" || user.role === "hospital_admin") && <ClinicAdminDashboard />}
+          {(user.role === "attender" || user.role === "doctor" || user.role === "patient") && (
+            <main className="container mx-auto px-4 py-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {isLoading ? (
+                  Array(6).fill(0).map((_, i) => (
+                    <Skeleton key={i} className="h-[400px]" />
+                  ))
+                ) : filteredDoctors?.length === 0 ? (
+                  <div className="col-span-full text-center py-12">
+                    <p className="text-lg text-muted-foreground">No doctors found</p>
+                  </div>
+                ) : (
+                  filteredDoctors?.map((doctor) => (
+                    <DoctorCard key={doctor.id} doctor={doctor} />
+                  ))
+                )}
+              </div>
+            </main>
+          )}
         </>
-      )} */}
+      )}
     </div>
   );
 }

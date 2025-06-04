@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { format, isSameDay } from "date-fns";
+import { constructNow, format, isSameDay } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, CheckCircle2, XCircle, Clock, Calendar as CalendarIcon, Building, Plus } from "lucide-react";
@@ -25,6 +25,7 @@ import { AppointmentActions } from "@/components/appointment-actions";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import React from "react";
 
 // Updated type definition without presence info in schedules
 type DoctorSchedule = {
@@ -53,6 +54,7 @@ type DoctorWithAppointments = {
 export default function AttenderDashboard() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const [isPaused, setIsPaused] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [isWalkInDialogOpen, setIsWalkInDialogOpen] = useState(false);
   const [walkInFormValues, setWalkInFormValues] = useState({
@@ -74,6 +76,8 @@ export default function AttenderDashboard() {
   const { data: managedDoctors, isLoading, error } = useQuery<DoctorWithAppointments[]>({
     queryKey: [`/api/attender/${user?.id}/doctors/appointments`, selectedDate],
     enabled: !!user?.id,
+    // Refresh every 30 seconds to keep appointments data current
+    refetchInterval: 30000,
     queryFn: async () => {
       const res = await apiRequest("GET", `/api/attender/${user?.id}/doctors/appointments`);
       const data = await res.json();
@@ -91,7 +95,7 @@ export default function AttenderDashboard() {
   const updateAppointmentMutation = useMutation({
     mutationFn: async ({ 
       appointmentId, 
-      status, 
+      status = "Pause", 
       statusNotes 
     }: { 
       appointmentId: number; 
@@ -421,10 +425,40 @@ export default function AttenderDashboard() {
     const reason = isPaused ? prompt("Please enter reason for pausing the schedule:") : undefined;
     if (isPaused && !reason) return; // Don't pause if no reason provided
     
+    setIsPaused(isPaused);
     toggleSchedulePauseMutation.mutate({ 
       scheduleId, 
       isPaused, 
       pauseReason: reason 
+    }, {
+      onSuccess: () => {
+        // Find all appointments for this schedule and update their statuses
+        if (managedDoctors) {
+          managedDoctors.forEach(doctor => {
+            doctor.schedules?.forEach(schedule => {
+              if (schedule.id === scheduleId) {
+                schedule.appointments?.forEach(appointment => {
+                  if (isPaused && ["scheduled", "start"].includes(appointment.status || "")) {
+                    // Update to pause if pausing
+                    updateAppointmentMutation.mutate({
+                      appointmentId: appointment.id,
+                      status: "pause",
+                      statusNotes: reason || "Schedule paused"
+                    });
+                  } else if (!isPaused && appointment.status === "pause") {
+                    // Update back to scheduled if resuming
+                    updateAppointmentMutation.mutate({
+                      appointmentId: appointment.id,
+                      status: "scheduled",
+                      statusNotes: "Schedule resumed"
+                    });
+                  }
+                });
+              }
+            });
+          });
+        }
+      }
     });
   };
 
