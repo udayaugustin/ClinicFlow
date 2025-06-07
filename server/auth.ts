@@ -97,6 +97,12 @@ export function setupAuth(app: Express) {
         password: hashedPassword,
       });
 
+      // If this is an attender being created by a clinic admin, don't auto-login
+      if (req.user && req.user.role === "clinic_admin" && parsed.role === "attender") {
+        return res.status(201).json(user);
+      }
+      
+      // Otherwise, log the user in (normal registration flow)
       req.login(user, (err) => {
         if (err) return next(err);
         res.status(201).json(user);

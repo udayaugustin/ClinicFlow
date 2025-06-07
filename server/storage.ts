@@ -543,42 +543,90 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async getAttenderDoctors(attenderId: number): Promise<(AttenderDoctor & { doctor: User })[]> {
-    try {
-      console.log('Getting doctors for attender:', attenderId);
+  // async getAttenderDoctors(attenderId: number): Promise<(AttenderDoctor & { doctor: User })[]> {
+  //   try {
+  //     console.log('Getting doctors for attender:', attenderId);
 
-      // Step 1: Get attender-doctor relationships
+  //     // Step 1: Get attender-doctor relationships
+  //     const relations = await db
+  //       .select()
+  //       .from(attenderDoctors)
+  //       .where(eq(attenderDoctors.attenderId, attenderId));
+
+  //     console.log('Attender-doctor relations:', JSON.stringify(relations, null, 2));
+
+  //     if (!relations.length) {
+  //       console.log(`No doctor relations found for attender: ${attenderId}`);
+  //       return [];
+  //     }
+
+  //     // Step 2: Get all doctors in one query
+  //     const doctorIds = relations.map(r => r.doctorId);
+  //     console.log('Doctor IDs to fetch:', doctorIds);
+
+  //     const doctors = await db
+  //       .select()
+  //       .from(users)
+  //       .where(
+  //         and(
+  //           inArray(users.id, doctorIds),
+  //           eq(users.role, "doctor")
+  //         )
+  //       );
+
+  //     console.log('Doctors data:', JSON.stringify(doctors, null, 2));
+
+  //     const doctorsMap = new Map(doctors.map(d => [d.id, d]));
+
+  //     // Step 3: Combine the data
+  //     const fullRelations = relations
+  //       .map(relation => {
+  //         const doctor = doctorsMap.get(relation.doctorId);
+  //         if (!doctor) {
+  //           console.error(`Doctor not found for relation: ${relation.id}`);
+  //           return null;
+  //         }
+  //         return {
+  //           ...relation,
+  //           doctor
+  //         };
+  //       })
+  //       .filter((rel): rel is (AttenderDoctor & { doctor: User }) => rel !== null);
+
+  //     console.log('Final attender-doctor data:', JSON.stringify(fullRelations, null, 2));
+  //     return fullRelations;
+  //   } catch (error) {
+  //     console.error('Error in getAttenderDoctors:', error);
+  //     if (error instanceof Error) {
+  //       console.error('Error message:', error.message);
+  //       console.error('Error stack:', error.stack);
+  async getAttenderDoctors(attenderId: number): Promise<(AttenderDoctor & { doctor: User; })[]> {
+    try {
+      // Get all relations where this user is the attender
       const relations = await db
         .select()
         .from(attenderDoctors)
         .where(eq(attenderDoctors.attenderId, attenderId));
 
-      console.log('Attender-doctor relations:', JSON.stringify(relations, null, 2));
-
-      if (!relations.length) {
-        console.log(`No doctor relations found for attender: ${attenderId}`);
+      if (relations.length === 0) {
         return [];
       }
 
-      // Step 2: Get all doctors in one query
-      const doctorIds = relations.map(r => r.doctorId);
-      console.log('Doctor IDs to fetch:', doctorIds);
-
+      // Get all doctors from the relations
       const doctors = await db
         .select()
         .from(users)
         .where(
           and(
-            inArray(users.id, doctorIds),
+            inArray(users.id, relations.map(r => r.doctorId)),
             eq(users.role, "doctor")
           )
         );
 
-      console.log('Doctors data:', JSON.stringify(doctors, null, 2));
-
+      // Create a map for quick doctor lookup
       const doctorsMap = new Map(doctors.map(d => [d.id, d]));
 
-      // Step 3: Combine the data
+      // Combine the relation data with the doctor data
       const fullRelations = relations
         .map(relation => {
           const doctor = doctorsMap.get(relation.doctorId);
@@ -593,18 +641,13 @@ export class DatabaseStorage implements IStorage {
         })
         .filter((rel): rel is (AttenderDoctor & { doctor: User }) => rel !== null);
 
-      console.log('Final attender-doctor data:', JSON.stringify(fullRelations, null, 2));
       return fullRelations;
     } catch (error) {
-      console.error('Error in getAttenderDoctors:', error);
-      if (error instanceof Error) {
-        console.error('Error message:', error.message);
-        console.error('Error stack:', error.stack);
-      }
+      console.error('Error fetching attender doctors:', error);
       throw error;
     }
   }
-
+  
   async addDoctorToAttender(attenderId: number, doctorId: number, clinicId: number): Promise<AttenderDoctor> {
     try {
       const [relation] = await db
