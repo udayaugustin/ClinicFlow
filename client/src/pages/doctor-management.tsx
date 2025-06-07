@@ -13,6 +13,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { PlusCircle, Edit, Trash2, CheckCircle, XCircle } from "lucide-react";
+import React from "react";
+import { useAuth } from "@/hooks/use-auth";
+import { apiRequest } from "@/lib/queryClient";
 
 // Define types
 type Clinic = {
@@ -44,6 +47,8 @@ type DoctorDetails = {
 export default function DoctorManagementPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const attenderId = user?.id;
   const [activeTab, setActiveTab] = useState("list");
   const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
   
@@ -71,10 +76,25 @@ export default function DoctorManagementPage() {
     queryKey: ["/api/clinics"],
   });
 
-  // Fetch doctors
-  const { data: doctors, isLoading: isLoadingDoctors } = useQuery<Doctor[]>({
-    queryKey: ["/api/doctors"],
+  // Fetch doctors based on attender assignment
+  const { 
+    data: attenderDoctors = [], 
+    isLoading: isLoadingAttenderDoctors 
+  } = useQuery<{doctor: Doctor}[]>({ 
+    queryKey: ['attender-doctors', attenderId], 
+    queryFn: async () => { 
+      if (!attenderId) return []; 
+      const res = await apiRequest('GET', `/api/attender-doctor/${attenderId}`); 
+      return await res.json(); 
+    }, 
+    enabled: !!attenderId, 
+    refetchOnMount: 'always',  // Always refetch when component mounts
+    staleTime: 0,              // Consider data stale immediately
   });
+  
+  // Extract just the doctor objects from attenderDoctors
+  const doctors = attenderDoctors.map(item => item.doctor);
+  const isLoadingDoctors = isLoadingAttenderDoctors;
 
   // Create doctor mutation
   const createDoctorMutation = useMutation({
