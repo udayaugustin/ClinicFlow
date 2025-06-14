@@ -127,7 +127,8 @@ export default function ClinicView() {
     queryKey: ['clinic-attenders', params?.id],
     queryFn: async () => {
       if (!params?.id) return [];
-      const res = await apiRequest('GET', `/api/attenders?clinicId=${params.id}`);
+      // Use the users endpoint with role=attender filter
+      const res = await apiRequest('GET', `/api/users?role=attender&clinicId=${params.id}`);
       return await res.json();
     },
     enabled: !!params?.id,
@@ -153,7 +154,8 @@ export default function ClinicView() {
   // Create attender mutation
   const createAttenderMutation = useMutation({
     mutationFn: async (data: AttenderData) => {
-      const res = await apiRequest("POST", "/api/attenders", {
+      // Use the register endpoint which properly hashes passwords
+      const res = await apiRequest("POST", "/api/register", {
         ...data,
         role: "attender",
         clinicId: Number(params?.id),
@@ -182,7 +184,8 @@ export default function ClinicView() {
   const updateAttenderMutation = useMutation({
     mutationFn: async (data: Omit<AttenderData, 'password'> & { id: number }) => {
       const { id, ...updateData } = data;
-      const res = await apiRequest("PUT", `/api/attenders/${id}`, updateData);
+      // Use the users endpoint instead of attenders endpoint
+      const res = await apiRequest("PUT", `/api/users/${id}`, updateData);
       return await res.json();
     },
     onSuccess: () => {
@@ -207,7 +210,8 @@ export default function ClinicView() {
   // Delete attender mutation
   const deleteAttenderMutation = useMutation({
     mutationFn: async (id: number) => {
-      const res = await apiRequest("DELETE", `/api/attenders/${id}`);
+      // Use the users endpoint instead of attenders endpoint
+      const res = await apiRequest("DELETE", `/api/users/${id}`);
       if (!res.ok) {
         const errorData = await res.json();
         throw new Error(errorData.message || "Failed to delete attender");

@@ -100,3 +100,7 @@ createClinicAdmin()
     console.error("\nFailed to create clinic admin:", error);
     process.exit(1);
   });
+
+
+// to run 
+// npm run create-clinic-admin -- --clinicId=1

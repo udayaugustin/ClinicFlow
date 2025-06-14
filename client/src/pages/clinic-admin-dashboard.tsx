@@ -139,8 +139,9 @@ export default function ClinicAdminDashboard() {
   const [isAddAttenderDialogOpen, setIsAddAttenderDialogOpen] = useState(false);
   const [isEditAttenderDialogOpen, setIsEditAttenderDialogOpen] = useState(false);
   const [isDeleteAttenderDialogOpen, setIsDeleteAttenderDialogOpen] = useState(false);
+  const [isAssignDoctorDialogOpen, setIsAssignDoctorDialogOpen] = useState(false);
   const [selectedAttender, setSelectedAttender] = useState<Attender | null>(null);
-  
+  const [attenderId, setAttenderId] = useState<number | null>(null);
   // Form hooks
   const addDoctorForm = useForm<z.infer<typeof doctorSchema>>({ 
     resolver: zodResolver(doctorSchema),
@@ -246,15 +247,40 @@ export default function ClinicAdminDashboard() {
     mutationFn: async (doctorData: any) => {
       // Now that clinic admins have permission to create doctors, make the API call
       const res = await apiRequest('POST', '/api/doctors', doctorData);
-      return await res.json();
+      const newDoctor = await res.json();
+      
+      // After creating the doctor, automatically assign to all attenders in the clinic
+      if (newDoctor && newDoctor.id) {
+        const clinicId = doctorData.clinicIds?.[0];
+        if (clinicId) {
+          // Get all attenders in this clinic
+          const attenderRes = await apiRequest('GET', `/api/attenders?clinicId=${clinicId}`);
+          const attenders = await attenderRes.json();
+          
+          // Assign the new doctor to each attender
+          if (attenders && attenders.length > 0) {
+            for (const attender of attenders) {
+              await apiRequest('POST', '/api/attender-doctors', {
+                attenderId: attender.id,
+                doctorId: newDoctor.id,
+                clinicId
+              });
+            }
+          }
+        }
+      }
+      
+      return newDoctor;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clinic-doctors', params?.id || user?.clinicId] });
+      // Also invalidate attender-doctors queries for all attenders
+      queryClient.invalidateQueries({ queryKey: ['attender-doctors'] });
       setIsAddDoctorDialogOpen(false);
       addDoctorForm.reset();
       toast({
         title: "Success",
-        description: "Doctor added successfully",
+        description: "Doctor added successfully and assigned to all attenders",
       });
     },
     onError: (error: any) => {
@@ -318,23 +344,32 @@ export default function ClinicAdminDashboard() {
   
   const createAttenderMutation = useMutation({
     mutationFn: async (attenderData: any) => {
-      // There doesn't appear to be a dedicated endpoint for creating attenders
-      // Display a message explaining the issue
-      toast({
-        title: "Feature Not Available",
-        description: "The attender creation feature is not available in this version. Please contact your system administrator.",
-        variant: "destructive",
-      });
+      // Original code (uncommented):
+      const res = await apiRequest('POST', '/api/attenders', attenderData);
+      const newAttender = await res.json();
       
-      // Close the dialog
-      setIsAddAttenderDialogOpen(false);
+      // After creating the attender, automatically assign all doctors in the clinic
+      if (newAttender && newAttender.id) {
+        const clinicId = attenderData.clinicId;
+        if (clinicId) {
+          // Get all doctors in this clinic
+          const doctorRes = await apiRequest('GET', `/api/clinics/${clinicId}/doctors`);
+          const doctors = await doctorRes.json();
+          
+          // Assign all doctors to the new attender
+          if (doctors && doctors.length > 0) {
+            for (const doctor of doctors) {
+              await apiRequest('POST', '/api/attender-doctors', {
+                attenderId: newAttender.id,
+                doctorId: doctor.id,
+                clinicId
+              });
+            }
+          }
+        }
+      }
       
-      // Return a rejected promise to trigger the onError callback
-      return Promise.reject(new Error("Attender creation endpoint not available"));
-      
-      // Original code (commented out):
-      // const res = await apiRequest('POST', '/api/users', attenderData);
-      // return await res.json();
+      return newAttender;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clinic-attenders', params?.id || user?.clinicId] });
@@ -342,7 +377,7 @@ export default function ClinicAdminDashboard() {
       addAttenderForm.reset();
       toast({
         title: "Success",
-        description: "Attender added successfully",
+        description: "Attender added successfully and assigned all doctors",
       });
     },
     onError: (error: any) => {
@@ -399,6 +434,59 @@ export default function ClinicAdminDashboard() {
       toast({
         title: "Error",
         description: error.message || "Failed to delete attender",
+        variant: "destructive",
+      });
+    }
+  });
+  
+  // Mutation for assigning a doctor to an attender
+  const assignDoctorMutation = useMutation({
+    mutationFn: async ({ attenderId, doctorId, clinicId }: { attenderId: number, doctorId: number, clinicId: number }) => {
+      const res = await apiRequest('POST', '/api/attender-doctors', {
+        attenderId,
+        doctorId,
+        clinicId
+      });
+      return await res.json();
+    },
+    onSuccess: (_, variables) => {
+      // Invalidate both clinic-attenders and attender-doctors queries to refresh UI
+      queryClient.invalidateQueries({ queryKey: ['clinic-attenders', params?.id || user?.clinicId] });
+      queryClient.invalidateQueries({ queryKey: ['attender-doctors', variables.attenderId] });
+      toast({
+        title: "Success",
+        description: "Doctor assigned successfully",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to assign doctor",
+        variant: "destructive",
+      });
+    }
+  });
+
+  // Mutation for removing a doctor from an attender
+  const removeDoctorMutation = useMutation({
+    mutationFn: async ({ attenderId, doctorId }: { attenderId: number, doctorId: number }) => {
+      // Use request body for DELETE request as per the API endpoint definition
+      const res = await apiRequest('DELETE', '/api/attender-doctors', { attenderId, doctorId });
+      return await res.json();
+    },
+    onSuccess: (_, variables) => {
+      // Invalidate both clinic-attenders and attender-doctors queries to refresh UI
+      queryClient.invalidateQueries({ queryKey: ['clinic-attenders', params?.id || user?.clinicId] });
+      queryClient.invalidateQueries({ queryKey: ['attender-doctors', variables.attenderId] });
+      toast({
+        title: "Success",
+        description: "Doctor removed successfully",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to remove doctor",
         variant: "destructive",
       });
     }
@@ -464,6 +552,23 @@ export default function ClinicAdminDashboard() {
     staleTime: 0,              // Consider data stale immediately
   });
 
+  const { 
+    data: attenderDoctors = [], 
+    isLoading: isAttenderDoctorsLoading, 
+    isError: isAttenderDoctorsError 
+  } = useQuery<(AttenderDoctor & { doctor: User })[]>({ 
+    queryKey: ['attender-doctors', attenderId], 
+    queryFn: async () => { 
+      if (!attenderId) return []; 
+      const res = await apiRequest('GET', `/api/attender-doctor/${attenderId}`); 
+      return await res.json(); 
+    }, 
+    enabled: !!attenderId, 
+    refetchOnMount: 'always',  // Always refetch when component mounts
+    staleTime: 0,              // Consider data stale immediately
+  });
+
+  console.log(attenderDoctors);
   // Fetch attenders for this clinic
   const { 
     data: attenders = [], 
@@ -478,6 +583,18 @@ export default function ClinicAdminDashboard() {
       return await res.json(); 
     }, 
     enabled: !!(params?.id || user?.clinicId), 
+  });
+  
+  // Query to fetch all doctors in the clinic
+  const { data: clinicDoctors = [] } = useQuery({
+    queryKey: ['clinic-doctors', params?.id || user?.clinicId],
+    queryFn: async () => { 
+      const clinicId = params?.id || user?.clinicId; 
+      if (!clinicId) return []; 
+      const res = await apiRequest('GET', `/api/clinics/${clinicId}/doctors`); 
+      return await res.json(); 
+    },
+    enabled: !!(params?.id || user?.clinicId),
   });
 
   // Fetch appointments for today
@@ -497,6 +614,17 @@ export default function ClinicAdminDashboard() {
     refetchOnMount: 'always',  // Always refetch when component mounts
     staleTime: 0,              // Consider data stale immediately
   });
+
+  // // Query to fetch all doctors in the clinic
+  // const { data: clinicDoctors = [] } = useQuery({
+  //   queryKey: ['clinic-doctors', params?.id || user?.clinicId],
+  //   queryFn: async () => { 
+  //     const clinicId = params?.id || user?.clinicId; 
+  //     if (!clinicId) return []; 
+  //     const res = await apiRequest('GET', `/api/clinics/${clinicId}/doctors`); 
+  //     return await res.json(); 
+  //   }
+  // });
 
   // Loading state
   if (isClinicLoading) {
@@ -539,7 +667,7 @@ export default function ClinicAdminDashboard() {
 
         {/* Clinic Overview Tab */}
         <TabsContent value="overview" className="space-y-6">
-          {isStatsError && (
+          {/* {isStatsError && (
             <Card className="border-red-200 bg-red-50">
               <CardContent className="pt-6">
                 <div className="flex items-center gap-2 text-red-600">
@@ -549,7 +677,7 @@ export default function ClinicAdminDashboard() {
                 </div>
               </CardContent>
             </Card>
-          )}
+          )} */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Clinic Details Card */}
             <Card className="md:col-span-2">
@@ -801,6 +929,18 @@ export default function ClinicAdminDashboard() {
                           >
                             <Trash2 className="h-4 w-4 mr-1" /> Delete
                           </Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            className="text-blue-600 hover:bg-blue-50"
+                            onClick={() => {
+                              setSelectedAttender(attender);
+                              setAttenderId(attender.id);
+                              setIsAssignDoctorDialogOpen(true);
+                            }}
+                          >
+                            Assign Doctor
+                          </Button>
                         </div>
                       </div>
                     </div>
@@ -813,7 +953,7 @@ export default function ClinicAdminDashboard() {
 
         {/* Appointments Tab */}
         <TabsContent value="appointments" className="space-y-6">
-          {isAppointmentsError && (
+          {/* {isAppointmentsError && (
             <Card className="border-red-200 bg-red-50">
               <CardContent className="pt-6">
                 <div className="flex items-center gap-2 text-red-600">
@@ -823,7 +963,7 @@ export default function ClinicAdminDashboard() {
                 </div>
               </CardContent>
             </Card>
-          )}
+          )} */}
           <Card>
             <CardHeader>
               <div className="flex justify-between items-center">
@@ -1524,6 +1664,103 @@ export default function ClinicAdminDashboard() {
                   Delete Attender
                 </>
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Assign Doctor Dialog */}
+      <Dialog open={isAssignDoctorDialogOpen} onOpenChange={setIsAssignDoctorDialogOpen}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Assign Doctors to Attender</DialogTitle>
+            <DialogDescription>
+              {selectedAttender && `Select doctors to assign to ${selectedAttender.name}`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <div className="mb-4">
+              <h3 className="text-sm font-medium mb-2">Available Doctors</h3>
+              {clinicDoctors.length === 0 ? (
+                <div className="text-sm text-muted-foreground">No doctors available in this clinic</div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3">
+                  {clinicDoctors.map((doctor: any) => {
+                    // Check if doctor is already assigned to this attender using attenderDoctors array
+                    const isAssigned = attenderDoctors.some((ad) => ad.doctorId === doctor.id);
+                    
+                    return (
+                      <div 
+                        key={doctor.id} 
+                        className="flex items-center justify-between p-3 border rounded-md"
+                      >
+                        <div className="flex items-center space-x-3">
+                          <Avatar className="h-10 w-10">
+                            <AvatarImage src={doctor.imageUrl || ''} alt={doctor.name} />
+                            <AvatarFallback>{doctor.name.substring(0, 2).toUpperCase()}</AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="text-sm font-medium">{doctor.name}</p>
+                            <p className="text-xs text-muted-foreground">{doctor.specialty || 'General'}</p>
+                          </div>
+                        </div>
+                        {isAssigned ? (
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            className="text-red-600 hover:bg-red-50"
+                            onClick={() => {
+                              if (!selectedAttender) return;
+                              removeDoctorMutation.mutate({
+                                attenderId: selectedAttender.id,
+                                doctorId: doctor.id
+                              });
+                            }}
+                            disabled={removeDoctorMutation.isPending}
+                          >
+                            {removeDoctorMutation.isPending ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              'Unassign'
+                            )}
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-green-600 hover:bg-green-50"
+                            onClick={() => {
+                              const clinicId = params?.id || user?.clinicId;
+                              if (!selectedAttender || !clinicId) return;
+                              
+                              assignDoctorMutation.mutate({
+                                attenderId: selectedAttender.id,
+                                doctorId: doctor.id,
+                                clinicId: parseInt(clinicId.toString())
+                              });
+                            }}
+                            disabled={assignDoctorMutation.isPending}
+                          >
+                            {assignDoctorMutation.isPending ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              'Assign'
+                            )}
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button 
+              type="button" 
+              onClick={() => setIsAssignDoctorDialogOpen(false)}
+            >
+              Done
             </Button>
           </DialogFooter>
         </DialogContent>

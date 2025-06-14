@@ -14,7 +14,7 @@ async function createSuperAdmin() {
   try {
     // Create super admin credentials
     const username = "super.admin";
-    const password = "admin123"; // You should change this in production
+    const password = "Admin@123"; // You should change this in production
 
     // Hash the password
     const hashedPassword = await hashPassword(password);
@@ -38,7 +38,7 @@ async function createSuperAdmin() {
       password: hashedPassword,
       name: "Super Administrator",
       role: "super_admin", // Using attender as a placeholder for super-admin
-      clinicId: null,   // Super admin isn't associated with a specific clinic
+      clinicId: null, // Super admin isn't associated with a specific clinic
       specialty: null,
       bio: null,
       imageUrl: null,
@@ -48,6 +48,7 @@ async function createSuperAdmin() {
       zipCode: null,
       latitude: null,
       longitude: null,
+      phone: ""
     });
 
     console.log("\nCreated super admin:", user);

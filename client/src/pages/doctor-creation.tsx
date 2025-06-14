@@ -276,7 +276,7 @@ export default function DoctorCreation() {
         <div className="flex justify-between items-center mb-6">
           <Button 
             variant="outline" 
-            onClick={() => navigate("/super-admin-dashboard")}
+            onClick={() => navigate("/")}
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Dashboard
