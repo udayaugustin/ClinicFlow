@@ -247,15 +247,40 @@ export default function ClinicAdminDashboard() {
     mutationFn: async (doctorData: any) => {
       // Now that clinic admins have permission to create doctors, make the API call
       const res = await apiRequest('POST', '/api/doctors', doctorData);
-      return await res.json();
+      const newDoctor = await res.json();
+      
+      // After creating the doctor, automatically assign to all attenders in the clinic
+      if (newDoctor && newDoctor.id) {
+        const clinicId = doctorData.clinicIds?.[0];
+        if (clinicId) {
+          // Get all attenders in this clinic
+          const attenderRes = await apiRequest('GET', `/api/attenders?clinicId=${clinicId}`);
+          const attenders = await attenderRes.json();
+          
+          // Assign the new doctor to each attender
+          if (attenders && attenders.length > 0) {
+            for (const attender of attenders) {
+              await apiRequest('POST', '/api/attender-doctors', {
+                attenderId: attender.id,
+                doctorId: newDoctor.id,
+                clinicId
+              });
+            }
+          }
+        }
+      }
+      
+      return newDoctor;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clinic-doctors', params?.id || user?.clinicId] });
+      // Also invalidate attender-doctors queries for all attenders
+      queryClient.invalidateQueries({ queryKey: ['attender-doctors'] });
       setIsAddDoctorDialogOpen(false);
       addDoctorForm.reset();
       toast({
         title: "Success",
-        description: "Doctor added successfully",
+        description: "Doctor added successfully and assigned to all attenders",
       });
     },
     onError: (error: any) => {
@@ -319,23 +344,32 @@ export default function ClinicAdminDashboard() {
   
   const createAttenderMutation = useMutation({
     mutationFn: async (attenderData: any) => {
-      // There doesn't appear to be a dedicated endpoint for creating attenders
-      // Display a message explaining the issue
-      toast({
-        title: "Feature Not Available",
-        description: "The attender creation feature is not available in this version. Please contact your system administrator.",
-        variant: "destructive",
-      });
+      // Original code (uncommented):
+      const res = await apiRequest('POST', '/api/attenders', attenderData);
+      const newAttender = await res.json();
       
-      // Close the dialog
-      setIsAddAttenderDialogOpen(false);
+      // After creating the attender, automatically assign all doctors in the clinic
+      if (newAttender && newAttender.id) {
+        const clinicId = attenderData.clinicId;
+        if (clinicId) {
+          // Get all doctors in this clinic
+          const doctorRes = await apiRequest('GET', `/api/clinics/${clinicId}/doctors`);
+          const doctors = await doctorRes.json();
+          
+          // Assign all doctors to the new attender
+          if (doctors && doctors.length > 0) {
+            for (const doctor of doctors) {
+              await apiRequest('POST', '/api/attender-doctors', {
+                attenderId: newAttender.id,
+                doctorId: doctor.id,
+                clinicId
+              });
+            }
+          }
+        }
+      }
       
-      // Return a rejected promise to trigger the onError callback
-      return Promise.reject(new Error("Attender creation endpoint not available"));
-      
-      // Original code (commented out):
-      // const res = await apiRequest('POST', '/api/users', attenderData);
-      // return await res.json();
+      return newAttender;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clinic-attenders', params?.id || user?.clinicId] });
@@ -343,7 +377,7 @@ export default function ClinicAdminDashboard() {
       addAttenderForm.reset();
       toast({
         title: "Success",
-        description: "Attender added successfully",
+        description: "Attender added successfully and assigned all doctors",
       });
     },
     onError: (error: any) => {
@@ -919,7 +953,7 @@ export default function ClinicAdminDashboard() {
 
         {/* Appointments Tab */}
         <TabsContent value="appointments" className="space-y-6">
-          {isAppointmentsError && (
+          {/* {isAppointmentsError && (
             <Card className="border-red-200 bg-red-50">
               <CardContent className="pt-6">
                 <div className="flex items-center gap-2 text-red-600">
@@ -929,7 +963,7 @@ export default function ClinicAdminDashboard() {
                 </div>
               </CardContent>
             </Card>
-          )}
+          )} */}
           <Card>
             <CardHeader>
               <div className="flex justify-between items-center">

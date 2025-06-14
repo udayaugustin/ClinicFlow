@@ -68,9 +68,25 @@ export default function DoctorSchedulesPage() {
   });
 
   // Fetch clinics
-  const { data: clinics, isLoading: isLoadingClinics } = useQuery<Clinic[]>({
-    queryKey: ["/api/clinics"],
+  const { data: clinic, isLoading: isLoadingClinic } = useQuery<Clinic>({
+    queryKey: [`/api/clinics/${user?.clinicId}`],
+    enabled: !!user?.clinicId,
   });
+
+  // Set clinic ID in form data when clinic data is loaded
+  useEffect(() => {
+    if (clinic?.id) {
+      console.log('Setting clinic ID:', clinic.id);
+      setFormData(prev => {
+        const updated = {
+          ...prev,
+          clinicId: clinic.id.toString() // Convert to string to match expected format
+        };
+        console.log('Updated formData:', updated);
+        return updated;
+      });
+    }
+  }, [clinic]);
 
   // Fetch doctors based on attender assignment
   const { 
@@ -92,9 +108,16 @@ export default function DoctorSchedulesPage() {
   const doctors = attenderDoctors.map(item => item.doctor);
   const isLoadingDoctors = isLoadingAttenderDoctors;
   
+  // Auto-select first doctor if available and none is selected
+  useEffect(() => {
+    if (doctors?.length > 0 && selectedDoctor === null) {
+      setSelectedDoctor(doctors[0].id);
+    }
+  }, [doctors, selectedDoctor]);
+  
   // Fetch doctor schedules
   const { data: schedules, isLoading: isLoadingSchedules } = useQuery<DoctorSchedule[]>({
-    queryKey: ["/api/doctors", selectedDoctor, "schedules"],
+    queryKey: [`/api/doctors/${selectedDoctor}/schedules`],
     enabled: selectedDoctor !== null,
     queryFn: async () => {
       const response = await fetch(`/api/doctors/${selectedDoctor}/schedules`);
@@ -150,7 +173,8 @@ export default function DoctorSchedulesPage() {
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/doctors", selectedDoctor, "schedules"] });
+      // Match the exact query key format used in the schedules query
+      queryClient.invalidateQueries({ queryKey: [`/api/doctors/${selectedDoctor}/schedules`] });
       toast({
         title: "Success",
         description: "Schedule created successfully",
@@ -200,7 +224,8 @@ export default function DoctorSchedulesPage() {
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/doctors", selectedDoctor, "schedules"] });
+      // Match the exact query key format used in the schedules query
+      queryClient.invalidateQueries({ queryKey: [`/api/doctors/${selectedDoctor}/schedules`] });
       toast({
         title: "Success",
         description: "Schedule updated successfully",
@@ -231,7 +256,8 @@ export default function DoctorSchedulesPage() {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/doctors", selectedDoctor, "schedules"] });
+      // Match the exact query key format used in the schedules query
+      queryClient.invalidateQueries({ queryKey: [`/api/doctors/${selectedDoctor}/schedules`] });
       toast({
         title: "Success",
         description: "Schedule deleted successfully",
@@ -258,11 +284,7 @@ export default function DoctorSchedulesPage() {
 
   const handleSelectChange = (name: string, value: string) => {
     // Convert string values to numbers for number fields
-    if (name === 'clinicId') {
-      setFormData({ ...formData, clinicId: value });
-    } else {
-      setFormData({ ...formData, [name]: value });
-    }
+    setFormData({ ...formData, [name]: value });
   };
 
   const handleSwitchChange = (name: string, checked: boolean) => {
@@ -310,6 +332,10 @@ export default function DoctorSchedulesPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
+    console.log('Form submission - formData:', formData);
+    console.log('Selected doctor:', selectedDoctor);
+    console.log('Clinic data:', clinic);
+    
     if (!selectedDoctor) {
       toast({
         title: "Error",
@@ -319,13 +345,21 @@ export default function DoctorSchedulesPage() {
       return;
     }
 
+    // Check if clinic ID is empty or undefined
+    console.log('Checking clinic ID:', formData.clinicId, typeof formData.clinicId);
     if (!formData.clinicId) {
-      toast({
-        title: "Error",
-        description: "Please select a clinic",
-        variant: "destructive",
-      });
-      return;
+      // If we have clinic data but formData.clinicId is empty, set it directly
+      if (clinic?.id) {
+        console.log('Setting clinic ID directly from clinic data:', clinic.id);
+        formData.clinicId = clinic.id.toString();
+      } else {
+        toast({
+          title: "Error",
+          description: "Please select a clinic",
+          variant: "destructive",
+        });
+        return;
+      }
     }
 
     // Create a copy of formData with number values properly converted
@@ -348,9 +382,13 @@ export default function DoctorSchedulesPage() {
   const resetForm = () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0); // Reset time to start of day
-    
+  
+    // Keep the clinic ID if available
+    const clinicIdToUse = clinic?.id ? clinic.id.toString() : "";
+    console.log('Resetting form with clinic ID:', clinicIdToUse);
+  
     setFormData({
-      clinicId: "",
+      clinicId: clinicIdToUse,
       date: today,
       startTime: "09:00",
       endTime: "17:00",
@@ -361,9 +399,8 @@ export default function DoctorSchedulesPage() {
   };
 
   const getClinicName = (clinicId: number) => {
-    if (!clinics) return "Unknown";
-    const clinic = clinics.find(c => c.id === clinicId);
-    return clinic ? clinic.name : "Unknown";
+    if (!clinic) return "Unknown";
+    return clinic.name;
   };
 
   useEffect(() => {
@@ -522,26 +559,16 @@ export default function DoctorSchedulesPage() {
                 <div className="space-y-4">
                   <div>
                     <Label htmlFor="clinicId">Clinic</Label>
-                    <Select
-                      value={formData.clinicId.toString()}
-                      onValueChange={(value) => handleSelectChange("clinicId", value)}
-                      required
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select clinic" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {isLoadingClinics ? (
-                          <SelectItem value="loading" disabled>Loading...</SelectItem>
-                        ) : (
-                          clinics?.map((clinic) => (
-                            <SelectItem key={clinic.id} value={clinic.id.toString()}>
-                              {clinic.name}
-                            </SelectItem>
-                          ))
-                        )}
-                      </SelectContent>
-                    </Select>
+                    <div className="border rounded-md p-2 bg-muted/20">
+                      {isLoadingClinic ? (
+                        <span className="text-muted-foreground">Loading clinic information...</span>
+                      ) : clinic ? (
+                        <span>{clinic.name}</span>
+                      ) : (
+                        <span className="text-muted-foreground">No clinic found</span>
+                      )}
+                    </div>
+                    <input type="hidden" name="clinicId" value={formData.clinicId} />
                   </div>
 
                   <div>

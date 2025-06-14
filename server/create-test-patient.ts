@@ -13,8 +13,8 @@ async function hashPassword(password: string) {
 async function createTestPatient() {
   try {
     // Create predictable test credentials
-    const username = "testpatient3";
-    const password = "test123";
+    const username = "patient1";
+    const password = "Test@123";
 
     // Hash the password
     const hashedPassword = await hashPassword(password);
@@ -33,7 +33,7 @@ async function createTestPatient() {
     const user = await storage.createUser({
       username,
       password: hashedPassword,
-      name: "Test Patient",
+      name: "Patient 1",
       role: "patient",
       clinicId: null,   // Patients don't have a clinic ID
       specialty: null,
@@ -45,6 +45,8 @@ async function createTestPatient() {
       zipCode: "12345",
       latitude: 40.7128,
       longitude: -74.0060,
+      phone: "1234567890",
+      email: "patient1@test.com",
     });
 
     console.log("\nCreated patient:", user);

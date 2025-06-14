@@ -18,6 +18,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import React from "react";
 
 // Clinic schema
 const clinicSchema = z.object({
@@ -236,7 +237,7 @@ export default function ClinicCreation() {
         <div className="flex justify-between items-center mb-6">
           <Button 
             variant="outline" 
-            onClick={() => navigate("/super-admin-dashboard")}
+            onClick={() => navigate("/")}
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Dashboard

@@ -3,7 +3,7 @@ import { createServer, Server } from 'http';
 import cors from 'cors';
 import { storage, getTokens } from './storage';
 import { createSessionMiddleware, setupAuth } from './auth';
-import { insertAppointmentSchema, insertAttenderDoctorSchema, insertUserSchema, type AttenderDoctor, type User } from "../shared/schema";
+import { insertAppointmentSchema, insertAttenderDoctorSchema, insertClinicSchema, insertUserSchema, type AttenderDoctor, type User } from "../shared/schema";
 import { insertDoctorDetailSchema } from "../shared/schema";
 import { z } from "zod";
 import { notificationService } from './services/notification';
@@ -771,6 +771,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error fetching clinics:', error);
       res.status(500).json({ message: 'Failed to fetch clinics' });
+    }
+  });
+
+  app.get("/api/clinics/:id", async (req, res) => {
+    try {
+      const clinicId = parseInt(req.params.id);
+      if (isNaN(clinicId)) {
+        return res.status(400).json({ message: 'Invalid clinic ID' });
+      }
+      const clinic = await storage.getClinic(clinicId);
+      if (!clinic) {
+        return res.status(404).json({ message: 'Clinic not found' });
+      }
+      res.json(clinic);
+    } catch (error) {
+      console.error('Error fetching clinic:', error);
+      res.status(500).json({ message: 'Failed to fetch clinic' });
     }
   });
 
