@@ -1330,151 +1330,203 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/clinics/:clinicId/doctors", async (req, res) => {
+  // Attender Dashboard Endpoints
+  app.get('/api/attender/:id/clinic-overview', async (req, res) => {
+    if (!req.user || req.user.role !== 'attender') return res.sendStatus(403);
     try {
-      const clinicId = parseInt(req.params.clinicId);
-      const doctors = await storage.getDoctorsByClinic(clinicId);
-      res.json(doctors);
+      const attenderId = parseInt(req.params.id);
+      if (req.user.id !== attenderId) return res.sendStatus(403);
+
+      const overview = await storage.getAttenderClinicOverview(attenderId);
+      res.json(overview);
     } catch (error) {
-      console.error('Error fetching clinic doctors:', error);
-      res.status(500).json({ message: 'Failed to fetch doctors' });
-    }
-  });
-  
-  app.get("/api/attender-doctor/:attenderId", async (req, res) => {
-    try {
-      const attenderId = parseInt(req.params.attenderId);
-      const doctors = await storage.getAttenderDoctors(attenderId);
-      res.json(doctors);
-    } catch (error) {
-      console.error('Error fetching clinic doctors:', error);
-      res.status(500).json({ message: 'Failed to fetch doctors' });
+      console.error('Error fetching clinic overview:', error);
+      res.status(500).json({ message: 'Failed to fetch clinic overview' });
     }
   });
 
-  // Assign doctor to attender
-  app.post("/api/attender-doctors", async (req, res) => {
-    try {
-      const { attenderId, doctorId, clinicId } = req.body;
-      
-      if (!attenderId || !doctorId || !clinicId) {
-        return res.status(400).json({ message: 'Missing required fields' });
-      }
-      
-      const relationship = await storage.addDoctorToAttender(
-        parseInt(attenderId), 
-        parseInt(doctorId), 
-        parseInt(clinicId)
-      );
-      
-      res.status(201).json(relationship);
-    } catch (error) {
-      console.error('Error assigning doctor to attender:', error);
-      res.status(500).json({ message: 'Failed to assign doctor to attender' });
+  app.get('/api/attender/:id/doctors-summary', async (req, res) => {
+    console.log('Doctors summary request:', { user: req.user, params: req.params });
+    if (!req.user || req.user.role !== 'attender') {
+      console.log('Auth failed:', { user: req.user?.role });
+      return res.sendStatus(403);
     }
-  });
-  
-  // Remove a doctor assignment
-  app.delete("/api/attender-doctors", async (req, res) => {
     try {
-      const { attenderId, doctorId } = req.body;
-      
-      if (!attenderId || !doctorId) {
-        return res.status(400).json({ message: 'Missing required fields' });
+      const attenderId = parseInt(req.params.id);
+      if (req.user.id !== attenderId) {
+        console.log('ID mismatch:', { userId: req.user.id, attenderId });
+        return res.sendStatus(403);
       }
-      
-      await storage.removeDoctorFromAttender(
-        parseInt(attenderId), 
-        parseInt(doctorId)
-      );
-      
-      res.status(200).json({ message: 'Doctor removed from attender successfully' });
+
+      const summary = await storage.getAttenderDoctorsSummary(attenderId);
+      res.json(summary);
     } catch (error) {
-      console.error('Error removing doctor from attender:', error);
-      res.status(500).json({ message: 'Failed to remove doctor from attender' });
+      console.error('Error fetching doctors summary:', error);
+      res.status(500).json({ message: 'Failed to fetch doctors summary' });
     }
   });
 
-  // Get users by role and clinicId
-  app.get("/api/users", async (req, res) => {
-    try {
-      const { role, clinicId } = req.query;
-      
-      if (!role) {
-        return res.status(400).json({ message: 'Role parameter is required' });
-      }
-      
-      // If clinicId is provided, filter by clinic
-      if (clinicId) {
-        const users = await storage.getAttendersByClinic(parseInt(clinicId as string));
-        // Filter by role if specified
-        const filteredUsers = role ? users.filter(user => user.role === role) : users;
-        return res.json(filteredUsers);
-      }
-      
-      // If role is attender, use the specific method
-      if (role === 'attender') {
-        const attenders = await storage.getAttendersByRole();
-        return res.json(attenders);
-      }
-      
-      // Otherwise get all users and filter by role
-      const allUsers = await storage.getDoctors(); // This actually gets all users despite the name
-      const filteredUsers = allUsers.filter(user => user.role === role);
-      res.json(filteredUsers);
-    } catch (error) {
-      console.error('Error fetching users:', error);
-      res.status(500).json({ message: 'Failed to fetch users' });
+  app.get('/api/attender/:id/schedules-today', async (req, res) => {
+    console.log('Schedules request:', { user: req.user, params: req.params });
+    if (!req.user || req.user.role !== 'attender') {
+      console.log('Auth failed:', { user: req.user?.role });
+      return res.sendStatus(403);
     }
-  });
-  
-  // Delete user by ID
-  app.delete("/api/users/:id", async (req, res) => {
     try {
-      // Check if user is authorized (must be clinic_admin or super_admin)
-      if (!req.user || (req.user.role !== "clinic_admin" && req.user.role !== "super_admin")) {
-        return res.status(403).json({ message: "Unauthorized" });
-      }
-      
-      const userId = parseInt(req.params.id);
-      await storage.deleteUser(userId);
-      res.status(200).json({ message: 'User deleted successfully' });
-    } catch (error) {
-      console.error('Error deleting user:', error);
-      res.status(500).json({ message: 'Failed to delete user' });
-    }
-  });
-  
-  // Update user by ID
-  app.put("/api/users/:id", async (req, res) => {
-    try {
-      // Check if user is authorized (must be clinic_admin or super_admin)
-      if (!req.user || (req.user.role !== "clinic_admin" && req.user.role !== "super_admin")) {
-        return res.status(403).json({ message: "Unauthorized" });
-      }
-      
-      const userId = parseInt(req.params.id);
-      const userData = req.body;
-      
-      // Don't allow changing role through this endpoint
-      delete userData.role;
-      
-      const updatedUser = await storage.updateUser(userId, userData);
-      res.json(updatedUser);
-    } catch (error) {
-      console.error('Error updating user:', error);
-      res.status(500).json({ message: 'Failed to update user' });
-    }
-  });
-  
-  // Update doctor (complete record)
-  app.patch("/api/doctors/:id", async (req, res) => {
-    try {
-      // Check if user is authorized (must be hospital_admin or attender)
-      if (!req.user || (req.user.role !== "hospital_admin" && req.user.role !== "attender")) {
-        return res.status(403).json({ message: "Unauthorized" });
+      const attenderId = parseInt(req.params.id);
+      if (req.user.id !== attenderId) {
+        console.log('ID mismatch:', { userId: req.user.id, attenderId });
+        return res.sendStatus(403);
       }
 
+      const schedules = await storage.getAttenderSchedulesToday(attenderId);
+      res.json(schedules);
+    } catch (error) {
+      console.error('Error fetching schedules:', error);
+      res.status(500).json({ message: 'Failed to fetch schedules' });
+    }
+  });
+   app.get("/api/clinics/:clinicId/doctors", async (req, res) => {
+      try {
+        const clinicId = parseInt(req.params.clinicId);
+        const doctors = await storage.getDoctorsByClinic(clinicId);
+        res.json(doctors);
+      } catch (error) {
+        console.error('Error fetching clinic doctors:', error);
+        res.status(500).json({ message: 'Failed to fetch doctors' });
+      }
+    });
+
+    app.get("/api/attender-doctor/:attenderId", async (req, res) => {
+      try {
+        const attenderId = parseInt(req.params.attenderId);
+        const doctors = await storage.getAttenderDoctors(attenderId);
+        res.json(doctors);
+      } catch (error) {
+        console.error('Error fetching clinic doctors:', error);
+        res.status(500).json({ message: 'Failed to fetch doctors' });
+      }
+    });
+
+    // Assign doctor to attender
+    app.post("/api/attender-doctors", async (req, res) => {
+      try {
+        const { attenderId, doctorId, clinicId } = req.body;
+
+        if (!attenderId || !doctorId || !clinicId) {
+          return res.status(400).json({ message: 'Missing required fields' });
+        }
+
+        const relationship = await storage.addDoctorToAttender(
+          parseInt(attenderId),
+          parseInt(doctorId),
+          parseInt(clinicId)
+        );
+
+        res.status(201).json(relationship);
+      } catch (error) {
+        console.error('Error assigning doctor to attender:', error);
+        res.status(500).json({ message: 'Failed to assign doctor to attender' });
+      }
+    });
+
+    // Remove a doctor assignment
+    app.delete("/api/attender-doctors", async (req, res) => {
+      try {
+        const { attenderId, doctorId } = req.body;
+
+        if (!attenderId || !doctorId) {
+          return res.status(400).json({ message: 'Missing required fields' });
+        }
+
+        await storage.removeDoctorFromAttender(
+          parseInt(attenderId),
+          parseInt(doctorId)
+        );
+
+        res.status(200).json({ message: 'Doctor removed from attender successfully' });
+      } catch (error) {
+        console.error('Error removing doctor from attender:', error);
+        res.status(500).json({ message: 'Failed to remove doctor from attender' });
+      }
+    });
+
+    // Get users by role and clinicId
+    app.get("/api/users", async (req, res) => {
+      try {
+        const { role, clinicId } = req.query;
+
+        if (!role) {
+          return res.status(400).json({ message: 'Role parameter is required' });
+        }
+
+        // If clinicId is provided, filter by clinic
+        if (clinicId) {
+          const users = await storage.getAttendersByClinic(parseInt(clinicId as string));
+          // Filter by role if specified
+          const filteredUsers = role ? users.filter(user => user.role === role) : users;
+          return res.json(filteredUsers);
+        }
+
+        // If role is attender, use the specific method
+        if (role === 'attender') {
+          const attenders = await storage.getAttendersByRole();
+          return res.json(attenders);
+        }
+
+        // Otherwise get all users and filter by role
+        const allUsers = await storage.getDoctors(); // This actually gets all users despite the name
+        const filteredUsers = allUsers.filter(user => user.role === role);
+        res.json(filteredUsers);
+      } catch (error) {
+        console.error('Error fetching users:', error);
+        res.status(500).json({ message: 'Failed to fetch users' });
+      }
+    });
+
+    // Delete user by ID
+    app.delete("/api/users/:id", async (req, res) => {
+      try {
+        // Check if user is authorized (must be clinic_admin or super_admin)
+        if (!req.user || (req.user.role !== "clinic_admin" && req.user.role !== "super_admin")) {
+          return res.status(403).json({ message: "Unauthorized" });
+        }
+
+        const userId = parseInt(req.params.id);
+        await storage.deleteUser(userId);
+        res.status(200).json({ message: 'User deleted successfully' });
+      } catch (error) {
+        console.error('Error deleting user:', error);
+        res.status(500).json({ message: 'Failed to delete user' });
+      }
+    });
+
+    // Update user by ID
+    app.put("/api/users/:id", async (req, res) => {
+      try {
+        // Check if user is authorized (must be clinic_admin or super_admin)
+        if (!req.user || (req.user.role !== "clinic_admin" && req.user.role !== "super_admin")) {
+          return res.status(403).json({ message: "Unauthorized" });
+        }
+
+        const userId = parseInt(req.params.id);
+        const userData = req.body;
+
+        // Don't allow changing role through this endpoint
+        delete userData.role;
+
+        const updatedUser = await storage.updateUser(userId, userData);
+        res.json(updatedUser);
+      } catch (error) {
+        console.error('Error updating user:', error);
+        res.status(500).json({ message: 'Failed to update user' });
+      }
+    });
+
+  // Update doctor (complete record) Endpoints
+  app.patch('/api/doctors/:id', async (req, res) => {
+    if (!req.user || req.user.role !== 'attender') return res.sendStatus(403);
+    try {
       const doctorId = parseInt(req.params.id);
 
       // Validate request body

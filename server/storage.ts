@@ -22,6 +22,7 @@ import session from "express-session";
 import connectPg from "connect-pg-simple";
 import { Pool } from '@neondatabase/serverless';
 import { pool } from "./db";
+import { number } from "zod";
 
 const pgSession = connectPg(session);
 
@@ -32,6 +33,46 @@ const sessionStore = new pgSession({
 });
 
 export interface IStorage {
+  // Attender Dashboard methods
+  getAttenderClinicOverview(attenderId: number): Promise<{
+    clinic: {
+      id: number;
+      name: string;
+      address: string;
+      phone: string;
+      openingHours: string;
+    };
+    todayStats: {
+      totalDoctors: number;
+      activeDoctors: number;
+      totalAppointments: number;
+    };
+  }>;
+  getAttenderDoctorsSummary(attenderId: number): Promise<{
+    doctors: Array<{
+      id: number;
+      name: string;
+      specialty: string;
+      isPresent: boolean;
+      todayAppointments: number;
+    }>;
+    totalAssigned: number;
+  }>;
+  getAttenderSchedulesToday(attenderId: number): Promise<{
+    schedules: Array<{
+      id: number;
+      doctorName: string;
+      timeSlot: string;
+      appointmentCount: number;
+      status: 'active' | 'paused' | 'completed';
+    }>;
+    summary: {
+      totalSchedules: number;
+      activeSchedules: number;
+      totalAppointments: number;
+    };
+  }>;
+
   // Schedule pause methods
   pauseSchedule(scheduleId: number, reason: string): Promise<void>;
   resumeSchedule(scheduleId: number): Promise<void>;
@@ -360,7 +401,6 @@ export class DatabaseStorage implements IStorage {
 
   async getAppointments(userId: number): Promise<(Appointment & { doctor: User; patient?: User })[]> {
     try {
-      console.log('Getting appointments for user:', userId);
 
       // Get user first to determine the role
       const [user] = await db
@@ -379,7 +419,6 @@ export class DatabaseStorage implements IStorage {
         const managedDoctors = await this.getAttenderDoctors(userId);
         const doctorIds = managedDoctors.map(rel => rel.doctorId);
 
-        console.log('Attender managed doctor IDs:', doctorIds);
 
         // Then get appointments for all managed doctors
         appointmentsResult = await db
@@ -402,7 +441,6 @@ export class DatabaseStorage implements IStorage {
           .where(eq(appointments.patientId, userId));
       }
 
-      console.log('Basic appointments query result:', JSON.stringify(appointmentsResult, null, 2));
 
       if (!appointmentsResult?.length) {
         console.log('No appointments found for user:', userId);
@@ -1706,6 +1744,326 @@ export class DatabaseStorage implements IStorage {
         details: updatedDetails
       };
     });
+  }
+
+  async getAttenderClinicOverview(attenderId: number) {
+    try {
+      // Get the current date (start and end of day)
+      const today = new Date();
+      const startOfDay = new Date(today);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(today);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      // Get the attender's assigned doctors and their clinic
+      const [attenderClinic] = await db
+        .select({
+          clinicId: attenderDoctors.clinicId,
+        })
+        .from(attenderDoctors)
+        .where(eq(attenderDoctors.attenderId, attenderId));
+
+      if (!attenderClinic) {
+        console.log('No clinic found for attender:', attenderId);
+        return {
+          clinic: {
+            id: 0,
+            name: 'Not Assigned',
+            address: '',
+            phone: '',
+            openingHours: ''
+          },
+          todayStats: {
+            totalDoctors: 0,
+            activeDoctors: 0,
+            totalAppointments: 0
+          }
+        };
+      }
+
+      const clinicId = attenderClinic.clinicId;
+
+      // Get clinic details
+      const clinicResult = await db
+        .select({
+          id: clinics.id,
+          name: clinics.name,
+          address: clinics.address,
+          phone: clinics.phone,
+          openingHours: clinics.openingHours,
+        })
+        .from(clinics)
+        .where(eq(clinics.id, clinicId));
+
+      if (!clinicResult || clinicResult.length === 0) {
+        console.log('Clinic not found:', clinicId);
+        return {
+          clinic: {
+            id: 0,
+            name: 'Not Found',
+            address: '',
+            phone: '',
+            openingHours: ''
+          },
+          todayStats: {
+            totalDoctors: 0,
+            activeDoctors: 0,
+            totalAppointments: 0
+          }
+        };
+      }
+
+      const clinic = clinicResult[0];
+
+      // Get total doctors assigned to this attender
+      const [{ totalDoctors }] = await db
+        .select({
+          totalDoctors: count(),
+        })
+        .from(attenderDoctors)
+        .where(eq(attenderDoctors.attenderId, attenderId));
+
+      // Get active doctors count (present today)
+      const [{ activeDoctors }] = await db
+        .select({
+          activeDoctors: count(),
+        })
+        .from(doctorDailyPresence)
+        .where(
+          and(
+            eq(doctorDailyPresence.clinicId, clinicId),
+            gte(doctorDailyPresence.date, startOfDay),
+            lte(doctorDailyPresence.date, endOfDay),
+            eq(doctorDailyPresence.hasArrived, true)
+          )
+        );
+
+      // Get total appointments for today
+      const [{ totalAppointments }] = await db
+        .select({
+          totalAppointments: count(),
+        })
+        .from(appointments)
+        .where(
+          and(
+            eq(appointments.clinicId, clinicId),
+            gte(appointments.date, startOfDay),
+            lte(appointments.date, endOfDay)
+          )
+        );
+
+      return {
+        clinic,
+        todayStats: {
+          totalDoctors,
+          activeDoctors,
+          totalAppointments,
+        },
+      };
+    } catch (error) {
+      console.error('Error in getAttenderClinicOverview:', error);
+      throw error;
+    }
+  }
+
+  async getAttenderDoctorsSummary(attenderId: number) {
+    try {
+      console.log('Getting doctors summary for attender:', attenderId);
+      
+      // Get the current date (start and end of day)
+      const today = new Date();
+      const startOfDay = new Date(today);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(today);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      // Get all doctors assigned to this attender with their daily presence status
+      const doctorsResult = await db
+        .select({
+          id: users.id,
+          name: users.name,
+          specialty: users.specialty,
+          hasArrived: sql<boolean>`COALESCE(${doctorDailyPresence.hasArrived}, false)`,
+        })
+        .from(attenderDoctors)
+        .innerJoin(users, eq(users.id, attenderDoctors.doctorId))
+        .leftJoin(
+          doctorDailyPresence,
+          and(
+            eq(doctorDailyPresence.doctorId, users.id),
+            eq(doctorDailyPresence.clinicId, attenderDoctors.clinicId),
+            sql`DATE(${doctorDailyPresence.date}) = CURRENT_DATE`
+          )
+        )
+        .where(eq(attenderDoctors.attenderId, attenderId));
+
+      console.log('Doctors result:', doctorsResult);
+
+      // Get appointment counts for each doctor
+      const doctorsWithAppointments = await Promise.all(
+        doctorsResult.map(async (doctor) => {
+          const [result] = await db
+            .select({
+              todayAppointments: sql<number>`COUNT(appointments.id)::integer`
+            })
+            .from(appointments)
+            .where(
+              and(
+                eq(appointments.doctorId, doctor.id),
+                sql`DATE(appointments.date) = CURRENT_DATE`
+              )
+            );
+
+          return {
+            ...doctor,
+            todayAppointments: Number(result?.todayAppointments) || 0
+          };
+        })
+      );
+
+      console.log('Doctors with appointments:', doctorsWithAppointments);
+
+      return {
+        doctors: doctorsWithAppointments,
+        totalAssigned: doctorsWithAppointments.length,
+      };
+    } catch (error) {
+      console.error('Error in getAttenderDoctorsSummary:', error);
+      throw error;
+    }
+  }
+
+  async getAttenderSchedulesToday(attenderId: number) {
+    try {
+      console.log('Getting schedules for attender:', attenderId);
+  
+      // Step 1: Get clinic
+      const [attenderClinic] = await db
+        .select({
+          clinicId: attenderDoctors.clinicId,
+        })
+        .from(attenderDoctors)
+        .where(eq(attenderDoctors.attenderId, attenderId));
+  
+      if (!attenderClinic) {
+        console.log('No clinic found for attender:', attenderId);
+        return {
+          schedules: [],
+          summary: { totalSchedules: 0, activeSchedules: 0, totalAppointments: 0 },
+        };
+      }
+  
+      console.log('Found attender clinic:', attenderClinic);
+  
+      // Step 2: Get doctors
+      const clinicDoctors = await db
+        .select({
+          doctorId: doctorClinics.doctorId,
+        })
+        .from(doctorClinics)
+        .where(eq(doctorClinics.clinicId, attenderClinic.clinicId));
+  
+      if (!clinicDoctors.length) {
+        console.log('No doctors found for clinic:', attenderClinic.clinicId);
+        return {
+          schedules: [],
+          summary: { totalSchedules: 0, activeSchedules: 0, totalAppointments: 0 },
+        };
+      }
+  
+      const doctorIds = clinicDoctors.map((d) => d.doctorId);
+      console.log('Found clinic doctors:', doctorIds);
+  
+      // ⚠️ PREVENT empty array errors
+      if (doctorIds.length === 0) {
+        return {
+          schedules: [],
+          summary: { totalSchedules: 0, activeSchedules: 0, totalAppointments: 0 },
+        };
+      }
+  
+      // Step 3: Get today's schedules
+      const todayDayOfWeek = new Date().getDay(); // 0 (Sunday) to 6 (Saturday)
+  
+      const schedulesResult = await db
+  .select({
+    id: doctorSchedules.id,
+    doctorName: users.name,
+    startTime: doctorSchedules.startTime,
+    endTime: doctorSchedules.endTime,
+    isPaused: doctorSchedules.isPaused
+  })
+  .from(doctorSchedules)
+  .innerJoin(users, eq(users.id, doctorSchedules.doctorId))
+  .where(
+    and(
+      inArray(doctorSchedules.doctorId, doctorIds),
+      sql`DATE(${doctorSchedules.date}) = CURRENT_DATE`
+    )
+  );
+
+  
+  
+      // Step 4: Add appointment counts
+      const schedulesWithAppointments = await Promise.all(
+        schedulesResult.map(async (schedule) => {
+          try {
+            const [result] = await db
+              .select({
+                count: sql<number>`COUNT(appointments.id)::integer`,
+              })
+              .from(appointments)
+              .where(
+                and(
+                  eq(appointments.scheduleId, schedule.id),
+                  sql`DATE(appointments.date) = CURRENT_DATE`
+                )
+              );
+  
+            const timeSlot = `${schedule.startTime.slice(0, 5)} - ${schedule.endTime.slice(0, 5)}`;
+            const currentTime = new Date().toLocaleTimeString('en-US', { hour12: false });
+  
+            return {
+              id: schedule.id,
+              doctorName: schedule.doctorName,
+              timeSlot,
+              appointmentCount: Number(result?.count) || 0,
+              status: schedule.isPaused
+                ? 'paused'
+                : currentTime > schedule.endTime
+                ? 'completed'
+                : 'active',
+            };
+          } catch (error) {
+            console.error('Error getting appointments for schedule:', schedule.id, error);
+            throw error;
+          }
+        })
+      );
+  
+  
+      // Step 5: Summary stats
+      const activeSchedules = schedulesWithAppointments.filter(
+        (s) => s.status === 'active'
+      ).length;
+  
+      const totalAppointments = schedulesWithAppointments.reduce(
+        (sum, s) => sum + s.appointmentCount,
+        0
+      );
+  
+      return {
+        schedules: schedulesWithAppointments,
+        summary: {
+          totalSchedules: schedulesWithAppointments.length,
+          activeSchedules,
+          totalAppointments,
+        },
+      };
+    } catch (error) {
+      console.error('Error in getAttenderSchedulesToday:', error);
+      throw error;
+    }
   }
 }
 
