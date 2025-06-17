@@ -100,14 +100,14 @@ export function ClinicDetailsCard() {
         </div>
       </CardContent>
       <CardFooter>
-        <Button 
+        {/* <Button 
           variant="outline"
           className="w-full" 
           onClick={() => navigate("/clinic-management")}
         >
           <Edit className="mr-2 h-4 w-4" />
           Edit Details
-        </Button>
+        </Button> */}
       </CardFooter>
     </Card>
   );
