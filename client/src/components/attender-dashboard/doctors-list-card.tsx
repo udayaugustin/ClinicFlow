@@ -92,7 +92,7 @@ export function DoctorsListCard() {
         <p className="text-sm text-gray-600">
           {doctorsSummary.totalAssigned} total doctors
         </p>
-        <Button 
+        {/* <Button 
           variant="ghost"
           size="sm"
           className="text-primary" 
@@ -100,7 +100,7 @@ export function DoctorsListCard() {
         >
           View All
           <ChevronRight className="ml-2 h-4 w-4" />
-        </Button>
+        </Button> */}
       </CardFooter>
     </Card>
   );

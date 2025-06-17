@@ -116,9 +116,9 @@ export function SchedulesTodayCard() {
       <CardFooter>
         <Button 
           className="w-full"
-          onClick={() => navigate("/appointment-management")}
+          onClick={() => navigate("/schedules")}
         >
-          Manage Appointments
+          Manage Schedule
           <ChevronRight className="ml-2 h-4 w-4" />
         </Button>
       </CardFooter>
