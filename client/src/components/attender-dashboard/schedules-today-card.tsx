@@ -34,7 +34,7 @@ export function SchedulesTodayCard() {
   const { data: schedulesToday, isLoading, error } = useQuery<SchedulesToday>({
     queryKey: ["schedulesToday", user.id],
     queryFn: async () => {
-      const response = await fetch(`/api/attender/${user.id}/schedules-today`);
+      const response = await fetch(`/api/attender/schedules-today`);
       if (!response.ok) {
         throw new Error("Failed to fetch today's schedules");
       }

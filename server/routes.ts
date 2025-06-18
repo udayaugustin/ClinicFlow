@@ -1366,19 +1366,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/attender/:id/schedules-today', async (req, res) => {
-    console.log('Schedules request:', { user: req.user, params: req.params });
+  app.get('/api/attender/schedules-today', async (req, res) => {
+    console.log('Schedules request:', { user: req.user });
+  
+    // Auth check
     if (!req.user || req.user.role !== 'attender') {
       console.log('Auth failed:', { user: req.user?.role });
       return res.sendStatus(403);
     }
+  
     try {
-      const attenderId = parseInt(req.params.id);
-      if (req.user.id !== attenderId) {
-        console.log('ID mismatch:', { userId: req.user.id, attenderId });
-        return res.sendStatus(403);
-      }
-
+      const attenderId = req.user.id;
+  
       const schedules = await storage.getAttenderSchedulesToday(attenderId);
       res.json(schedules);
     } catch (error) {
@@ -1386,6 +1385,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: 'Failed to fetch schedules' });
     }
   });
+  
    app.get("/api/clinics/:clinicId/doctors", async (req, res) => {
       try {
         const clinicId = parseInt(req.params.clinicId);
