@@ -63,7 +63,7 @@ export default function DoctorSchedulesPage() {
     date: new Date(),
     startTime: "09:00",
     endTime: "17:00",
-    isActive: true,
+    isActive: false,
     maxTokens: 20,
   });
 
@@ -154,7 +154,8 @@ export default function DoctorSchedulesPage() {
       const formattedData = {
         ...data,
         clinicId: parseInt(data.clinicId as string), // Convert string to number
-        date: selectedDate.toISOString(),
+        date: selectedDate.toISOString(),        
+        attenderName: user?.name, 
       };
 
       const response = await fetch(`/api/doctors/${data.doctorId}/schedules`, {
@@ -205,7 +206,8 @@ export default function DoctorSchedulesPage() {
 
       const formattedSchedule = {
         ...data.schedule,
-        date: selectedDate.toISOString(),
+        date: selectedDate.toISOString(),       
+        attenderName: user?.name, 
       };
 
       const response = await fetch(`/api/doctors/schedules/${data.id}`, {
@@ -392,7 +394,7 @@ export default function DoctorSchedulesPage() {
       date: today,
       startTime: "09:00",
       endTime: "17:00",
-      isActive: true,
+      isActive: false,
       maxTokens: 20,
     });
     setSelectedSchedule(null);
@@ -505,7 +507,8 @@ export default function DoctorSchedulesPage() {
                             <span className="text-red-600">Inactive</span>
                           )}
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell>{user?.name || "Unknown_User"}</TableCell>
+                        <TableCell className="text-right space-x-2">
                           <Button
                             variant="ghost"
                             size="icon"

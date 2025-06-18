@@ -25,8 +25,8 @@ export function NavHeader() {
   // Check if user is a super admin
   const isSuperAdmin = user?.role === "super_admin";
   
-  // Check if user can manage doctors (hospital_admin or attender)
-  const canManageDoctors = user?.role === "hospital_admin" || user?.role === "attender";
+  // Check if user can manage doctors (hospital_admin) attender dont have rights to manage doctor only admin will do
+  const canManageDoctors = user?.role === "hospital_admin";
   
   // Check if user can access schedules (hospital_admin, attender, or doctor)
   const canAccessSchedules = user?.role === "hospital_admin" || user?.role === "attender" || user?.role === "doctor";
