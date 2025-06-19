@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm';
 
 interface NotificationData {
   userId: number;
-  appointmentId: number;
+  appointmentId: number | null;
   title: string;
   message: string;
   type: string;
@@ -277,6 +277,80 @@ class NotificationService {
       }
     }
     console.log('Doctor arrival notification process completed');
+  }
+
+  /**
+   * Notify patients when a favorited schedule becomes active
+   */
+  async notifyScheduleActivated(scheduleId: number) {
+    console.log('Starting notifyScheduleActivated process for schedule:', scheduleId);
+    
+    try {
+      // Get schedule information
+      const scheduleResult = await db.execute(sql`
+        SELECT s.*, d.name as doctor_name, c.name as clinic_name
+        FROM doctor_schedules s
+        JOIN users d ON s.doctor_id = d.id
+        JOIN clinics c ON s.clinic_id = c.id
+        WHERE s.id = ${scheduleId}
+      `);
+      
+      if (scheduleResult.rows.length === 0) {
+        console.log('Schedule not found, aborting notification');
+        return;
+      }
+      
+      const schedule = scheduleResult.rows[0];
+      console.log(`Found schedule: Dr. ${schedule.doctor_name} at ${schedule.clinic_name}`);
+      
+      // Get all patients who have favorited this schedule
+      const favoritesResult = await db.execute(sql`
+        SELECT f.patient_id, u.name as patient_name
+        FROM patient_favorites f
+        JOIN users u ON f.patient_id = u.id
+        WHERE f.schedule_id = ${scheduleId}
+      `);
+      
+      const patients = favoritesResult.rows;
+      console.log(`Found ${patients.length} patients who favorited this schedule`);
+      
+      if (patients.length === 0) {
+        console.log('No patients have favorited this schedule, exiting notification process');
+        return;
+      }
+      
+      // Format the schedule date and time for the notification
+      const scheduleDate = new Date(schedule.date);
+      const formattedDate = scheduleDate.toLocaleDateString('en-US', { 
+        weekday: 'long', 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      });
+      
+      console.log(`Sending schedule activation notifications to ${patients.length} patients`);
+      
+      // Create notifications for all patients who favorited this schedule
+      for (const patient of patients) {
+        console.log(`Creating notification for patient ${patient.patient_id} (${patient.patient_name})`);
+        try {
+          const notification = await this.createNotification({
+            userId: Number(patient.patient_id),
+            appointmentId: null, // No specific appointment for schedule notifications
+            title: "Booking started for favorited schedule!",
+            message: `Booking is now open for Dr. ${schedule.doctor_name} on ${formattedDate} from ${schedule.start_time} to ${schedule.end_time} at ${schedule.clinic_name}. Book your appointment now!`,
+            type: "schedule_activated"
+          });
+          console.log('Successfully created schedule activation notification:', notification);
+        } catch (error) {
+          console.error(`Failed to create notification for patient ${patient.patient_id}:`, error);
+        }
+      }
+      console.log('Schedule activation notification process completed');
+    } catch (error) {
+      console.error('Error in notifyScheduleActivated:', error);
+      throw error;
+    }
   }
 }
 

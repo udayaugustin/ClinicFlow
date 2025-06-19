@@ -4,6 +4,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { CalendarDays } from "lucide-react";
 import { Link } from "wouter";
+import React from "react";
 
 interface DoctorCardProps {
   doctor: User;

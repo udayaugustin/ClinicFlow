@@ -122,6 +122,26 @@ export const doctorSchedules = pgTable("doctor_schedules", {
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
+export const patientFavorites = pgTable("patient_favorites", {
+  id: serial("id").primaryKey(),
+  patientId: integer("patient_id").notNull().references(() => users.id),
+  doctorId: integer("doctor_id").notNull().references(() => users.id),
+  scheduleId: integer("schedule_id").notNull().references(() => doctorSchedules.id),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const notifications = pgTable("notifications", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  appointmentId: integer("appointment_id").references(() => appointments.id),
+  title: varchar("title", { length: 100 }).notNull(),
+  message: text("message").notNull(),
+  type: varchar("type", { length: 50 }).notNull(),
+  isRead: boolean("is_read").default(false),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+});
+
 // Define relations
 export const usersRelations = relations(users, ({ one, many }) => ({
   clinic: one(clinics, {
@@ -137,6 +157,9 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   appointments: many(appointments),
   schedules: many(doctorSchedules),
   clinics: many(doctorClinics),
+  patientFavorites: many(patientFavorites, { relationName: "patient" }),
+  notifications: many(notifications),
+  doctorFavorites: many(patientFavorites, { relationName: "doctor" }),
 }));
 
 export const clinicsRelations = relations(clinics, ({ many }) => ({
@@ -216,7 +239,7 @@ export const doctorDailyPresenceRelations = relations(doctorDailyPresence, ({ on
   }),
 }));
 
-export const doctorSchedulesRelations = relations(doctorSchedules, ({ one }) => ({
+export const doctorSchedulesRelations = relations(doctorSchedules, ({ one, many }) => ({
   doctor: one(users, {
     fields: [doctorSchedules.doctorId],
     references: [users.id],
@@ -224,6 +247,39 @@ export const doctorSchedulesRelations = relations(doctorSchedules, ({ one }) => 
   clinic: one(clinics, {
     fields: [doctorSchedules.clinicId],
     references: [clinics.id],
+  }),
+  favorites: many(patientFavorites),
+}));
+
+export const patientFavoritesRelations = relations(patientFavorites, ({ one }) => ({
+  patient: one(users, {
+    fields: [patientFavorites.patientId],
+    references: [users.id],
+    relationName: "patient",
+  }),
+  doctor: one(users, {
+    fields: [patientFavorites.doctorId],
+    references: [users.id],
+    relationName: "doctor",
+  }),
+  schedule: one(doctorSchedules, {
+    fields: [patientFavorites.scheduleId],
+    references: [doctorSchedules.id],
+  }),
+  clinic: one(clinics, {
+    fields: [patientFavorites.clinicId],
+    references: [clinics.id],
+  }),
+}));
+
+export const notificationsRelations = relations(notifications, ({ one }) => ({
+  user: one(users, {
+    fields: [notifications.userId],
+    references: [users.id],
+  }),
+  appointment: one(appointments, {
+    fields: [notifications.appointmentId],
+    references: [appointments.id],
   }),
 }));
 
@@ -241,6 +297,9 @@ export const insertDoctorScheduleSchema = createInsertSchema(doctorSchedules, {
   isActive: z.boolean().default(true),
 });
 
+export const insertPatientFavoriteSchema = createInsertSchema(patientFavorites);
+export const insertNotificationSchema = createInsertSchema(notifications);
+
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type Clinic = typeof clinics.$inferSelect;
@@ -250,6 +309,10 @@ export type DoctorAvailability = typeof doctorDailyPresence.$inferSelect;
 export type DoctorDetail = typeof doctorDetails.$inferSelect;
 export type DoctorSchedule = typeof doctorSchedules.$inferSelect;
 export type InsertDoctorSchedule = z.infer<typeof insertDoctorScheduleSchema>;
+export type PatientFavorite = typeof patientFavorites.$inferSelect;
+export type InsertPatientFavorite = z.infer<typeof insertPatientFavoriteSchema>;
+export type Notification = typeof notifications.$inferSelect;
+export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 
 export const specialties = [
   "Cardiologist",

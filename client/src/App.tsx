@@ -21,6 +21,9 @@ import DoctorManagementPage from "./pages/doctor-management";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import DoctorSchedulesPage from "./pages/doctor-schedules";
 import ClinicAdminDashboard from "@/pages/clinic-admin-dashboard";
+import PatientDashboard from "@/pages/patient-dashboard";
+import PatientClinicDetails from "@/pages/patient-clinic-details";
+import PatientFavorites from "@/pages/patient-favorites";
 
 // Wrap DoctorManagementPage with ProtectedRoute
 const ProtectedDoctorManagement = () => (
@@ -69,6 +72,9 @@ function Router() {
       <Route path="/doctor-management" component={ProtectedDoctorManagement} />
       <Route path="/schedules" component={ProtectedDoctorSchedules} />
       {/* <Route path="/clinic-admin-dashboard" component={ProtectedClinicAdminDashboard} /> */}
+      <Route path="/patient/dashboard" component={PatientDashboard} />
+      <Route path="/patient/clinics/:id" component={PatientClinicDetails} />
+      <Route path="/patient/favorites" component={PatientFavorites} />
       <Route component={NotFound} />
     </Switch>
   );

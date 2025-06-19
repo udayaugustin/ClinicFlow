@@ -7,6 +7,7 @@ import {
   attenderDoctors,
   doctorDetails,
   doctorClinics,
+  patientFavorites,
   type User,
   type AttenderDoctor,
   type InsertUser,
@@ -15,6 +16,8 @@ import {
   type DoctorDetail,
   type DoctorSchedule,
   type InsertDoctorSchedule,
+  type PatientFavorite,
+  type InsertPatientFavorite,
 } from "@shared/schema";
 import { eq, or, and, sql, inArray, lte, gte, count, not, gt, lt } from "drizzle-orm";
 import { db } from "./db";
@@ -93,7 +96,8 @@ export interface IStorage {
   updateClinic(id: number, clinicData: Partial<typeof clinics.$inferInsert>): Promise<Clinic>;
   deleteClinic(id: number): Promise<void>;
   getAppointments(userId: number): Promise<(Appointment & { doctor: User; patient?: User })[]>;
-  createAppointment(appointment: Omit<Appointment, "id" | "tokenNumber">): Promise<Appointment>;
+  getDoctorAppointmentsByDate(doctorId: number, date: Date, clinicId?: number): Promise<Appointment[]>;
+  createAppointment(appointment: Omit<Appointment, "id"> & { tokenNumber?: number }): Promise<Appointment>;
   getNextTokenNumber(doctorId: number, clinicId: number, scheduleId: number): Promise<number>;
   sessionStore: session.Store;
   
@@ -145,6 +149,7 @@ export interface IStorage {
 
   // Doctor schedules methods
   createDoctorSchedule(schedule: InsertDoctorSchedule): Promise<DoctorSchedule>;
+  getDoctorSchedule(scheduleId: number): Promise<DoctorSchedule | null>;
   getDoctorSchedules(doctorId: number, date?: Date): Promise<DoctorSchedule[]>;
   getDoctorSchedulesByClinic(clinicId: number): Promise<(DoctorSchedule & { doctor: User })[]>;
   getSpecificSchedule(doctorId: number, clinicId: number, scheduleId: number, date: Date): Promise<DoctorSchedule | null>;
@@ -214,6 +219,17 @@ export interface IStorage {
       isEnabled?: boolean;
     }
   ): Promise<User & { details: DoctorDetail }>;
+
+  // Patient Favorites methods
+  addFavoriteSchedule(patientId: number, scheduleId: number, doctorId: number, clinicId: number): Promise<PatientFavorite>;
+  removeFavoriteSchedule(patientId: number, scheduleId: number): Promise<void>;
+  getPatientFavorites(patientId: number): Promise<(PatientFavorite & { 
+    doctor: User; 
+    schedule: DoctorSchedule; 
+    clinic: Clinic 
+  })[]>;
+  checkIsFavorite(patientId: number, scheduleId: number): Promise<boolean>;
+  getPatientsFavoritingSchedule(scheduleId: number): Promise<number[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -493,6 +509,39 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  async getDoctorAppointmentsByDate(doctorId: number, date: Date, clinicId?: number): Promise<Appointment[]> {
+    try {
+      // Convert date to start and end of day for proper comparison
+      const dayStart = new Date(date);
+      dayStart.setHours(0, 0, 0, 0);
+      
+      const dayEnd = new Date(date);
+      dayEnd.setHours(23, 59, 59, 999);
+
+      let whereConditions = [
+        eq(appointments.doctorId, doctorId),
+        gte(appointments.date, dayStart),
+        lte(appointments.date, dayEnd)
+      ];
+
+      // Add clinic filter if specified
+      if (clinicId) {
+        whereConditions.push(eq(appointments.clinicId, clinicId));
+      }
+
+      const result = await db
+        .select()
+        .from(appointments)
+        .where(and(...whereConditions))
+        .orderBy(appointments.tokenNumber);
+
+      return result;
+    } catch (error) {
+      console.error('Error in getDoctorAppointmentsByDate:', error);
+      throw error;
+    }
+  }
+
   async getNextTokenNumber(doctorId: number, clinicId: number, scheduleId: number): Promise<number> {
     const [result] = await db
       .select({
@@ -510,7 +559,7 @@ export class DatabaseStorage implements IStorage {
     return (result?.maxToken || 0) + 1;
   }
 
-  async createAppointment(appointment: Omit<Appointment, "id" | "tokenNumber">): Promise<Appointment> {
+  async createAppointment(appointment: Omit<Appointment, "id"> & { tokenNumber?: number }): Promise<Appointment> {
     // Use the provided clinicId or get it from the doctor
     let clinicId = appointment.clinicId;
     
@@ -562,7 +611,8 @@ export class DatabaseStorage implements IStorage {
       throw new Error(`Maximum number of tokens (${schedule.maxTokens}) has been reached for this schedule`);
     }
     
-    const tokenNumber = await this.getNextTokenNumber(
+    // Use provided tokenNumber or generate a new one
+    const tokenNumber = appointment.tokenNumber ?? await this.getNextTokenNumber(
       appointment.doctorId,
       clinicId,
       schedule.id
@@ -1318,6 +1368,15 @@ export class DatabaseStorage implements IStorage {
     return query;
   }
 
+  async getDoctorSchedule(scheduleId: number): Promise<DoctorSchedule | null> {
+    const [schedule] = await db
+      .select()
+      .from(doctorSchedules)
+      .where(eq(doctorSchedules.id, scheduleId));
+    
+    return schedule || null;
+  }
+
   async getSpecificSchedule(doctorId: number, clinicId: number, scheduleId: number, date: Date): Promise<DoctorSchedule | null> {
     const dateStr = date.toISOString().split('T')[0];
     
@@ -1744,6 +1803,111 @@ export class DatabaseStorage implements IStorage {
         details: updatedDetails
       };
     });
+  }
+
+  // Patient Favorites methods implementation
+  async addFavoriteSchedule(patientId: number, scheduleId: number, doctorId: number, clinicId: number): Promise<PatientFavorite> {
+    try {
+      const [favorite] = await db
+        .insert(patientFavorites)
+        .values({
+          patientId,
+          scheduleId,
+          doctorId,
+          clinicId,
+        })
+        .returning();
+      
+      return favorite;
+    } catch (error) {
+      // Handle unique constraint violation (patient already favorited this schedule)
+      if (error instanceof Error && error.message.includes('unique')) {
+        throw new Error('Schedule is already in favorites');
+      }
+      console.error('Error adding favorite schedule:', error);
+      throw error;
+    }
+  }
+
+  async removeFavoriteSchedule(patientId: number, scheduleId: number): Promise<void> {
+    try {
+      await db
+        .delete(patientFavorites)
+        .where(
+          and(
+            eq(patientFavorites.patientId, patientId),
+            eq(patientFavorites.scheduleId, scheduleId)
+          )
+        );
+    } catch (error) {
+      console.error('Error removing favorite schedule:', error);
+      throw error;
+    }
+  }
+
+  async getPatientFavorites(patientId: number): Promise<(PatientFavorite & { 
+    doctor: User; 
+    schedule: DoctorSchedule; 
+    clinic: Clinic 
+  })[]> {
+    try {
+      const favorites = await db
+        .select({
+          id: patientFavorites.id,
+          patientId: patientFavorites.patientId,
+          doctorId: patientFavorites.doctorId,
+          scheduleId: patientFavorites.scheduleId,
+          clinicId: patientFavorites.clinicId,
+          createdAt: patientFavorites.createdAt,
+          doctor: users,
+          schedule: doctorSchedules,
+          clinic: clinics,
+        })
+        .from(patientFavorites)
+        .innerJoin(users, eq(patientFavorites.doctorId, users.id))
+        .innerJoin(doctorSchedules, eq(patientFavorites.scheduleId, doctorSchedules.id))
+        .innerJoin(clinics, eq(patientFavorites.clinicId, clinics.id))
+        .where(eq(patientFavorites.patientId, patientId))
+        .orderBy(patientFavorites.createdAt);
+
+      return favorites;
+    } catch (error) {
+      console.error('Error getting patient favorites:', error);
+      throw error;
+    }
+  }
+
+  async checkIsFavorite(patientId: number, scheduleId: number): Promise<boolean> {
+    try {
+      const [result] = await db
+        .select({ count: count() })
+        .from(patientFavorites)
+        .where(
+          and(
+            eq(patientFavorites.patientId, patientId),
+            eq(patientFavorites.scheduleId, scheduleId)
+          )
+        );
+
+      return result.count > 0;
+    } catch (error) {
+      console.error('Error checking if favorite:', error);
+      throw error;
+    }
+  }
+
+  async getPatientsFavoritingSchedule(scheduleId: number): Promise<number[]> {
+    try {
+      const results = await db
+        .select({ patientId: patientFavorites.patientId })
+        .from(patientFavorites)
+        .where(eq(patientFavorites.scheduleId, scheduleId));
+
+      return results.map(result => result.patientId);
+    } catch (error) {
+      console.error('Error getting patients favoriting schedule:', error);
+      throw error;
+    }
   }
 
   async getAttenderClinicOverview(attenderId: number) {
