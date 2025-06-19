@@ -147,14 +147,20 @@ export default function DoctorSchedulesPage() {
         throw new Error("Please select a clinic");
       }
 
-      // Format the date as ISO string, ensuring we're using the correct time
+      // Format the date as YYYY-MM-DD string to avoid timezone issues
       const selectedDate = new Date(data.date);
       selectedDate.setHours(0, 0, 0, 0); // Reset time to start of day
+      
+      // Format as YYYY-MM-DD to avoid timezone conversion issues
+      const year = selectedDate.getFullYear();
+      const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+      const day = String(selectedDate.getDate()).padStart(2, '0');
+      const dateString = `${year}-${month}-${day}`;
 
       const formattedData = {
         ...data,
         clinicId: parseInt(data.clinicId as string), // Convert string to number
-        date: selectedDate.toISOString(),
+        date: dateString,
       };
 
       const response = await fetch(`/api/doctors/${data.doctorId}/schedules`, {
@@ -199,13 +205,19 @@ export default function DoctorSchedulesPage() {
         throw new Error("Please select a valid date");
       }
 
-      // Format the date as ISO string, ensuring we're using the correct time
+      // Format the date as YYYY-MM-DD string to avoid timezone issues
       const selectedDate = new Date(data.schedule.date);
       selectedDate.setHours(0, 0, 0, 0); // Reset time to start of day
+      
+      // Format as YYYY-MM-DD to avoid timezone conversion issues
+      const year = selectedDate.getFullYear();
+      const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+      const day = String(selectedDate.getDate()).padStart(2, '0');
+      const dateString = `${year}-${month}-${day}`;
 
       const formattedSchedule = {
         ...data.schedule,
-        date: selectedDate.toISOString(),
+        date: dateString,
       };
 
       const response = await fetch(`/api/doctors/schedules/${data.id}`, {
@@ -295,8 +307,27 @@ export default function DoctorSchedulesPage() {
     console.log('Original schedule date:', schedule.date);
     console.log('Schedule date type:', typeof schedule.date);
     
-    // Create a new date object and ensure it's valid
-    const scheduleDate = new Date(schedule.date);
+    // Handle date properly to avoid timezone issues
+    let scheduleDate: Date;
+    
+    if (schedule.date instanceof Date) {
+      // If it's already a Date object, use it directly
+      scheduleDate = new Date(schedule.date);
+    } else {
+      // If it's a string, parse it as a local date to avoid timezone shifts
+      const dateStr = schedule.date.toString();
+      if (dateStr.includes('T')) {
+        // If it's an ISO string, extract just the date part
+        const datePart = dateStr.split('T')[0];
+        const [year, month, day] = datePart.split('-').map(Number);
+        scheduleDate = new Date(year, month - 1, day); // month is 0-indexed
+      } else {
+        // If it's just a date string, parse it directly
+        const [year, month, day] = dateStr.split('-').map(Number);
+        scheduleDate = new Date(year, month - 1, day); // month is 0-indexed
+      }
+    }
+    
     if (isNaN(scheduleDate.getTime())) {
       console.error('Invalid date received:', schedule.date);
       toast({
@@ -307,9 +338,7 @@ export default function DoctorSchedulesPage() {
       return;
     }
     
-    // Set the time to start of day for consistency
-    scheduleDate.setHours(0, 0, 0, 0);
-    console.log('Parsed and normalized date:', scheduleDate);
+    console.log('Parsed date without timezone issues:', scheduleDate);
     
     setSelectedSchedule(schedule);
     setFormData({

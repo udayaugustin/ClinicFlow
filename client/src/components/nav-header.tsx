@@ -8,7 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, User, Calendar, UserPlus, Clock } from "lucide-react";
+import { LogOut, User, Calendar, UserPlus, Clock, Star } from "lucide-react";
 import { NotificationPopover } from "./notifications/notification-popover";
 import React from "react";
 
@@ -77,6 +77,16 @@ export function NavHeader() {
                 </Button>
               )}
               
+              {/* Show favorites link for patients */}
+              {user?.role === "patient" && (
+                <Button variant="ghost" asChild className="hidden md:flex">
+                  <Link href="/patient/favorites">
+                    <Star className="mr-2 h-4 w-4" />
+                    Favorites
+                  </Link>
+                </Button>
+              )}
+              
               {/* Show notification bell for patients and doctors */}
               {canReceiveNotifications && <NotificationPopover />}
               
@@ -132,6 +142,14 @@ export function NavHeader() {
                       <Link href="/schedules" className="gap-2">
                         <Clock size={16} />
                         <span>Schedules</span>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {user?.role === "patient" && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/patient/favorites" className="gap-2">
+                        <Star size={16} />
+                        <span>Favorites</span>
                       </Link>
                     </DropdownMenuItem>
                   )}

@@ -8,6 +8,37 @@ import { insertDoctorDetailSchema } from "../shared/schema";
 import { z } from "zod";
 import { notificationService } from './services/notification';
 
+// Simple in-memory notification store as fallback
+const memoryNotifications: any[] = [];
+
+// Helper function to add notification to memory store
+function addMemoryNotification(userId: number, title: string, message: string, type: string = 'schedule_activated') {
+  const notification = {
+    id: Date.now() + Math.random(), // Simple unique ID
+    user_id: userId,
+    appointment_id: 0,
+    title,
+    message,
+    type,
+    is_read: false,
+    created_at: new Date().toISOString()
+  };
+  memoryNotifications.push(notification);
+  
+  // Keep only last 50 notifications per user to avoid memory issues
+  const userNotifications = memoryNotifications.filter(n => n.user_id === userId);
+  if (userNotifications.length > 50) {
+    const toRemove = userNotifications.slice(0, userNotifications.length - 50);
+    toRemove.forEach(n => {
+      const index = memoryNotifications.findIndex(mn => mn.id === n.id);
+      if (index > -1) memoryNotifications.splice(index, 1);
+    });
+  }
+  
+  console.log(`Added memory notification for user ${userId}: ${title}`);
+  return notification;
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   setupAuth(app);
 
@@ -169,13 +200,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!req.user) return res.sendStatus(401);
     try {
       const doctor = await storage.getUser(Number(req.body.doctorId));
-      if (!doctor || !doctor.clinicId) {
-        return res.status(400).json({ message: 'Invalid doctor or clinic' });
+      if (!doctor || doctor.role !== 'doctor') {
+        return res.status(400).json({ message: 'Invalid doctor' });
       }
 
       // Get the appointment date
       const appointmentDate = new Date(req.body.date);
-      const clinicId = req.body.clinicId || doctor.clinicId;
+      const clinicId = req.body.clinicId;
+      
+      // Validate that the clinic exists and the doctor is associated with it
+      if (!clinicId) {
+        return res.status(400).json({ message: 'Clinic ID is required' });
+      }
+      
+      const clinic = await storage.getClinic(clinicId);
+      if (!clinic) {
+        return res.status(400).json({ message: 'Invalid clinic' });
+      }
+      
+      // Check if doctor is associated with this clinic (either through clinicId or doctor_clinics table)
+      const doctorClinics = await storage.getDoctorClinics(Number(req.body.doctorId));
+      const isAssociatedWithClinic = doctor.clinicId === clinicId || 
+        doctorClinics.some(dc => dc.id === clinicId);
+      
+      if (!isAssociatedWithClinic) {
+        return res.status(400).json({ message: 'Doctor is not associated with this clinic' });
+      }
 
       // Get the specific schedule for this appointment
       const schedule = await storage.getSpecificSchedule(
@@ -208,7 +258,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         patientId: req.user.id,
         clinicId,
         date: appointmentDate,
-        tokenNumber: req.body.tokenNumber,
+        tokenNumber: req.body.tokenNumber, // This can be undefined and will be generated in storage
         scheduleId: schedule.id
       };
 
@@ -273,6 +323,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(appointments);
     } catch (error) {
       console.error('Error fetching doctor appointments:', error);
+      res.status(500).json({ message: 'Failed to fetch appointments' });
+    }
+  });
+
+  // Get appointments for a specific doctor by date (for token calculation)
+  app.get("/api/doctors/:id/appointments", async (req, res) => {
+    if (!req.user) return res.sendStatus(401);
+    
+    try {
+      const doctorId = parseInt(req.params.id);
+      const { date, clinicId } = req.query;
+      
+      // Get appointments for this doctor on the specified date
+      const appointments = await storage.getDoctorAppointmentsByDate(
+        doctorId,
+        date ? new Date(date as string) : new Date(),
+        clinicId ? parseInt(clinicId as string) : undefined
+      );
+      
+      res.json(appointments);
+    } catch (error) {
+      console.error('Error fetching doctor appointments by date:', error);
       res.status(500).json({ message: 'Failed to fetch appointments' });
     }
   });
@@ -811,8 +883,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
           filteredSchedules = filteredSchedules.filter(s => s.clinicId === clinicId);
         }
       }
+
+      // Add favorite status for authenticated patients
+      let schedulesWithFavorites = filteredSchedules;
+      if (req.user && req.user.role === 'patient') {
+        schedulesWithFavorites = await Promise.all(
+          filteredSchedules.map(async (schedule) => {
+            const isFavorite = await storage.checkIsFavorite(req.user!.id, schedule.id);
+            return {
+              ...schedule,
+              isFavorite
+            };
+          })
+        );
+      } else {
+        // For non-authenticated users or non-patients, add isFavorite: false
+        schedulesWithFavorites = filteredSchedules.map(schedule => ({
+          ...schedule,
+          isFavorite: false
+        }));
+      }
       
-      res.json(filteredSchedules);
+      res.json(schedulesWithFavorites);
     } catch (error) {
       console.error('Error fetching doctor schedules:', error);
       res.status(500).json({ message: 'Failed to fetch doctor schedules' });
@@ -971,6 +1063,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...validData,
       });
 
+      // If schedule is created as active, notify patients who might have favorited this doctor
+      if (validData.isActive !== false) { // Default is true, so trigger unless explicitly false
+        console.log(`New active schedule ${schedule.id} created, triggering notifications`);
+        try {
+          await notificationService.notifyScheduleActivated(schedule.id);
+        } catch (notificationError) {
+          console.error('Error sending schedule activation notifications:', notificationError);
+          // Don't fail the request if notification fails
+        }
+      }
+
       res.status(201).json(schedule);
     } catch (error) {
       console.error('Error creating doctor schedule:', error);
@@ -994,7 +1097,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Validate the update data
       const updateSchema = z.object({
-        date: z.string().transform(str => new Date(str)).optional(),
+        date: z.string().transform(str => {
+          const date = new Date(str);
+          // Convert to date-only string for PostgreSQL date type
+          return date.toISOString().split('T')[0];
+        }).optional(),
         startTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/).optional(),
         endTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/).optional(),
         isActive: z.boolean().optional(),
@@ -1003,10 +1110,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const validData = updateSchema.parse(req.body);
 
+      // Get the current schedule state before update to check if it's being activated
+      const currentSchedule = await storage.getDoctorSchedule(scheduleId);
+      if (!currentSchedule) {
+        return res.status(404).json({ message: 'Schedule not found' });
+      }
+
       // Update the schedule
       const schedule = await storage.updateDoctorSchedule(scheduleId, validData);
       if (!schedule) {
         return res.status(404).json({ message: 'Schedule not found' });
+      }
+
+      // Check if schedule was just activated (was inactive, now active)
+      if (validData.isActive === true && !currentSchedule.isActive) {
+        console.log(`Schedule ${scheduleId} was activated, triggering notifications`);
+        try {
+          await notificationService.notifyScheduleActivated(scheduleId);
+        } catch (notificationError) {
+          console.error('Error sending database notifications, using fallback:', notificationError);
+          
+          // Fallback: Create in-memory notifications for patients who favorited this schedule
+          try {
+            const patientFavorites = await storage.getPatientsFavoritingSchedule(scheduleId);
+            const scheduleDetails = await storage.getDoctorSchedule(scheduleId);
+            
+            if (scheduleDetails && patientFavorites.length > 0) {
+              const doctorInfo = await storage.getUserById(scheduleDetails.doctorId);
+              const clinicInfo = await storage.getClinicById(scheduleDetails.clinicId);
+              
+              patientFavorites.forEach(patientId => {
+                addMemoryNotification(
+                  patientId,
+                  '🌟 Favorited Schedule is Now Active!',
+                  `Booking is now open for Dr. ${doctorInfo?.name || 'Unknown'} at ${clinicInfo?.name || 'Unknown Clinic'}. Book your appointment now!`,
+                  'schedule_activated'
+                );
+              });
+              
+              console.log(`Created ${patientFavorites.length} memory notifications for schedule activation`);
+            }
+          } catch (fallbackError) {
+            console.error('Error creating fallback notifications:', fallbackError);
+          }
+        }
       }
 
       res.json(schedule);
@@ -1265,6 +1412,83 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Patient Favorites Endpoints
+
+  // Add schedule to favorites
+  app.post("/api/favorites/schedules", async (req, res) => {
+    if (!req.user) return res.sendStatus(401);
+    if (req.user.role !== "patient") return res.sendStatus(403);
+
+    try {
+      const { scheduleId, doctorId, clinicId } = req.body;
+      
+      if (!scheduleId || !doctorId || !clinicId) {
+        return res.status(400).json({ message: 'scheduleId, doctorId, and clinicId are required' });
+      }
+
+      const favorite = await storage.addFavoriteSchedule(
+        req.user.id,
+        parseInt(scheduleId),
+        parseInt(doctorId),
+        parseInt(clinicId)
+      );
+
+      res.status(201).json(favorite);
+    } catch (error) {
+      console.error('Error adding favorite schedule:', error);
+      if (error instanceof Error && error.message === 'Schedule is already in favorites') {
+        return res.status(409).json({ message: error.message });
+      }
+      res.status(500).json({ message: 'Failed to add favorite schedule' });
+    }
+  });
+
+  // Remove schedule from favorites
+  app.delete("/api/favorites/schedules/:scheduleId", async (req, res) => {
+    if (!req.user) return res.sendStatus(401);
+    if (req.user.role !== "patient") return res.sendStatus(403);
+
+    try {
+      const scheduleId = parseInt(req.params.scheduleId);
+      
+      await storage.removeFavoriteSchedule(req.user.id, scheduleId);
+      
+      res.status(204).send();
+    } catch (error) {
+      console.error('Error removing favorite schedule:', error);
+      res.status(500).json({ message: 'Failed to remove favorite schedule' });
+    }
+  });
+
+  // Get patient's favorite schedules
+  app.get("/api/favorites/schedules", async (req, res) => {
+    if (!req.user) return res.sendStatus(401);
+    if (req.user.role !== "patient") return res.sendStatus(403);
+
+    try {
+      const favorites = await storage.getPatientFavorites(req.user.id);
+      res.json(favorites);
+    } catch (error) {
+      console.error('Error getting favorite schedules:', error);
+      res.status(500).json({ message: 'Failed to get favorite schedules' });
+    }
+  });
+
+  // Check if schedule is favorited by patient
+  app.get("/api/favorites/schedules/:scheduleId/check", async (req, res) => {
+    if (!req.user) return res.sendStatus(401);
+    if (req.user.role !== "patient") return res.sendStatus(403);
+
+    try {
+      const scheduleId = parseInt(req.params.scheduleId);
+      const isFavorite = await storage.checkIsFavorite(req.user.id, scheduleId);
+      res.json({ isFavorite });
+    } catch (error) {
+      console.error('Error checking favorite status:', error);
+      res.status(500).json({ message: 'Failed to check favorite status' });
+    }
+  });
+
   // Notification Endpoints
 
   // Get unread notifications for the authenticated user
@@ -1274,8 +1498,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const notifications = await notificationService.getUnreadNotifications(req.user.id);
       res.json(notifications);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      res.status(500).json({ error: errorMessage });
+      console.log('Database notification error, using fallback:', error);
+      // Fallback: use in-memory notifications
+      if (error instanceof Error && error.message.includes('does not exist')) {
+        const userNotifications = memoryNotifications
+          .filter(n => n.user_id === req.user!.id && !n.is_read)
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        res.json(userNotifications);
+      } else {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        res.status(500).json({ error: errorMessage });
+      }
     }
   });
 
@@ -1301,8 +1534,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const notification = await notificationService.markAsRead(parseInt(req.params.id));
       res.json(notification);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      res.status(500).json({ error: errorMessage });
+      console.log('Database mark as read error, using fallback:', error);
+      // Fallback: mark memory notification as read
+      if (error instanceof Error && error.message.includes('does not exist')) {
+        const notificationId = parseFloat(req.params.id);
+        const memoryNotification = memoryNotifications.find(n => n.id === notificationId && n.user_id === req.user!.id);
+        if (memoryNotification) {
+          memoryNotification.is_read = true;
+          res.json(memoryNotification);
+        } else {
+          res.status(404).json({ error: 'Notification not found' });
+        }
+      } else {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        res.status(500).json({ error: errorMessage });
+      }
     }
   });
 
@@ -1313,8 +1559,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const result = await notificationService.markAllAsRead(req.user.id);
       res.json(result);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      res.status(500).json({ error: errorMessage });
+      console.log('Database mark all as read error, using fallback:', error);
+      // Fallback: mark all memory notifications as read for this user
+      if (error instanceof Error && error.message.includes('does not exist')) {
+        memoryNotifications
+          .filter(n => n.user_id === req.user!.id && !n.is_read)
+          .forEach(n => n.is_read = true);
+        res.json({ success: true });
+      } else {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        res.status(500).json({ error: errorMessage });
+      }
     }
   });
 

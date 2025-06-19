@@ -9,6 +9,7 @@ import SuperAdminDashboard from "./super-admin-dashboard";
 import React from "react";
 import ClinicAdminDashboard from "./clinic-admin-dashboard";
 import { useAuth } from "../hooks/use-auth";
+import PatientDashboard from "./patient-dashboard";
 
 export default function HomePage() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -57,7 +58,10 @@ export default function HomePage() {
         <>
           {user.role === "super_admin" && <SuperAdminDashboard />}
           {(user.role === "clinic_admin" || user.role === "clinicadmin" || user.role === "hospital_admin") && <ClinicAdminDashboard />}
-          {(user.role === "attender" || user.role === "doctor" || user.role === "patient") && (
+          {/* {user.role === "attender" && <AttenderDashboard />}
+          {user.role === "doctor" && <DoctorDashboard />} */}
+          {user.role === "patient" && <PatientDashboard />}
+          {/* {(user.role === "attender" || user.role === "doctor" || user.role === "patient") && (
             <main className="container mx-auto px-4 py-8">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {isLoading ? (
@@ -75,7 +79,7 @@ export default function HomePage() {
                 )}
               </div>
             </main>
-          )}
+          )} */}
         </>
       )}
     </div>
