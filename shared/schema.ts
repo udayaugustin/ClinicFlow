@@ -110,14 +110,17 @@ export const doctorSchedules = pgTable("doctor_schedules", {
   doctorId: integer("doctor_id").notNull().references(() => users.id),
   clinicId: integer("clinic_id").notNull().references(() => clinics.id),
   date: date("date").notNull(),
-  startTime: varchar("start_time", { length: 5 }).notNull(), // Format: "HH:MM" in 24-hour format
-  endTime: varchar("end_time", { length: 5 }).notNull(), // Format: "HH:MM" in 24-hour format
-  isActive: boolean("is_active").default(true),
+  startTime: varchar("start_time", { length: 5 }).notNull(), 
+  endTime: varchar("end_time", { length: 5 }).notNull(),   
   maxTokens: integer("max_tokens").default(20),
   isPaused: boolean("is_paused").default(false),
   pauseReason: text("pause_reason"),
   pausedAt: timestamp("paused_at"),
   resumedAt: timestamp("resumed_at"),
+  isActive: boolean("is_active").default(true),
+  status: varchar("status", { length: 20 }).default("active"),
+  cancelReason: text("cancel_reason"),
+  cancelledAt: timestamp("cancelled_at"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
 });

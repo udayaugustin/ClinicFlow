@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Hospital, Edit } from "lucide-react";
+import { Hospital, Edit,ChevronRight } from "lucide-react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
+import React from "react";
 
 interface ClinicOverview {
   clinic: {
@@ -84,30 +85,16 @@ export function ClinicDetailsCard() {
             <span className="font-medium">Hours:</span> {clinicOverview.clinic.openingHours}
           </p>
         </div>
-        <div className="grid grid-cols-3 gap-4 pt-2">
-          <div className="text-center">
-            <p className="text-lg font-semibold">{clinicOverview.todayStats.totalDoctors}</p>
-            <p className="text-xs text-gray-600">Total Doctors</p>
-          </div>
-          <div className="text-center">
-            <p className="text-lg font-semibold">{clinicOverview.todayStats.activeDoctors}</p>
-            <p className="text-xs text-gray-600">Active Today</p>
-          </div>
-          <div className="text-center">
-            <p className="text-lg font-semibold">{clinicOverview.todayStats.totalAppointments}</p>
-            <p className="text-xs text-gray-600">Appointments</p>
-          </div>
-        </div>
+
       </CardContent>
       <CardFooter>
-        {/* <Button 
-          variant="outline"
-          className="w-full" 
-          onClick={() => navigate("/clinic-management")}
+        <Button 
+          className="w-full"
+          onClick={() => navigate("/schedules")}
         >
-          <Edit className="mr-2 h-4 w-4" />
-          Edit Details
-        </Button> */}
+          Manage Schedule
+          <ChevronRight className="ml-2 h-4 w-4" />
+        </Button>
       </CardFooter>
     </Card>
   );

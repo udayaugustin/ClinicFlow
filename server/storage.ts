@@ -76,7 +76,8 @@ export interface IStorage {
     };
   }>;
 
-  // Schedule pause methods
+  // Schedule methods
+  updateSchedule(scheduleId: number, data: { isActive?: boolean; isPaused?: boolean; cancelReason?: string }): Promise<DoctorSchedule>;
   pauseSchedule(scheduleId: number, reason: string): Promise<void>;
   resumeSchedule(scheduleId: number): Promise<void>;
   getAppointmentsBySchedule(scheduleId: number): Promise<Appointment[]>;
@@ -2226,6 +2227,26 @@ export class DatabaseStorage implements IStorage {
       };
     } catch (error) {
       console.error('Error in getAttenderSchedulesToday:', error);
+      throw error;
+    }
+  }
+
+
+  async updateSchedule(scheduleId: number, data: { isActive?: boolean; isPaused?: boolean; cancelReason?: string }): Promise<DoctorSchedule> {
+    try {
+      const [updatedSchedule] = await db
+        .update(doctorSchedules)
+        .set(data)
+        .where(eq(doctorSchedules.id, scheduleId))
+        .returning();
+
+      if (!updatedSchedule) {
+        throw new Error('Schedule not found');
+      }
+
+      return updatedSchedule;
+    } catch (error) {
+      console.error('Error updating schedule:', error);
       throw error;
     }
   }
