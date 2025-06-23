@@ -90,9 +90,9 @@ export function ClinicDetailsCard() {
       <CardFooter>
         <Button 
           className="w-full"
-          onClick={() => navigate("/schedules")}
+          onClick={() => navigate("/attender-dashboard")}
         >
-          Manage Schedule
+          Manage Appointments
           <ChevronRight className="ml-2 h-4 w-4" />
         </Button>
       </CardFooter>
