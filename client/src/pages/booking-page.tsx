@@ -49,6 +49,8 @@ export default function BookingPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
+      // Invalidate schedules to update appointment counts
+      queryClient.invalidateQueries({ queryKey: ["schedulesToday"] });
       toast({
         title: "Success",
         description: "Your appointment has been booked successfully.",

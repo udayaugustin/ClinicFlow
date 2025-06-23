@@ -67,7 +67,7 @@ export interface IStorage {
       doctorName: string;
       timeSlot: string;
       appointmentCount: number;
-      status: 'active' | 'paused' | 'completed';
+      status: 'active' | 'paused' | 'completed' | 'cancelled';
     }>;
     summary: {
       totalSchedules: number;
@@ -2156,16 +2156,17 @@ export class DatabaseStorage implements IStorage {
     doctorName: users.name,
     startTime: doctorSchedules.startTime,
     endTime: doctorSchedules.endTime,
-    isPaused: doctorSchedules.isPaused
+    isPaused: doctorSchedules.isPaused,
+    isActive: doctorSchedules.isActive
   })
-  .from(doctorSchedules)
-  .innerJoin(users, eq(users.id, doctorSchedules.doctorId))
-  .where(
-    and(
-      inArray(doctorSchedules.doctorId, doctorIds),
-      sql`DATE(${doctorSchedules.date}) = CURRENT_DATE`
-    )
-  );
+        .from(doctorSchedules)
+        .innerJoin(users, eq(users.id, doctorSchedules.doctorId))
+        .where(
+          and(
+            inArray(doctorSchedules.doctorId, doctorIds),
+            sql`DATE(${doctorSchedules.date}) = CURRENT_DATE`
+          )
+        );
 
   
   
@@ -2193,11 +2194,13 @@ export class DatabaseStorage implements IStorage {
               doctorName: schedule.doctorName,
               timeSlot,
               appointmentCount: Number(result?.count) || 0,
-              status: schedule.isPaused
-                ? 'paused'
-                : currentTime > schedule.endTime
-                ? 'completed'
-                : 'active',
+              status: !schedule.isActive
+  ? 'cancelled'
+  : schedule.isPaused
+  ? 'paused'
+  : currentTime > schedule.endTime
+  ? 'completed'
+  : 'active',
             };
           } catch (error) {
             console.error('Error getting appointments for schedule:', schedule.id, error);

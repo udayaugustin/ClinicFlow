@@ -12,7 +12,7 @@ interface SchedulesToday {
     doctorName: string;
     timeSlot: string;
     appointmentCount: number;
-    status: 'active' | 'paused' | 'completed';
+    status: 'active' | 'paused' | 'completed' | 'cancelled';
   }>;
   summary: {
     totalSchedules: number;
@@ -25,6 +25,7 @@ const statusColors = {
   active: "success",
   paused: "warning",
   completed: "secondary",
+  cancelled: "destructive",
 } as const;
 
 export function SchedulesTodayCard() {
@@ -40,6 +41,8 @@ export function SchedulesTodayCard() {
       }
       return response.json();
     },
+    refetchInterval: 30000, // Refetch every 30 seconds
+    refetchOnWindowFocus: true, // Refetch when window gains focus
   });
 
   if (isLoading) {
@@ -106,7 +109,7 @@ export function SchedulesTodayCard() {
                   {schedule.status.charAt(0).toUpperCase() + schedule.status.slice(1)}
                 </Badge>
                 <p className="text-sm text-gray-600 mt-1">
-                  {schedule.appointmentCount} appointments
+                  {schedule.appointmentCount}/20 appointments
                 </p>
               </div>
             </div>

@@ -95,6 +95,8 @@ export default function PatientBookingPage() {
       queryClient.invalidateQueries({ 
         queryKey: [`/api/doctors/${doctorId}/available-slots`]
       });
+      // Invalidate schedules to update appointment counts
+      queryClient.invalidateQueries({ queryKey: ["schedulesToday"] });
       // Force an immediate refetch
       refetchSlots();
       toast({

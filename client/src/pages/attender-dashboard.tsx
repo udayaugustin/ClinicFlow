@@ -110,6 +110,8 @@ export default function AttenderDashboard() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/attender/${user?.id}/doctors/appointments`] });
+      // Invalidate schedules to update appointment counts
+      queryClient.invalidateQueries({ queryKey: ["schedulesToday"] });
       toast({
         title: "Success",
         description: "Appointment status updated successfully",
@@ -346,6 +348,8 @@ export default function AttenderDashboard() {
     onSuccess: () => {
       // Invalidate relevant queries
       queryClient.invalidateQueries({ queryKey: ["/api/attender/doctors"] });
+      // Invalidate schedules to update appointment counts
+      queryClient.invalidateQueries({ queryKey: ["schedulesToday"] });
       toast({
         title: "Success",
         description: "Walk-in appointment created successfully",
