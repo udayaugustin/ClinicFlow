@@ -62,8 +62,8 @@ export function ClinicDetailsCard() {
   if (!clinicOverview) return null;
 
   return (
-    <Card className="shadow-md hover:shadow-lg transition-shadow">
-      <CardHeader>
+    <Card className="shadow-md hover:shadow-lg transition-shadow h-[400px] flex flex-col">
+      <CardHeader className="flex-shrink-0">
         <CardTitle className="flex items-center">
           <Hospital className="mr-2 h-6 w-6" />
           Clinic Details
@@ -72,22 +72,30 @@ export function ClinicDetailsCard() {
           View and manage clinic information
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div>
-          <h3 className="font-semibold">{clinicOverview.clinic.name}</h3>
-          <p className="text-sm text-gray-600">{clinicOverview.clinic.address}</p>
-        </div>
-        <div className="space-y-2">
-          <p className="text-sm">
-            <span className="font-medium">Phone:</span> {clinicOverview.clinic.phone}
-          </p>
-          <p className="text-sm">
-            <span className="font-medium">Hours:</span> {clinicOverview.clinic.openingHours}
-          </p>
-        </div>
+      <CardContent className="flex-grow flex flex-col space-y-4">
+        <div className="flex-grow space-y-4">
+          <div>
+            <h3 className="font-semibold text-lg">{clinicOverview.clinic.name}</h3>
+            <p className="text-sm text-gray-600 mt-1">{clinicOverview.clinic.address}</p>
+          </div>
+          
+          <div className="space-y-3">
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <span className="font-medium text-sm">Phone:</span>
+              <span className="text-sm">{clinicOverview.clinic.phone}</span>
+            </div>
+            
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <span className="font-medium text-sm">Hours:</span>
+              <span className="text-sm">{clinicOverview.clinic.openingHours}</span>
+            </div>
+          </div>
 
+         
+        
+        </div>
       </CardContent>
-      <CardFooter>
+      <CardFooter className="flex-shrink-0">
         <Button 
           className="w-full"
           onClick={() => navigate("/attender-dashboard")}
