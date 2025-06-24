@@ -72,12 +72,12 @@ export const attenderDoctors = pgTable("attender_doctors", {
 
 // Define appointment status values
 export const appointmentStatuses = [
-  "scheduled", // Initial status when appointment is booked
-  "start",     // Appointment has started (was previously in_progress)
-  "hold",      // Patient not arrived at right time
-  "pause",     // Temporarily paused appointment
-  "cancel",    // Appointment cancelled (was previously cancelled)
-  "completed"  // Appointment completed
+  "token_started", // Default status when appointment is booked (doctor not arrived)
+  "in_progress",   // Doctor has arrived and appointment is actively being processed
+  "hold",          // Patient not arrived at right time
+  "pause",         // Temporarily paused appointment (was in progress)
+  "cancel",        // Appointment cancelled
+  "completed"      // Appointment completed
 ] as const;
 
 export type AppointmentStatus = typeof appointmentStatuses[number];
@@ -96,7 +96,7 @@ export const appointments = pgTable("appointments", {
   scheduleId: integer("schedule_id").references(() => doctorSchedules.id),
   date: timestamp("date").notNull(),
   tokenNumber: integer("token_number").notNull(),
-  status: varchar("status", { length: 50 }).default("scheduled"),
+  status: varchar("status", { length: 50 }).default("token_started"),
   statusNotes: text("status_notes"), // For recording reasons for status changes
   // Guest patient fields for walk-in appointments
   guestName: varchar("guest_name", { length: 255 }),

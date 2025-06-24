@@ -67,7 +67,7 @@ export interface IStorage {
       doctorName: string;
       timeSlot: string;
       appointmentCount: number;
-      status: 'active' | 'paused' | 'completed' | 'cancelled';
+      status: 'token_started' | 'in_progress' | 'paused' | 'completed' | 'cancelled';
     }>;
     summary: {
       totalSchedules: number;
@@ -164,7 +164,7 @@ export interface IStorage {
     }[] 
   }>;
   updateDoctorSchedule(id: number, schedule: Partial<InsertDoctorSchedule>): Promise<DoctorSchedule>;
-  deleteDoctorSchedule(id: number): Promise<void>;
+  deleteDoctorSchedule(id: number): Promise<{ deletedSchedule: any, cancelledAppointments: any[] }>;
   getAvailableDoctors(clinicId: number, date: Date, time: string): Promise<User[]>;
 
   getAppointmentCountForDoctor(
@@ -1153,7 +1153,7 @@ export class DatabaseStorage implements IStorage {
     clinicId: number, 
     date: Date,
     retryCount = 3
-  ): Promise<{ currentToken: number; status: 'start' | 'completed' | 'scheduled' | 'hold' | 'pause' | 'cancel' | 'not_started' | 'no_appointments'; appointment?: Appointment }> {
+  ): Promise<{ currentToken: number; status: 'in_progress' | 'completed' | 'token_started' | 'hold' | 'pause' | 'cancel' | 'not_started' | 'no_appointments'; appointment?: Appointment }> {
     try {
       console.log('Getting token progress for:', { doctorId, clinicId, date });
 
@@ -1187,52 +1187,101 @@ export class DatabaseStorage implements IStorage {
         };
       }
 
-      // Find appointment in progress (can be either walk-in or regular)
-      const inProgressAppointment = todayAppointments.find(apt => apt.status === 'start');
+      // Check if doctor has arrived today
+      const doctorPresence = await this.getDoctorArrivalStatus(doctorId, clinicId, date);
+      const doctorHasArrived = doctorPresence?.hasArrived || false;
+      
+      console.log('Doctor presence status:', { doctorHasArrived, presence: doctorPresence });
+
+      // Find appointment currently in progress
+      const inProgressAppointment = todayAppointments.find(apt => apt.status === 'in_progress');
       
       if (inProgressAppointment) {
         console.log('Found in-progress appointment:', inProgressAppointment);
         return {
           currentToken: inProgressAppointment.tokenNumber,
-          status: 'start',
+          status: 'in_progress',
           appointment: inProgressAppointment
         };
       }
 
-      // If no appointment is in progress, find the last completed appointment
+      // Find appointment in pause state
+      const pausedAppointment = todayAppointments.find(apt => apt.status === 'pause');
+      
+      if (pausedAppointment) {
+        console.log('Found paused appointment:', pausedAppointment);
+        return {
+          currentToken: pausedAppointment.tokenNumber,
+          status: 'pause',
+          appointment: pausedAppointment
+        };
+      }
+
+      // Find appointment in hold state
+      const heldAppointment = todayAppointments.find(apt => apt.status === 'hold');
+      
+      if (heldAppointment) {
+        console.log('Found held appointment:', heldAppointment);
+        return {
+          currentToken: heldAppointment.tokenNumber,
+          status: 'hold',
+          appointment: heldAppointment
+        };
+      }
+
+      // Find appointment in token_started state
+      const tokenStartedAppointment = todayAppointments.find(apt => apt.status === 'token_started');
+      
+      if (tokenStartedAppointment) {
+        console.log('Found token started appointment:', tokenStartedAppointment);
+        return {
+          currentToken: tokenStartedAppointment.tokenNumber,
+          status: 'token_started',
+          appointment: tokenStartedAppointment
+        };
+      }
+
+      // If no appointment is currently active, find the last completed appointment
       const completedAppointments = todayAppointments.filter(apt => apt.status === 'completed');
       const lastCompleted = completedAppointments[completedAppointments.length - 1];
 
       console.log('Completed appointments:', { count: completedAppointments.length, lastCompleted });
 
       if (lastCompleted) {
-        // Find the next scheduled appointment after the last completed one
-        // Include both walk-ins and regular appointments
+        // Find the next token_started appointment after the last completed one
         const nextAppointment = todayAppointments.find(apt => 
           apt.tokenNumber > lastCompleted.tokenNumber && 
-          apt.status === 'scheduled'
+          apt.status === 'token_started'
         );
+
+        if (nextAppointment) {
+          return {
+            currentToken: nextAppointment.tokenNumber,
+            status: 'token_started',
+            appointment: nextAppointment
+          };
+        }
 
         return {
           currentToken: lastCompleted.tokenNumber,
           status: 'completed',
-          appointment: nextAppointment || lastCompleted
+          appointment: lastCompleted
         };
       }
 
-      // If no completed appointment, return the earliest scheduled appointment
-      const earliestPending = todayAppointments.find(apt => apt.status === 'scheduled');
+      // If no completed appointment, find the earliest token_started appointment
+      const earliestPending = todayAppointments.find(apt => apt.status === 'token_started');
       
       if (earliestPending) {
         console.log('Found earliest pending appointment:', earliestPending);
         return {
-          currentToken: 0, // No current token yet
-          status: 'not_started',
+          currentToken: earliestPending.tokenNumber,
+          status: 'token_started',
           appointment: earliestPending
         };
       }
 
-      // If no scheduled appointments, find the last appointment in any other state
+      // If no token_started appointments, find the last appointment in any other state
       const lastAppointment = todayAppointments[todayAppointments.length - 1];
       
       console.log('Last appointment in any state:', lastAppointment);
@@ -1493,8 +1542,69 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async deleteDoctorSchedule(id: number): Promise<void> {
-    await db.delete(doctorSchedules).where(eq(doctorSchedules.id, id));
+  async deleteDoctorSchedule(id: number): Promise<{ deletedSchedule: any, cancelledAppointments: any[] }> {
+    // Use a transaction to ensure data consistency
+    return await db.transaction(async (tx) => {
+      // First, get the schedule info
+      const [schedule] = await tx
+        .select()
+        .from(doctorSchedules)
+        .where(eq(doctorSchedules.id, id));
+
+      if (!schedule) {
+        throw new Error('Schedule not found');
+      }
+
+      // Get all appointments for this schedule BEFORE deleting
+      const scheduleAppointments = await tx
+        .select()
+        .from(appointments)
+        .where(eq(appointments.scheduleId, id));
+
+      // Get all doctor presence records for this schedule
+      const presenceRecords = await tx
+        .select()
+        .from(doctorDailyPresence)
+        .where(eq(doctorDailyPresence.scheduleId, id));
+
+      console.log(`Found ${scheduleAppointments.length} appointments and ${presenceRecords.length} presence records for schedule ${id}`);
+
+      // Cancel all appointments and remove schedule reference (double protection)
+      if (scheduleAppointments.length > 0) {
+        await tx
+          .update(appointments)
+          .set({ 
+            status: 'cancel',
+            statusNotes: 'Schedule was deleted by clinic admin',
+            scheduleId: null // Explicitly set to null as backup
+          })
+          .where(eq(appointments.scheduleId, id));
+
+        console.log(`Cancelled ${scheduleAppointments.length} appointments and removed schedule references`);
+      }
+
+      // Remove schedule reference from doctor presence records (double protection)
+      if (presenceRecords.length > 0) {
+        await tx
+          .update(doctorDailyPresence)
+          .set({ 
+            scheduleId: null // Explicitly set to null as backup
+          })
+          .where(eq(doctorDailyPresence.scheduleId, id));
+
+        console.log(`Removed schedule references from ${presenceRecords.length} presence records`);
+      }
+
+      // Now delete the schedule - should work since all references are removed
+      await tx.delete(doctorSchedules).where(eq(doctorSchedules.id, id));
+      
+      console.log(`Successfully deleted schedule ${id}`);
+
+      return {
+        deletedSchedule: schedule,
+        cancelledAppointments: scheduleAppointments
+      };
+    });
   }
 
   async getAvailableDoctors(clinicId: number, date: Date, time: string): Promise<User[]> {
@@ -1626,6 +1736,8 @@ export class DatabaseStorage implements IStorage {
       const dayStart = new Date(date);
       dayStart.setHours(0, 0, 0, 0);
 
+      console.log(`Getting doctor arrival status for doctor ${doctorId}, clinic ${clinicId}, date ${dayStart.toISOString()}`);
+
       const [presence] = await db
         .select()
         .from(doctorDailyPresence)
@@ -1637,6 +1749,7 @@ export class DatabaseStorage implements IStorage {
           )
         );
 
+      console.log(`Found presence record:`, presence);
       return presence;
     } catch (error) {
       console.error('Error getting doctor arrival status:', error);
@@ -2148,25 +2261,50 @@ export class DatabaseStorage implements IStorage {
       }
   
       // Step 3: Get today's schedules
-      const todayDayOfWeek = new Date().getDay(); // 0 (Sunday) to 6 (Saturday)
-  
+      const today = new Date();
+      const todayString = today.toISOString().split('T')[0]; // Get YYYY-MM-DD format
+      console.log('Looking for schedules on date:', todayString);
+
       const schedulesResult = await db
   .select({
     id: doctorSchedules.id,
+    doctorId: doctorSchedules.doctorId,
     doctorName: users.name,
     startTime: doctorSchedules.startTime,
     endTime: doctorSchedules.endTime,
     isPaused: doctorSchedules.isPaused,
-    isActive: doctorSchedules.isActive
+    isActive: doctorSchedules.isActive,
+    scheduleDate: doctorSchedules.date
   })
         .from(doctorSchedules)
         .innerJoin(users, eq(users.id, doctorSchedules.doctorId))
         .where(
           and(
             inArray(doctorSchedules.doctorId, doctorIds),
-            sql`DATE(${doctorSchedules.date}) = CURRENT_DATE`
+            eq(doctorSchedules.date, todayString)
           )
         );
+
+      console.log('Found schedules:', schedulesResult.map(s => ({
+        id: s.id,
+        doctor: s.doctorName,
+        date: s.scheduleDate,
+        time: `${s.startTime}-${s.endTime}`,
+        isActive: s.isActive
+      })));
+
+      // If no schedules found for today, return empty result
+      if (schedulesResult.length === 0) {
+        console.log('No schedules found for today, returning empty result');
+        return {
+          schedules: [],
+          summary: {
+            totalSchedules: 0,
+            activeSchedules: 0,
+            totalAppointments: 0,
+          },
+        };
+      }
 
   
   
@@ -2182,25 +2320,64 @@ export class DatabaseStorage implements IStorage {
               .where(
                 and(
                   eq(appointments.scheduleId, schedule.id),
-                  sql`DATE(appointments.date) = CURRENT_DATE`
+                  sql`DATE(${appointments.date}) = ${todayString}`
                 )
               );
   
             const timeSlot = `${schedule.startTime.slice(0, 5)} - ${schedule.endTime.slice(0, 5)}`;
-            const currentTime = new Date().toLocaleTimeString('en-US', { hour12: false });
-  
+            
+            // Get current time in HH:MM format for proper comparison
+            const now = new Date();
+            const currentTimeHours = now.getHours().toString().padStart(2, '0');
+            const currentTimeMinutes = now.getMinutes().toString().padStart(2, '0');
+            const currentTime = `${currentTimeHours}:${currentTimeMinutes}`;
+            
+            console.log(`Schedule ${schedule.id}: currentTime=${currentTime}, scheduleEndTime=${schedule.endTime}`);
+            
+            // Check if doctor has arrived for this schedule today
+            const doctorPresence = await this.getDoctorArrivalStatus(
+              schedule.doctorId,
+              attenderClinic.clinicId,
+              new Date()
+            );
+            const doctorHasArrived = doctorPresence?.hasArrived || false;
+            
+            console.log(`Schedule ${schedule.id} (Dr. ${schedule.doctorName}): 
+              - Presence record: ${JSON.stringify(doctorPresence)}
+              - Has arrived: ${doctorHasArrived}
+              - Date checked: ${new Date().toISOString().split('T')[0]}`);
+
+            console.log(`Schedule ${schedule.id}: doctorHasArrived=${doctorHasArrived}`);
+
+            // Determine schedule status based on doctor presence and schedule state
+            let scheduleStatus: 'token_started' | 'in_progress' | 'paused' | 'completed' | 'cancelled';
+            
+            if (!schedule.isActive) {
+              scheduleStatus = 'cancelled';
+            } else if (schedule.isPaused) {
+              scheduleStatus = 'paused';
+            } else if (currentTime > schedule.endTime) {
+              // Only mark as completed if the entire schedule time period has ended
+              // e.g., if schedule is 9 AM - 5 PM, only mark completed after 5 PM
+              // Individual appointments within this time should have their own status
+              scheduleStatus = 'completed';
+            } else {
+              // Within schedule time period - status depends on doctor presence
+              if (doctorHasArrived) {
+                scheduleStatus = 'in_progress';
+              } else {
+                scheduleStatus = 'token_started'; // Default when doctor hasn't arrived yet
+              }
+            }
+            
+            console.log(`Schedule ${schedule.id}: final status=${scheduleStatus}`);
+
             return {
               id: schedule.id,
               doctorName: schedule.doctorName,
               timeSlot,
               appointmentCount: Number(result?.count) || 0,
-              status: !schedule.isActive
-  ? 'cancelled'
-  : schedule.isPaused
-  ? 'paused'
-  : currentTime > schedule.endTime
-  ? 'completed'
-  : 'active',
+              status: scheduleStatus,
             };
           } catch (error) {
             console.error('Error getting appointments for schedule:', schedule.id, error);
@@ -2212,7 +2389,7 @@ export class DatabaseStorage implements IStorage {
   
       // Step 5: Summary stats
       const activeSchedules = schedulesWithAppointments.filter(
-        (s) => s.status === 'active'
+        (s) => s.status === 'in_progress' || s.status === 'token_started'
       ).length;
   
       const totalAppointments = schedulesWithAppointments.reduce(

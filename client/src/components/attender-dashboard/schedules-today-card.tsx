@@ -12,7 +12,7 @@ interface SchedulesToday {
     doctorName: string;
     timeSlot: string;
     appointmentCount: number;
-    status: 'active' | 'paused' | 'completed' | 'cancelled';
+    status: 'token_started' | 'in_progress' | 'paused' | 'completed' | 'cancelled';
   }>;
   summary: {
     totalSchedules: number;
@@ -22,9 +22,10 @@ interface SchedulesToday {
 }
 
 const statusColors = {
-  active: "success",
+  token_started: "secondary",
+  in_progress: "default", 
   paused: "warning",
-  completed: "secondary",
+  completed: "outline",
   cancelled: "destructive",
 } as const;
 
@@ -106,7 +107,9 @@ export function SchedulesTodayCard() {
               </div>
               <div className="text-right">
                 <Badge variant={statusColors[schedule.status]}>
-                  {schedule.status.charAt(0).toUpperCase() + schedule.status.slice(1)}
+                  {schedule.status === 'token_started' ? 'Token Started' :
+                   schedule.status === 'in_progress' ? 'In Progress' :
+                   schedule.status.charAt(0).toUpperCase() + schedule.status.slice(1)}
                 </Badge>
                 <p className="text-sm text-gray-600 mt-1">
                   {schedule.appointmentCount}/20 appointments

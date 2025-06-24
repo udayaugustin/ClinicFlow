@@ -17,12 +17,12 @@ type AppointmentStatusBadgeProps = {
 export function AppointmentStatusBadge({ status, statusNotes }: AppointmentStatusBadgeProps) {
   const getVariant = () => {
     switch (status) {
-      case "scheduled":
+      case "token_started":
+        return "secondary";
+      case "in_progress":
         return "default";
       case "completed":
         return "outline";
-      case "start":
-        return "secondary";
       case "hold":
       case "pause":
         return "warning";
@@ -36,7 +36,8 @@ export function AppointmentStatusBadge({ status, statusNotes }: AppointmentStatu
   return (
     <div className="flex items-center">
       <Badge variant={getVariant()}>
-        {status === "start" ? "In Progress" :
+        {status === "token_started" ? "Token Started" :
+        status === "in_progress" ? "In Progress" :
         status === "hold" ? "Hold" :
         status === "pause" ? "Pause" :
         status === "cancel" ? "Cancel" :
