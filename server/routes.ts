@@ -276,7 +276,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const appointmentId = parseInt(req.params.id);
       const { status, statusNotes } = req.body;
 
-      const allowedStatuses = ["scheduled", "start", "hold", "pause", "cancel", "completed"];
+      const allowedStatuses = ["token_started", "in_progress", "hold", "pause", "cancel", "completed"];
       
       if (!allowedStatuses.includes(status)) {
         return res.status(400).json({ 
@@ -1177,8 +1177,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'Invalid schedule ID' });
       }
 
-      await storage.deleteDoctorSchedule(scheduleId);
-      res.status(204).send();
+      const result = await storage.deleteDoctorSchedule(scheduleId);
+      
+      // Send notifications to patients about cancelled appointments
+      if (result.cancelledAppointments.length > 0) {
+        console.log(`Sending notifications for ${result.cancelledAppointments.length} cancelled appointments`);
+        
+        for (const appointment of result.cancelledAppointments) {
+          if (appointment.patientId) {
+            try {
+              await notificationService.generateStatusNotification(
+                appointment, 
+                'cancel', 
+                'Schedule was deleted by clinic admin'
+              );
+            } catch (notificationError) {
+              console.error('Error sending notification for cancelled appointment:', notificationError);
+              // Continue even if notification fails
+            }
+          }
+        }
+      }
+      
+      res.status(200).json({ 
+        message: 'Schedule deleted successfully',
+        cancelledAppointments: result.cancelledAppointments.length
+      });
     } catch (error) {
       console.error('Error deleting doctor schedule:', error);
       res.status(500).json({ message: 'Failed to delete doctor schedule' });
@@ -1306,8 +1330,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Send notifications to patients if the doctor has arrived
       if (hasArrived) {
-        console.log('Doctor has arrived, sending notifications to patients');
+        console.log('Doctor has arrived, sending notifications to patients and updating appointment statuses');
         try {
+          // First, update appointment statuses from "token_started" to "in_progress"
+          const tokenStartedAppointments = await db
+            .select()
+            .from(appointments)
+            .where(
+              and(
+                eq(appointments.doctorId, doctorId),
+                eq(appointments.clinicId, parseInt(clinicId)),
+                sql`DATE(${appointments.date}) = DATE(${dateObj.toISOString()})`,
+                eq(appointments.status, "token_started")
+              )
+            );
+
+          // Update each token_started appointment to in_progress
+          for (const appointment of tokenStartedAppointments) {
+            await storage.updateAppointmentStatus(
+              appointment.id,
+              "in_progress",
+              "Doctor has arrived - appointment started"
+            );
+            
+            // Send notification for status change
+            if (appointment.patientId) {
+              await notificationService.generateStatusNotification(
+                appointment, 
+                "in_progress", 
+                "Doctor has arrived"
+              );
+            }
+          }
+
+          // Then send doctor arrival notifications
           await notificationService.notifyDoctorArrival(
             doctorId,
             parseInt(clinicId),
@@ -1330,6 +1386,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // Add an endpoint to reset all doctor presence for today (for debugging)
+  app.post("/api/debug/reset-doctor-presence", async (req, res) => {
+    if (!req.user || !['hospital_admin', 'attender'].includes(req.user.role)) {
+      return res.status(403).json({ message: 'Unauthorized access' });
+    }
+
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      // Reset all doctor presence for today
+      await db
+        .update(doctorDailyPresence)
+        .set({ hasArrived: false })
+        .where(eq(doctorDailyPresence.date, today));
+
+      res.json({ 
+        message: 'All doctor presence reset to false for today',
+        date: today.toISOString().split('T')[0]
+      });
+    } catch (error) {
+      console.error('Error resetting doctor presence:', error);
+      res.status(500).json({ message: 'Failed to reset doctor presence' });
+    }
+  });
+
   // Add an endpoint to get doctor arrival status
   app.get("/api/doctors/:id/arrival", async (req, res) => {
     try {
@@ -1685,6 +1767,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     });
 
+    // Cancel a schedule and notify affected patients
+    app.patch("/api/schedules/:id/cancel", async (req, res) => {
+      if (!req.user || req.user.role !== 'attender') {
+        return res.sendStatus(403);
+      }
+
+      try {
+        const scheduleId = parseInt(req.params.id);
+        const { cancelReason } = req.body;
+
+        // FIRST: Get all pending appointments BEFORE cancelling them
+        const appointments = await storage.getAppointmentsBySchedule(scheduleId);
+        console.log(`Found ${appointments.length} appointments for schedule ${scheduleId}`);
+        
+        // SECOND: Update the schedule status
+        const updatedSchedule = await storage.updateSchedule(scheduleId, {
+          isActive: false,
+          cancelReason: cancelReason || 'Schedule cancelled by attender'
+        });
+
+        // THIRD: Cancel each appointment 
+        for (const appointment of appointments) {
+          if (appointment.status !== 'completed' && appointment.status !== 'cancel') {
+            // Update appointment status to cancelled
+            await storage.updateAppointmentStatus(
+              appointment.id, 
+              'cancel', 
+              'Schedule cancelled by clinic'
+            );
+          }
+        }
+
+        // FOURTH: Send notifications to all affected patients (using the original appointments list)
+        await notificationService.notifyScheduleCancelled(scheduleId, cancelReason);
+
+        res.json(updatedSchedule);
+      } catch (error) {
+        console.error('Error canceling schedule:', error);
+        res.status(500).json({ message: 'Failed to cancel schedule' });
+      }
+    });
+
     // Remove a doctor assignment
     app.delete("/api/attender-doctors", async (req, res) => {
       try {
@@ -1825,6 +1949,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid data", errors: error.errors });
       }
       res.status(500).json({ message: "Failed to update doctor" });
+    }
+  });
+
+  // Debug route to get current user info
+  app.get("/api/debug/user-info", async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: "Not authenticated" });
+    res.json({
+      id: req.user.id,
+      name: req.user.name,
+      role: req.user.role,
+      email: req.user.email
+    });
+  });
+
+  // Debug route to test schedule cancellation notifications
+  app.post("/api/debug/test-cancel-notification/:scheduleId", async (req, res) => {
+    try {
+      const scheduleId = parseInt(req.params.scheduleId);
+      const { cancelReason } = req.body;
+      console.log(`DEBUG: Testing schedule cancellation notification for schedule ${scheduleId}`);
+      console.log(`DEBUG: Cancel reason: ${cancelReason}`);
+
+      // Check if schedule exists first
+      console.log('DEBUG: Checking if schedule exists...');
+      const schedule = await storage.getDoctorSchedule(scheduleId);
+      console.log('DEBUG: Schedule found:', schedule);
+
+      if (!schedule) {
+        return res.status(404).json({ error: 'Schedule not found' });
+      }
+
+      console.log('DEBUG: Calling notifyScheduleCancelled...');
+      await notificationService.notifyScheduleCancelled(scheduleId, cancelReason);
+      console.log('DEBUG: notifyScheduleCancelled completed');
+
+      res.json({ success: true, message: "Schedule cancellation notification test completed" });
+    } catch (error) {
+      console.error("DEBUG: Schedule cancellation notification test failed:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Debug route to create a direct notification for current user
+  app.post("/api/debug/create-notification", async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: "Not authenticated" });
+    
+    try {
+      const { title, message, type } = req.body;
+      
+      const notification = await notificationService.createNotification({
+        userId: req.user.id,
+        appointmentId: null,
+        title: title || "Test Notification",
+        message: message || "This is a test notification to verify the system is working",
+        type: type || "test"
+      });
+
+      res.json({ success: true, notification });
+    } catch (error) {
+      console.error("DEBUG: Failed to create test notification:", error);
+      res.status(500).json({ error: error.message });
     }
   });
 

@@ -72,12 +72,12 @@ export const attenderDoctors = pgTable("attender_doctors", {
 
 // Define appointment status values
 export const appointmentStatuses = [
-  "scheduled", // Initial status when appointment is booked
-  "start",     // Appointment has started (was previously in_progress)
-  "hold",      // Patient not arrived at right time
-  "pause",     // Temporarily paused appointment
-  "cancel",    // Appointment cancelled (was previously cancelled)
-  "completed"  // Appointment completed
+  "token_started", // Default status when appointment is booked (doctor not arrived)
+  "in_progress",   // Doctor has arrived and appointment is actively being processed
+  "hold",          // Patient not arrived at right time
+  "pause",         // Temporarily paused appointment (was in progress)
+  "cancel",        // Appointment cancelled
+  "completed"      // Appointment completed
 ] as const;
 
 export type AppointmentStatus = typeof appointmentStatuses[number];
@@ -96,7 +96,7 @@ export const appointments = pgTable("appointments", {
   scheduleId: integer("schedule_id").references(() => doctorSchedules.id),
   date: timestamp("date").notNull(),
   tokenNumber: integer("token_number").notNull(),
-  status: varchar("status", { length: 50 }).default("scheduled"),
+  status: varchar("status", { length: 50 }).default("token_started"),
   statusNotes: text("status_notes"), // For recording reasons for status changes
   // Guest patient fields for walk-in appointments
   guestName: varchar("guest_name", { length: 255 }),
@@ -110,14 +110,17 @@ export const doctorSchedules = pgTable("doctor_schedules", {
   doctorId: integer("doctor_id").notNull().references(() => users.id),
   clinicId: integer("clinic_id").notNull().references(() => clinics.id),
   date: date("date").notNull(),
-  startTime: varchar("start_time", { length: 5 }).notNull(), // Format: "HH:MM" in 24-hour format
-  endTime: varchar("end_time", { length: 5 }).notNull(), // Format: "HH:MM" in 24-hour format
-  isActive: boolean("is_active").default(true),
+  startTime: varchar("start_time", { length: 5 }).notNull(), 
+  endTime: varchar("end_time", { length: 5 }).notNull(),   
   maxTokens: integer("max_tokens").default(20),
   isPaused: boolean("is_paused").default(false),
   pauseReason: text("pause_reason"),
   pausedAt: timestamp("paused_at"),
   resumedAt: timestamp("resumed_at"),
+  isActive: boolean("is_active").default(true),
+  status: varchar("status", { length: 20 }).default("active"),
+  cancelReason: text("cancel_reason"),
+  cancelledAt: timestamp("cancelled_at"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
 });

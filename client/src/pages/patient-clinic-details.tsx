@@ -125,6 +125,9 @@ export default function PatientClinicDetails() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
+      // Also invalidate the schedules data for attenders
+      queryClient.invalidateQueries({ queryKey: ["schedulesToday"] });
+      queryClient.invalidateQueries({ queryKey: ["attender"] });
       toast({
         title: "Success",
         description: "Your appointment has been booked successfully.",

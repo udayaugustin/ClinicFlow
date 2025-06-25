@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Hospital, Edit } from "lucide-react";
+import { Hospital, Edit,ChevronRight } from "lucide-react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
+import React from "react";
 
 interface ClinicOverview {
   clinic: {
@@ -61,8 +62,8 @@ export function ClinicDetailsCard() {
   if (!clinicOverview) return null;
 
   return (
-    <Card className="shadow-md hover:shadow-lg transition-shadow">
-      <CardHeader>
+    <Card className="shadow-md hover:shadow-lg transition-shadow h-[400px] flex flex-col">
+      <CardHeader className="flex-shrink-0">
         <CardTitle className="flex items-center">
           <Hospital className="mr-2 h-6 w-6" />
           Clinic Details
@@ -71,43 +72,37 @@ export function ClinicDetailsCard() {
           View and manage clinic information
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div>
-          <h3 className="font-semibold">{clinicOverview.clinic.name}</h3>
-          <p className="text-sm text-gray-600">{clinicOverview.clinic.address}</p>
-        </div>
-        <div className="space-y-2">
-          <p className="text-sm">
-            <span className="font-medium">Phone:</span> {clinicOverview.clinic.phone}
-          </p>
-          <p className="text-sm">
-            <span className="font-medium">Hours:</span> {clinicOverview.clinic.openingHours}
-          </p>
-        </div>
-        <div className="grid grid-cols-3 gap-4 pt-2">
-          <div className="text-center">
-            <p className="text-lg font-semibold">{clinicOverview.todayStats.totalDoctors}</p>
-            <p className="text-xs text-gray-600">Total Doctors</p>
+      <CardContent className="flex-grow flex flex-col space-y-4">
+        <div className="flex-grow space-y-4">
+          <div>
+            <h3 className="font-semibold text-lg">{clinicOverview.clinic.name}</h3>
+            <p className="text-sm text-gray-600 mt-1">{clinicOverview.clinic.address}</p>
           </div>
-          <div className="text-center">
-            <p className="text-lg font-semibold">{clinicOverview.todayStats.activeDoctors}</p>
-            <p className="text-xs text-gray-600">Active Today</p>
+          
+          <div className="space-y-3">
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <span className="font-medium text-sm">Phone:</span>
+              <span className="text-sm">{clinicOverview.clinic.phone}</span>
+            </div>
+            
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <span className="font-medium text-sm">Hours:</span>
+              <span className="text-sm">{clinicOverview.clinic.openingHours}</span>
+            </div>
           </div>
-          <div className="text-center">
-            <p className="text-lg font-semibold">{clinicOverview.todayStats.totalAppointments}</p>
-            <p className="text-xs text-gray-600">Appointments</p>
-          </div>
+
+         
+        
         </div>
       </CardContent>
-      <CardFooter>
-        {/* <Button 
-          variant="outline"
-          className="w-full" 
-          onClick={() => navigate("/clinic-management")}
+      <CardFooter className="flex-shrink-0">
+        <Button 
+          className="w-full"
+          onClick={() => navigate("/attender-dashboard")}
         >
-          <Edit className="mr-2 h-4 w-4" />
-          Edit Details
-        </Button> */}
+          Manage Appointments
+          <ChevronRight className="ml-2 h-4 w-4" />
+        </Button>
       </CardFooter>
     </Card>
   );
