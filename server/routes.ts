@@ -7,6 +7,7 @@ import { insertAppointmentSchema, insertAttenderDoctorSchema, insertClinicSchema
 import { insertDoctorDetailSchema } from "../shared/schema";
 import { z } from "zod";
 import { notificationService } from './services/notification';
+import { ETAService } from './services/eta';
 
 // Simple in-memory notification store as fallback
 const memoryNotifications: any[] = [];
@@ -196,6 +197,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get ETA for a specific appointment
+  app.get("/api/appointments/:id/eta", async (req, res) => {
+    try {
+      const appointmentId = parseInt(req.params.id);
+      const eta = await ETAService.getAppointmentETA(appointmentId);
+      
+      if (!eta) {
+        return res.status(404).json({ message: 'Appointment not found' });
+      }
+      
+      res.json(eta);
+    } catch (error) {
+      console.error('Error fetching appointment ETA:', error);
+      res.status(500).json({ message: 'Failed to fetch appointment ETA' });
+    }
+  });
+
+  // Force recalculate ETAs for a schedule (debugging/admin endpoint)
+  app.post("/api/schedules/:id/recalculate-eta", async (req, res) => {
+    try {
+      const scheduleId = parseInt(req.params.id);
+      await ETAService.recalculateAllETAs(scheduleId);
+      res.json({ message: 'ETAs recalculated successfully' });
+    } catch (error) {
+      console.error('Error recalculating ETAs:', error);
+      res.status(500).json({ message: 'Failed to recalculate ETAs' });
+    }
+  });
+
+  // Force update ETAs based on current state (debugging)
+  app.post("/api/schedules/:id/force-update-eta", async (req, res) => {
+    try {
+      const scheduleId = parseInt(req.params.id);
+      await ETAService.forceUpdateETAs(scheduleId);
+      res.json({ message: 'ETAs force updated successfully' });
+    } catch (error) {
+      console.error('Error force updating ETAs:', error);
+      res.status(500).json({ message: 'Failed to force update ETAs' });
+    }
+  });
+
   app.post("/api/appointments", async (req, res) => {
     if (!req.user) return res.sendStatus(401);
     try {
@@ -263,6 +305,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
 
       const appointment = await storage.createAppointment(appointmentData);
+      
+      // Calculate initial ETA for the appointment
+      try {
+        const eta = await ETAService.calculateInitialETA(
+          schedule.id,
+          appointment.tokenNumber,
+          appointmentDate
+        );
+        
+        // Update appointment with ETA
+        await storage.updateAppointmentETA(appointment.id, eta);
+        appointment.estimatedStartTime = eta;
+      } catch (etaError) {
+        console.error('Error calculating initial ETA:', etaError);
+      }
+      
       res.status(201).json(appointment);
     } catch (error) {
       console.error('Error creating appointment:', error);
@@ -290,6 +348,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         status as any, 
         statusNotes
       );
+      
+      // Handle ETA updates based on status
+      console.log(`📋 Status Update: Appointment ${appointmentId} → ${status}, scheduleId: ${updatedAppointment.scheduleId}`);
+      
+      try {
+        if (status === "start") {
+          console.log(`▶️ Starting appointment ${appointmentId}`);
+          // Update actual start time
+          await ETAService.updateETAOnAppointmentStart(appointmentId);
+        } else if (status === "completed") {
+          console.log(`✅ Completing appointment ${appointmentId}, scheduleId: ${updatedAppointment.scheduleId}`);
+          if (updatedAppointment.scheduleId) {
+            // Update ETAs based on completed consultation
+            await ETAService.updateETAOnAppointmentComplete(
+              updatedAppointment.scheduleId,
+              appointmentId
+            );
+            console.log(`✅ ETA update triggered for schedule ${updatedAppointment.scheduleId}`);
+          } else {
+            console.log(`❌ No scheduleId found for appointment ${appointmentId}`);
+          }
+        }
+      } catch (etaError) {
+        console.error('❌ Error updating ETAs:', etaError);
+      }
       
       // Generate notification for the status change - wrapped in try/catch
       try {
@@ -1303,6 +1386,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         hasArrived
       );
       console.log('Doctor presence record updated:', presenceRecord);
+      
+      // Update ETAs if doctor has arrived
+      if (hasArrived && parsedScheduleId) {
+        console.log('Doctor has arrived, updating ETAs for all appointments');
+        try {
+          await ETAService.updateETAOnDoctorArrival(
+            parsedScheduleId,
+            dateObj
+          );
+          console.log(`Successfully updated ETAs for schedule ${parsedScheduleId}`);
+        } catch (etaError) {
+          console.error('Error updating ETAs on doctor arrival:', etaError);
+        }
+      }
       
       // Send notifications to patients if the doctor has arrived
       if (hasArrived) {

@@ -827,6 +827,21 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  async updateAppointmentETA(
+    appointmentId: number,
+    estimatedStartTime: Date
+  ): Promise<void> {
+    try {
+      await db
+        .update(appointments)
+        .set({ estimatedStartTime })
+        .where(eq(appointments.id, appointmentId));
+    } catch (error) {
+      console.error('Error updating appointment ETA:', error);
+      throw error;
+    }
+  }
+
   async updateDoctorAvailability(
     doctorId: number,
     date: Date,

@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/tooltip";
 import { InfoIcon } from "lucide-react";
 import { AppointmentActions } from "@/components/appointment-actions";
+import { ETADisplay } from "@/components/eta-display";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -739,6 +740,7 @@ export default function AttenderDashboard() {
                                               <th className="text-left py-4 px-4">Token #</th>
                                               <th className="text-left py-4 px-4">Patient</th>
                                               <th className="text-left py-4 px-4">Time</th>
+                                              <th className="text-left py-4 px-4">ETA</th>
                                               <th className="text-left py-4 px-4">Status</th>
                                               <th className="text-left py-4 px-4">Actions</th>
                                             </tr>
@@ -746,7 +748,7 @@ export default function AttenderDashboard() {
                                           <tbody>
                                             {scheduleAppointments.length === 0 ? (
                                               <tr>
-                                                <td colSpan={5} className="text-center py-8 text-muted-foreground">
+                                                <td colSpan={6} className="text-center py-8 text-muted-foreground">
                                                   No appointments scheduled for {format(selectedDate, "PPP")}
                                                 </td>
                                               </tr>
@@ -768,6 +770,13 @@ export default function AttenderDashboard() {
                                                     )}
                                                   </td>
                                                   <td className="py-4 px-4">{format(new Date(appointment.date), "hh:mm a")}</td>
+                                                  <td className="py-4 px-4">
+                                                    <ETADisplay 
+                                                      appointmentId={appointment.id} 
+                                                      tokenNumber={appointment.tokenNumber}
+                                                      className="text-xs"
+                                                    />
+                                                  </td>
                                                   <td className="py-4 px-4">
                                                     <Badge
                                                       variant={

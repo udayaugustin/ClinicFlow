@@ -102,6 +102,10 @@ export const appointments = pgTable("appointments", {
   guestName: varchar("guest_name", { length: 255 }),
   guestPhone: varchar("guest_phone", { length: 20 }),
   isWalkIn: boolean("is_walk_in").default(false),
+  // ETA tracking fields
+  estimatedStartTime: timestamp("estimated_start_time"),
+  actualStartTime: timestamp("actual_start_time"),
+  actualEndTime: timestamp("actual_end_time"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
@@ -118,6 +122,9 @@ export const doctorSchedules = pgTable("doctor_schedules", {
   pauseReason: text("pause_reason"),
   pausedAt: timestamp("paused_at"),
   resumedAt: timestamp("resumed_at"),
+  // ETA calculation fields
+  averageConsultationTime: integer("average_consultation_time").default(15), // in minutes
+  actualArrivalTime: timestamp("actual_arrival_time"), // when doctor actually arrives
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
 });
