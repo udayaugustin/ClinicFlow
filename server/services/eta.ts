@@ -105,27 +105,74 @@ export class ETAService {
   static async updateETAOnAppointmentStart(
     appointmentId: number
   ): Promise<void> {
-    // Update actual start time for the appointment
-    const now = new Date();
-    await db
-      .update(appointments)
-      .set({ actualStartTime: now })
-      .where(eq(appointments.id, appointmentId));
-
-    // Get the appointment details to update other ETAs
+    // Get the appointment details first
     const appointment = await db
       .select({
         scheduleId: appointments.scheduleId,
-        tokenNumber: appointments.tokenNumber
+        tokenNumber: appointments.tokenNumber,
+        actualStartTime: appointments.actualStartTime
       })
       .from(appointments)
       .where(eq(appointments.id, appointmentId))
       .limit(1);
 
-    if (appointment.length > 0) {
-      // Update ETAs for remaining appointments since we now have a current consulting token
-      await this.updateETAsBasedOnCurrentProgress(appointment[0].scheduleId);
+    if (!appointment.length) {
+      throw new Error("Appointment not found");
     }
+
+    const { scheduleId, tokenNumber } = appointment[0];
+
+    // Check if there are previous appointments that should be completed
+    const previousIncompleteAppointments = await db
+      .select({
+        id: appointments.id,
+        tokenNumber: appointments.tokenNumber,
+        status: appointments.status
+      })
+      .from(appointments)
+      .where(
+        and(
+          eq(appointments.scheduleId, scheduleId),
+          lt(appointments.tokenNumber, tokenNumber),
+          or(
+            eq(appointments.status, "scheduled"),
+            eq(appointments.status, "start")
+          )
+        )
+      )
+      .orderBy(asc(appointments.tokenNumber));
+
+    // Mark previous appointments as completed if they're not already
+    const now = new Date();
+    for (const prevAppt of previousIncompleteAppointments) {
+      console.log(`⚠️ Auto-completing previous appointment Token ${prevAppt.tokenNumber} before starting Token ${tokenNumber}`);
+      
+      // Estimate times for the previous appointment
+      const estimatedDuration = 15; // Default 15 minutes
+      const estimatedStartTime = new Date(now.getTime() - (previousIncompleteAppointments.length * estimatedDuration * 60 * 1000));
+      const estimatedEndTime = new Date(estimatedStartTime.getTime() + estimatedDuration * 60 * 1000);
+      
+      await db
+        .update(appointments)
+        .set({ 
+          status: "completed",
+          actualStartTime: estimatedStartTime,
+          actualEndTime: estimatedEndTime,
+          statusNotes: "Auto-completed when next appointment started"
+        })
+        .where(eq(appointments.id, prevAppt.id));
+    }
+
+    // Update actual start time for the current appointment (if not already set by storage.updateAppointmentStatus)
+    if (!appointment[0].actualStartTime) {
+      await db
+        .update(appointments)
+        .set({ actualStartTime: now })
+        .where(eq(appointments.id, appointmentId));
+    }
+
+    // Update ETAs for remaining appointments since we now have a current consulting token
+    await this.updateETAsBasedOnCurrentProgress(scheduleId);
   }
 
   /**

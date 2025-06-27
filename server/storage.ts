@@ -79,6 +79,7 @@ export interface IStorage {
   // Schedule pause methods
   pauseSchedule(scheduleId: number, reason: string): Promise<void>;
   resumeSchedule(scheduleId: number): Promise<void>;
+  getAppointment(appointmentId: number): Promise<Appointment | null>;
   getAppointmentsBySchedule(scheduleId: number): Promise<Appointment[]>;
 
   getUser(id: number): Promise<User | undefined>;
@@ -237,6 +238,16 @@ export class DatabaseStorage implements IStorage {
 
   constructor() {
     this.sessionStore = sessionStore;
+  }
+
+  async getAppointment(appointmentId: number): Promise<Appointment | null> {
+    const result = await db
+      .select()
+      .from(appointments)
+      .where(eq(appointments.id, appointmentId))
+      .limit(1);
+    
+    return result.length > 0 ? result[0] : null;
   }
 
   async getAppointmentsBySchedule(scheduleId: number): Promise<Appointment[]> {
@@ -808,6 +819,25 @@ export class DatabaseStorage implements IStorage {
       
       if (statusNotes !== undefined) {
         updateData.statusNotes = statusNotes;
+      }
+
+      // Add timestamp updates based on status
+      const now = new Date();
+      if (status === "start") {
+        updateData.actualStartTime = now;
+      } else if (status === "completed") {
+        updateData.actualEndTime = now;
+        // If no actualStartTime exists, estimate it
+        const existingAppointment = await db
+          .select({ actualStartTime: appointments.actualStartTime })
+          .from(appointments)
+          .where(eq(appointments.id, appointmentId))
+          .limit(1);
+        
+        if (existingAppointment.length > 0 && !existingAppointment[0].actualStartTime) {
+          // Estimate start time as 15 minutes before end time
+          updateData.actualStartTime = new Date(now.getTime() - 15 * 60 * 1000);
+        }
       }
       
       const [updated] = await db

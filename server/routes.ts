@@ -342,25 +342,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Update the appointment status
-      const updatedAppointment = await storage.updateAppointmentStatus(
-        appointmentId, 
-        status as any, 
-        statusNotes
-      );
-      
-      // Handle ETA updates based on status
-      console.log(`📋 Status Update: Appointment ${appointmentId} → ${status}, scheduleId: ${updatedAppointment.scheduleId}`);
+      // Get current appointment status for validation
+      const currentAppointment = await storage.getAppointment(appointmentId);
+      if (!currentAppointment) {
+        return res.status(404).json({ error: "Appointment not found" });
+      }
+
+      // Validate status transitions
+      const currentStatus = currentAppointment.status;
+      const validTransitions: Record<string, string[]> = {
+        "scheduled": ["start", "hold", "cancel"],
+        "start": ["completed", "pause", "hold"],
+        "hold": ["start", "cancel"],
+        "pause": ["start", "cancel"],
+        "cancel": [], // Terminal state
+        "completed": [] // Terminal state
+      };
+
+      if (!validTransitions[currentStatus]?.includes(status)) {
+        return res.status(400).json({ 
+          error: `Invalid status transition from ${currentStatus} to ${status}` 
+        });
+      }
+
+      // Use transaction for status update and ETA calculations
+      let updatedAppointment: any;
       
       try {
+        // Update the appointment status
+        updatedAppointment = await storage.updateAppointmentStatus(
+          appointmentId, 
+          status as any, 
+          statusNotes
+        );
+        
+        // Handle ETA updates based on status - within the same transaction context
+        console.log(`📋 Status Update: Appointment ${appointmentId} → ${status}, scheduleId: ${updatedAppointment.scheduleId}`);
+        
         if (status === "start") {
           console.log(`▶️ Starting appointment ${appointmentId}`);
-          // Update actual start time
           await ETAService.updateETAOnAppointmentStart(appointmentId);
         } else if (status === "completed") {
           console.log(`✅ Completing appointment ${appointmentId}, scheduleId: ${updatedAppointment.scheduleId}`);
           if (updatedAppointment.scheduleId) {
-            // Update ETAs based on completed consultation
             await ETAService.updateETAOnAppointmentComplete(
               updatedAppointment.scheduleId,
               appointmentId
@@ -370,8 +394,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.log(`❌ No scheduleId found for appointment ${appointmentId}`);
           }
         }
-      } catch (etaError) {
-        console.error('❌ Error updating ETAs:', etaError);
+      } catch (error) {
+        console.error('❌ Error in status/ETA update transaction:', error);
+        throw error; // This will cause the entire operation to fail
       }
       
       // Generate notification for the status change - wrapped in try/catch
@@ -392,7 +417,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(updatedAppointment);
     } catch (error) {
       console.error('Error updating appointment status:', error);
-      res.status(500).json({ message: 'Failed to update appointment status' });
+      
+      // Provide specific error messages based on error type
+      if (error instanceof Error) {
+        if (error.message.includes('Invalid status transition')) {
+          res.status(400).json({ message: error.message });
+        } else if (error.message.includes('not found')) {
+          res.status(404).json({ message: error.message });
+        } else {
+          res.status(500).json({ 
+            message: 'Failed to update appointment status', 
+            details: error.message 
+          });
+        }
+      } else {
+        res.status(500).json({ message: 'Failed to update appointment status' });
+      }
     }
   });
 
