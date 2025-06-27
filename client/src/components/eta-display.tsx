@@ -37,17 +37,14 @@ export function ETADisplay({ appointmentId, tokenNumber, className = "", showDet
   }
 
   const etaDate = new Date(eta.estimatedStartTime);
-  const now = new Date();
-  const isOverdue = etaDate < now;
   
   return (
     <div className={`flex items-center gap-2 text-sm ${className}`}>
-      <Timer className={`h-4 w-4 ${isOverdue ? 'text-red-500' : 'text-muted-foreground'}`} />
-      <div className={isOverdue ? 'text-red-500' : ''}>
+      <Timer className="h-4 w-4 text-muted-foreground" />
+      <div>
         <span className="font-medium">
           ETA: {format(etaDate, "h:mm a")}
         </span>
-        {isOverdue && <span className="ml-1 text-xs">(Overdue)</span>}
         {showDetails && eta.currentConsultingToken > 0 && (
           <div className="text-xs text-muted-foreground mt-1">
             Current Token: {eta.currentConsultingToken} | Avg time: {eta.avgConsultationTime} min

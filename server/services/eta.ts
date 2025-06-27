@@ -207,12 +207,36 @@ export class ETAService {
       .orderBy(asc(appointments.tokenNumber))
       .limit(1);
 
+    let currentConsultingToken: number;
+    
     if (currentConsulting.length === 0) {
-      console.log(`❌ No current consulting token found for schedule ${scheduleId}`);
-      return;
+      console.log(`⚠️ No token currently in progress for schedule ${scheduleId}`);
+      
+      // Find the next scheduled appointment
+      const nextScheduled = await db
+        .select({
+          tokenNumber: appointments.tokenNumber
+        })
+        .from(appointments)
+        .where(
+          and(
+            eq(appointments.scheduleId, scheduleId),
+            eq(appointments.status, "scheduled")
+          )
+        )
+        .orderBy(asc(appointments.tokenNumber))
+        .limit(1);
+      
+      if (nextScheduled.length === 0) {
+        console.log(`❌ No scheduled appointments found for schedule ${scheduleId}`);
+        return;
+      }
+      
+      currentConsultingToken = nextScheduled[0].tokenNumber;
+      console.log(`📍 Next scheduled token will be: ${currentConsultingToken}`);
+    } else {
+      currentConsultingToken = currentConsulting[0].tokenNumber;
     }
-
-    const currentConsultingToken = currentConsulting[0].tokenNumber;
     console.log(`👤 Current consulting token: ${currentConsultingToken}, avg time: ${avgTime} min`);
 
     // Get all appointments to update (both scheduled and currently in progress)
@@ -380,8 +404,8 @@ export class ETAService {
       if (appt.actualStartTime && appt.actualEndTime) {
         const duration = differenceInMinutes(appt.actualEndTime, appt.actualStartTime);
         console.log(`⏱️  Token ${appt.tokenNumber}: ${duration} minutes`);
-        // Exclude outliers (consultations over 60 mins or under 5 mins)
-        if (duration >= 5 && duration <= 60) {
+        // Exclude outliers (consultations over 60 mins or under 1 min)
+        if (duration >= 1 && duration <= 60) {
           totalDuration += duration;
           validAppointments++;
           consultationTimes.push(duration);
@@ -417,12 +441,37 @@ export class ETAService {
       .orderBy(asc(appointments.tokenNumber))
       .limit(1);
 
-    // Current consulting token - if no one is currently consulting, use the last completed token + 1
-    const currentConsultingToken = currentConsulting.length > 0 
-      ? currentConsulting[0].tokenNumber 
-      : (completedAppointments.length > 0 
+    // Current consulting token - if no one is currently consulting, find the next scheduled token
+    let currentConsultingToken: number;
+    
+    if (currentConsulting.length > 0) {
+      currentConsultingToken = currentConsulting[0].tokenNumber;
+    } else {
+      // Find the next scheduled appointment
+      const nextScheduled = await db
+        .select({
+          tokenNumber: appointments.tokenNumber
+        })
+        .from(appointments)
+        .where(
+          and(
+            eq(appointments.scheduleId, scheduleId),
+            eq(appointments.status, "scheduled")
+          )
+        )
+        .orderBy(asc(appointments.tokenNumber))
+        .limit(1);
+      
+      if (nextScheduled.length > 0) {
+        currentConsultingToken = nextScheduled[0].tokenNumber;
+        console.log(`📍 Next scheduled token will be: ${currentConsultingToken}`);
+      } else {
+        // If no scheduled appointments, use last completed + 1 as fallback
+        currentConsultingToken = completedAppointments.length > 0 
           ? Math.max(...completedAppointments.map(a => a.tokenNumber)) + 1
-          : 1);
+          : 1;
+      }
+    }
 
     console.log(`👤 Current consulting token: ${currentConsultingToken}`);
 
@@ -623,9 +672,34 @@ export class ETAService {
       )
       .limit(1);
 
-    const currentToken = currentConsulting.length > 0 
-      ? currentConsulting[0].tokenNumber 
-      : (validAppointments > 0 ? Math.max(...completedAppointments.map(a => a.tokenNumber)) + 1 : 1);
+    let currentToken: number;
+    
+    if (currentConsulting.length > 0) {
+      currentToken = currentConsulting[0].tokenNumber;
+    } else {
+      // Find the next scheduled appointment
+      const nextScheduled = await db
+        .select({
+          tokenNumber: appointments.tokenNumber
+        })
+        .from(appointments)
+        .where(
+          and(
+            eq(appointments.scheduleId, scheduleId),
+            eq(appointments.status, "scheduled")
+          )
+        )
+        .orderBy(asc(appointments.tokenNumber))
+        .limit(1);
+      
+      if (nextScheduled.length > 0) {
+        currentToken = nextScheduled[0].tokenNumber;
+        console.log(`📍 Next scheduled token will be: ${currentToken}`);
+      } else {
+        // Fallback to last completed + 1
+        currentToken = validAppointments > 0 ? Math.max(...completedAppointments.map(a => a.tokenNumber)) + 1 : 1;
+      }
+    }
 
     console.log(`👤 Current consulting token: ${currentToken}`);
 
