@@ -8,6 +8,7 @@ import { format } from "date-fns";
 import { Progress } from "@/components/ui/progress";
 import { Clock, ArrowRight, Users, Ticket, CheckCircle2 } from "lucide-react";
 import { AppointmentStatusBadge } from "@/components/appointment-status-badge";
+import { ETADisplay } from "@/components/eta-display";
 import { apiRequest } from "@/lib/queryClient";
 import React, { useEffect, useState, useRef, useCallback } from "react";
 
@@ -299,6 +300,15 @@ export default function BookingHistoryPage() {
                                     <span>Token #{appointment.tokenNumber}</span>
                                   </div>
                                 </div>
+                                
+                                {/* ETA Display for all tokens */}
+                                {appointment.status === "scheduled" && (
+                                  <ETADisplay 
+                                    appointmentId={appointment.id} 
+                                    tokenNumber={appointment.tokenNumber}
+                                    showDetails={true}
+                                  />
+                                )}
                                 
                                 {appointment.status === "cancel" ? (
                                   <div className="text-sm text-center text-red-600 font-medium mt-1">
