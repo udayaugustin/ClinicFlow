@@ -280,6 +280,84 @@ class NotificationService {
   }
 
   /**
+   * Notify patients when their schedule gets cancelled
+   */
+  async notifyScheduleCancelled(scheduleId: number, cancelReason?: string) {
+    console.log('Starting notifyScheduleCancelled process for schedule:', scheduleId);
+    
+    try {
+      // Get schedule information
+      const scheduleResult = await db.execute(sql`
+        SELECT s.*, d.name as doctor_name, c.name as clinic_name
+        FROM doctor_schedules s
+        JOIN users d ON s.doctor_id = d.id
+        JOIN clinics c ON s.clinic_id = c.id
+        WHERE s.id = ${scheduleId}
+      `);
+      
+      if (scheduleResult.rows.length === 0) {
+        console.log('Schedule not found, aborting notification');
+        return;
+      }
+      
+      const schedule = scheduleResult.rows[0];
+      console.log(`Found schedule: Dr. ${schedule.doctor_name} at ${schedule.clinic_name}`);
+      
+      // Get all patients who have appointments for this schedule (including recently cancelled ones)
+      const appointmentsResult = await db.execute(sql`
+        SELECT a.*, u.name as patient_name
+        FROM appointments a
+        JOIN users u ON a.patient_id = u.id
+        WHERE a.schedule_id = ${scheduleId}
+        AND a.patient_id IS NOT NULL
+        ORDER BY a.created_at ASC
+      `);
+      
+      const appointments = appointmentsResult.rows;
+      console.log(`Found ${appointments.length} appointments to notify about cancellation`);
+      
+      if (appointments.length === 0) {
+        console.log('No appointments to notify, exiting notification process');
+        return;
+      }
+      
+      // Format the schedule date and time for the notification
+      const scheduleDate = new Date(schedule.date);
+      const formattedDate = scheduleDate.toLocaleDateString('en-US', { 
+        weekday: 'long', 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      });
+      
+      const reasonText = cancelReason ? ` Reason: ${cancelReason}` : '';
+      
+      console.log(`Sending schedule cancellation notifications to ${appointments.length} patients`);
+      
+      // Create notifications for all patients who have appointments for this schedule
+      for (const appointment of appointments) {
+        console.log(`Creating cancellation notification for patient ${appointment.patient_id} (${appointment.patient_name})`);
+        try {
+          const notification = await this.createNotification({
+            userId: Number(appointment.patient_id),
+            appointmentId: Number(appointment.id),
+            title: "Your appointment has been cancelled",
+            message: `Your appointment with Dr. ${schedule.doctor_name} on ${formattedDate} from ${schedule.start_time} to ${schedule.end_time} at ${schedule.clinic_name} has been cancelled by the clinic.${reasonText}`,
+            type: "schedule_cancelled"
+          });
+          console.log('Successfully created schedule cancellation notification:', notification);
+        } catch (error) {
+          console.error(`Failed to create notification for patient ${appointment.patient_id}:`, error);
+        }
+      }
+      console.log('Schedule cancellation notification process completed');
+    } catch (error) {
+      console.error('Error in notifyScheduleCancelled:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Notify patients when a favorited schedule becomes active
    */
   async notifyScheduleActivated(scheduleId: number) {

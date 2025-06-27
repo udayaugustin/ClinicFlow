@@ -1,0 +1,315 @@
+ Complete 3-Stage ETA System - Phase-by-Phase Implementation Guide
+
+     System Overview
+
+     Current ClinicFlow System Foundation ✅
+
+     - Status Flow: token_started → in_progress → completed
+     - Doctor Arrival: Tracked via doctorDailyPresence table
+     - Token System: Sequential numbering with getCurrentTokenProgress()
+     - Data Available: scheduleStartTime, tokenNumber, consultationDuration
+     - UI Framework: Patient dashboard with 30-second refresh cycle
+
+     ---
+     PHASE 1: Initial ETA (Schedule-Based)
+
+     Formula
+
+     ETA = scheduleStartTime + (tokenNumber - 1) * avgConsultTime
+
+     When It Shows
+
+     - Status: token_started (before doctor arrives)
+     - Trigger: Immediately after appointment booking
+     - Example: Token 2 at 6PM schedule with 15min duration → 6:15 PM
+
+     Implementation Plan
+
+     Backend Changes
+
+     File: server/routes.ts
+     // Add ETA calculation utility
+     function calculateInitialETA(scheduleStartTime: string, tokenNumber: number, consultationDuration: number): Date {
+       const [hours, minutes] = scheduleStartTime.split(':').map(Number);
+       const scheduleStart = new Date();
+       scheduleStart.setHours(hours, minutes, 0, 0);
+       
+       const etaMinutes = (tokenNumber - 1) * consultationDuration;
+       return new Date(scheduleStart.getTime() + etaMinutes * 60000);
+     }
+
+     // Enhance appointment booking response (line 168-221)
+     const appointment = await storage.createAppointment(appointmentData);
+     const eta = calculateInitialETA(schedule.startTime, appointment.tokenNumber, doctorDetails.consultationDuration);
+     res.status(201).json({ ...appointment, estimatedTime: eta });
+
+     Frontend Changes
+
+     File: client/src/components/eta-display.tsx (new)
+     export function ETADisplay({ estimatedTime, stage }: { estimatedTime: Date; stage: 1 | 2 | 3 }) {
+       return (
+         <div className="flex items-center gap-2 text-sm">
+           <Clock className="h-4 w-4" />
+           <span>ETA: {format(estimatedTime, "h:mm a")}</span>
+           {stage === 1 && <Badge variant="outline">Scheduled</Badge>}
+         </div>
+       );
+     }
+
+     File: client/src/pages/patient-booking-page.tsx (line 103-108)
+     // Enhance success message
+     onSuccess: (response) => {
+       toast({
+         title: "Appointment Booked!",
+         description: `Your estimated time: ${format(response.estimatedTime, "h:mm a")}`,
+       });
+     }
+
+     File: client/src/pages/booking-history.tsx (line 319-347)
+     // Add ETA display for token_started appointments
+     {appointment.status === "token_started" && (
+       <ETADisplay estimatedTime={calculateInitialETA(appointment)} stage={1} />
+     )}
+
+     Testing Phase 1
+
+     - Token 1: 6:00 PM → 6:00 PM ✅
+     - Token 2: 6:00 PM → 6:15 PM ✅  
+     - Token 3: 6:00 PM → 6:30 PM ✅
+
+     ---
+     PHASE 2: Doctor Arrival ETA Update
+
+     Formula
+
+     ETA = doctorArrivalTime + (tokenNumber - 1) * avgConsultTime
+
+     When It Shows
+
+     - Status: in_progress (after doctor arrives)
+     - Trigger: When doctor marked as arrived
+     - Example: Doctor arrives 6:30 PM, Token 2 → 6:45 PM
+
+     Implementation Plan
+
+     Backend Enhancement
+
+     File: server/routes.ts (line 1154-1170)
+     // Enhance doctor arrival handler
+     for (const appointment of tokenStartedAppointments) {
+       await storage.updateAppointmentStatus(appointment.id, "in_progress", "Doctor has arrived");
+       
+       // Calculate Stage 2 ETA
+       const eta = calculateArrivalETA(dateObj, appointment.tokenNumber, doctorDetails.consultationDuration);
+       
+       // Send notification with ETA
+       if (appointment.patientId) {
+         await notificationService.generateStatusNotification(
+           appointment, 
+           "in_progress", 
+           `Doctor has arrived. Your updated ETA: ${format(eta, "h:mm a")}`
+         );
+       }
+     }
+
+     function calculateArrivalETA(doctorArrivalTime: Date, tokenNumber: number, consultationDuration: number): Date {
+       const etaMinutes = (tokenNumber - 1) * consultationDuration;
+       return new Date(doctorArrivalTime.getTime() + etaMinutes * 60000);
+     }
+
+     Frontend Enhancement
+
+     File: client/src/pages/booking-history.tsx (line 349-354)
+     // Replace doctor arrival message with ETA
+     {appointment.status === "in_progress" && (
+       <div className="text-sm text-center mt-2">
+         <ETADisplay estimatedTime={calculateArrivalETA(appointment)} stage={2} />
+         <p className="text-xs text-muted-foreground">Updated for doctor arrival</p>
+       </div>
+     )}
+
+     Testing Phase 2
+
+     - Original: T1=6:00, T2=6:15, T3=6:30
+     - Doctor arrives 6:30: T1=6:30, T2=6:45, T3=7:00 ✅
+
+     ---
+     PHASE 3: Real-Time ETA with Moving Averages
+
+     Formula
+
+     avgConsultTime = sum(actualConsultationTimes) / count
+     ETA = currentTime + (tokensAhead * avgConsultTime)
+     tokensAhead = tokenNumber - currentConsultingToken
+
+     When It Shows
+
+     - Status: Any active appointment during consultations
+     - Trigger: Every time appointment marked "completed"
+     - Example: T1 took 30min, T2 took 45min → avgTime=37.5min → T4 ETA updates
+
+     Implementation Plan
+
+     Database Schema Changes
+
+     -- Add timing tracking fields
+     ALTER TABLE appointments ADD COLUMN status_start_time TIMESTAMP;
+     ALTER TABLE appointments ADD COLUMN status_end_time TIMESTAMP;
+     ALTER TABLE appointments ADD COLUMN consultation_duration INTEGER;
+
+     Backend Implementation
+
+     File: server/routes.ts (line 223-241)
+     // Enhanced status update with timing
+     async function updateAppointmentStatusWithTiming(appointmentId: number, status: string, statusNotes?: string) {
+       const currentTime = new Date();
+       const updateData: any = { status, statusNotes };
+       
+       if (status === "in_progress") {
+         updateData.statusStartTime = currentTime;
+       }
+       
+       if (status === "completed") {
+         const appointment = await storage.getAppointment(appointmentId);
+         updateData.statusEndTime = currentTime;
+         
+         if (appointment.statusStartTime) {
+           const duration = Math.round((currentTime.getTime() - appointment.statusStartTime.getTime()) / (1000 * 60));
+           updateData.consultationDuration = duration;
+           
+           // Trigger Stage 3 ETA recalculation
+           await recalculateRealTimeETAs(appointment.doctorId, appointment.clinicId, new Date());
+         }
+       }
+       
+       return await storage.updateAppointmentStatusEnhanced(appointmentId, updateData);
+     }
+
+     File: server/storage.ts
+     // Moving average calculation
+     async function calculateMovingAverage(doctorId: number, clinicId: number, date: Date): Promise<number> {
+       const completedToday = await db
+         .select()
+         .from(appointments)
+         .where(
+           and(
+             eq(appointments.doctorId, doctorId),
+             eq(appointments.clinicId, clinicId),
+             sql`DATE(${appointments.date}) = DATE(${date.toISOString()})`,
+             eq(appointments.status, "completed"),
+             not(eq(appointments.consultationDuration, null))
+           )
+         );
+       
+       if (completedToday.length === 0) {
+         // Fallback to doctor's standard duration
+         const doctorDetails = await this.getDoctorDetails(doctorId);
+         return doctorDetails?.consultationDuration || 15;
+       }
+       
+       const totalTime = completedToday.reduce((sum, apt) => sum + apt.consultationDuration, 0);
+       return Math.round(totalTime / completedToday.length);
+     }
+
+     // Real-time ETA calculation
+     async function calculateRealTimeETA(appointment: Appointment, currentToken: number, movingAverage: number): Promise<Date> {
+       if (appointment.tokenNumber <= currentToken) {
+         return new Date(); // Currently being consulted or already done
+       }
+       
+       const tokensAhead = appointment.tokenNumber - currentToken;
+       const etaMinutes = tokensAhead * movingAverage;
+       return new Date(Date.now() + etaMinutes * 60000);
+     }
+
+     Frontend Implementation
+
+     File: client/src/components/eta-display.tsx
+     export function ETADisplay({ appointment, stage, movingAverage }: ETADisplayProps) {
+       const eta = useMemo(() => {
+         switch (stage) {
+           case 1: return calculateInitialETA(appointment);
+           case 2: return calculateArrivalETA(appointment);
+           case 3: return calculateRealTimeETA(appointment, movingAverage);
+         }
+       }, [appointment, stage, movingAverage]);
+       
+       return (
+         <div className="flex items-center gap-2">
+           <Clock className="h-4 w-4" />
+           <span>ETA: {format(eta, "h:mm a")}</span>
+           {stage === 3 && <Badge variant="secondary">Live</Badge>}
+           {stage === 3 && (
+             <p className="text-xs text-muted-foreground">
+               Based on {movingAverage}min average
+             </p>
+           )}
+         </div>
+       );
+     }
+
+     File: client/src/pages/booking-history.tsx
+     // Enhanced ETA display with stage detection
+     const getETAStage = (appointment) => {
+       if (appointment.status === "token_started") return 1;
+       if (appointment.status === "in_progress" && !hasRealTimeData) return 2;
+       return 3;
+     };
+
+     // Add real-time moving average query
+     const { data: movingAverages } = useQuery({
+       queryKey: ["moving-averages", uniquePairs],
+       queryFn: async () => {
+         // Fetch current moving averages for each doctor-clinic pair
+       },
+       refetchInterval: 30000 // Update every 30 seconds
+     });
+
+     Testing Phase 3
+
+     - T1 completes (30min): avgTime=30min → T3=7:30, T4=8:00 ✅
+     - T2 completes (45min): avgTime=37.5min → T4=8:22, T5=9:00 ✅  
+     - T3 completes (15min): avgTime=30min → T5=8:30 ✅
+
+     ---
+     Implementation Timeline
+
+     Week 1: Phase 1 (Schedule-Based ETA)
+
+     - Add ETA calculation utility functions
+     - Enhance appointment booking response  
+     - Create ETA display component
+     - Update patient booking confirmation
+     - Update patient dashboard display
+     - Test with various schedules and token numbers
+
+     Week 2: Phase 2 (Doctor Arrival ETA)
+
+     - Enhance doctor arrival handler
+     - Add Stage 2 ETA calculation
+     - Update arrival notifications with ETA
+     - Enhance patient dashboard for arrival updates
+     - Test late/early doctor arrival scenarios
+
+     Week 3: Phase 3 (Real-Time Moving Average)
+
+     - Database schema migration for timing fields
+     - Implement enhanced status update with timing
+     - Add moving average calculation system
+     - Create real-time ETA recalculation triggers
+     - Update frontend for live ETA display
+     - Test full system with multiple consultation completions
+
+     Week 4: Integration & Polish
+
+     - End-to-end testing of all three stages
+     - Performance optimization for real-time updates
+     - Error handling and edge cases
+     - Documentation and user training
+
+     Success Metrics
+
+     - Accuracy: ETA within ±10 minutes of actual appointment time
+     - User Satisfaction: Reduced patient anxiety about wait times
+     - System Performance: No impact on existing appointment booking speed
+     - Real-Time Updates: ETA changes reflected within 30 seconds

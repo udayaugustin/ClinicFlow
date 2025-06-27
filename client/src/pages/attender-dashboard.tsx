@@ -111,6 +111,8 @@ export default function AttenderDashboard() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/attender/${user?.id}/doctors/appointments`] });
+      // Invalidate schedules to update appointment counts
+      queryClient.invalidateQueries({ queryKey: ["schedulesToday"] });
       toast({
         title: "Success",
         description: "Appointment status updated successfully",
@@ -250,7 +252,24 @@ export default function AttenderDashboard() {
   };
 
   const handleMarkInProgress = (appointmentId: number) => {
-    handleUpdateStatus(appointmentId, "start");
+    // Find the appointment to check its current status
+    const appointment = managedDoctors?.flatMap(doctor => doctor.appointments)
+      .find(apt => apt.id === appointmentId);
+    
+    if (!appointment) return;
+    
+    // Determine the new status based on current status
+    let newStatus: string;
+    if (appointment.status === "token_started") {
+      newStatus = "in_progress";
+    } else if (appointment.status === "hold" || appointment.status === "pause") {
+      // When resuming, go to in_progress 
+      newStatus = "in_progress";
+    } else {
+      return; // No action for other statuses
+    }
+    
+    handleUpdateStatus(appointmentId, newStatus);
   };
 
   const handleHoldAppointment = (appointmentId: number) => {
@@ -347,6 +366,8 @@ export default function AttenderDashboard() {
     onSuccess: () => {
       // Invalidate relevant queries
       queryClient.invalidateQueries({ queryKey: ["/api/attender/doctors"] });
+      // Invalidate schedules to update appointment counts
+      queryClient.invalidateQueries({ queryKey: ["schedulesToday"] });
       toast({
         title: "Success",
         description: "Walk-in appointment created successfully",
@@ -366,12 +387,54 @@ export default function AttenderDashboard() {
       toast({
         title: "Error",
         description: error.message,
-        variant: "destructive",
+        variant: "destructive"
       });
     }
   });
 
-  // Add this handler function
+  // Mutation for canceling a schedule
+  const cancelScheduleMutation = useMutation({
+    mutationFn: async ({ 
+      scheduleId,
+      cancelReason 
+    }: { 
+      scheduleId: number;
+      cancelReason?: string;
+    }) => {
+      const res = await apiRequest("PATCH", `/api/schedules/${scheduleId}/cancel`, { 
+        cancelReason 
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries([`/api/attender/${user?.id}/doctors/appointments`]);
+      toast({
+        title: "Schedule cancelled",
+        description: "The schedule has been cancelled and affected patients have been notified."
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: "Failed to cancel schedule: " + error.message,
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Handler for canceling a schedule
+  const handleCancelSchedule = async (scheduleId: number) => {
+    if (!confirm("Are you sure you want to cancel this schedule? All pending appointments will be cancelled.")) {
+      return;
+    }
+
+    const reason = prompt("Please enter a reason for cancellation (optional):");
+    await cancelScheduleMutation.mutate({ 
+      scheduleId,
+      cancelReason: reason || undefined
+    });
+  };
+
   const handleCreateWalkInAppointment = () => {
     if (!walkInCurrentDoctor) return;
     
@@ -694,41 +757,37 @@ export default function AttenderDashboard() {
                                               </>
                                             )}
                                           </Button>
-                                          
-                                          <Button
-                                            variant={schedule.isPaused ? "destructive" : "outline"}
-                                            size="sm"
-                                            className="gap-2"
-                                            onClick={() => handleToggleSchedulePause(schedule.id, !schedule.isPaused)}
-                                          >
-                                            {schedule.isPaused ? (
-                                              <>
-                                                <Clock className="h-4 w-4" />
-                                                Resume Schedule
-                                              </>
-                                            ) : (
-                                              <>
-                                                <XCircle className="h-4 w-4" />
-                                                Pause Schedule
-                                              </>
-                                            )}
-                                          </Button>
-
-                                          <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className="gap-2"
-                                            onClick={() => openWalkInDialog(
-                                              doctorData.doctor.id, 
-                                              doctorData.doctor.name, 
-                                              schedule.clinicId, 
-                                              schedule.id
-                                            )}
-                                            disabled={schedule.isPaused}
-                                          >
+                                            <div className="flex gap-2">
+                                              <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => handleToggleSchedulePause(schedule.id, !schedule.isPaused)}
+                                              >
+                                                {schedule.isPaused ? "Resume Schedule" : "Pause Schedule"}
+                                              </Button>
+                                              <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="hover:bg-red-500 hover:text-white"
+                                                onClick={() => handleCancelSchedule(schedule.id)}
+                                              >
+                                                Cancel Schedule
+                                              </Button>
+                                            </div>
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              className="gap-2"
+                                              onClick={() => openWalkInDialog(
+                                                doctorData.doctor.id, 
+                                                doctorData.doctor.name, 
+                                                schedule.clinicId, 
+                                                schedule.id
+                                              )}
+                                            >
                                             <Plus className="h-4 w-4" />
                                             New Walk-in
-                                          </Button>
+                                            </Button>
                                         </div>
                                       </div>
                                     </CardHeader>
