@@ -252,24 +252,8 @@ export default function AttenderDashboard() {
   };
 
   const handleMarkInProgress = (appointmentId: number) => {
-    // Find the appointment to check its current status
-    const appointment = managedDoctors?.flatMap(doctor => doctor.appointments)
-      .find(apt => apt.id === appointmentId);
-    
-    if (!appointment) return;
-    
-    // Determine the new status based on current status
-    let newStatus: string;
-    if (appointment.status === "token_started") {
-      newStatus = "in_progress";
-    } else if (appointment.status === "hold" || appointment.status === "pause") {
-      // When resuming, go to in_progress 
-      newStatus = "in_progress";
-    } else {
-      return; // No action for other statuses
-    }
-    
-    handleUpdateStatus(appointmentId, newStatus);
+    // Simple transition: scheduled/token_started/hold → in_progress
+    handleUpdateStatus(appointmentId, "in_progress");
   };
 
   const handleHoldAppointment = (appointmentId: number) => {

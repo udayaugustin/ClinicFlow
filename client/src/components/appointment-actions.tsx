@@ -7,7 +7,6 @@ type AppointmentActionsProps = {
   onMarkAsStarted: () => void;
   onMarkAsCompleted: () => void;
   onHold: () => void;
-  onPause: () => void;
   onCancel: () => void;
 };
 
@@ -16,20 +15,19 @@ export function AppointmentActions({
   onMarkAsStarted,
   onMarkAsCompleted,
   onHold,
-  onPause,
   onCancel
 }: AppointmentActionsProps) {
   const status = appointment.status;
   
   return (
     <div className="flex gap-2 flex-wrap">
-      {status === "token_started" && (
+      {(status === "scheduled" || status === "token_started") && (
         <>
           <Button
             size="sm"
             onClick={onMarkAsStarted}
           >
-            Start Consultation
+            Start
           </Button>
           <Button
             size="sm"
@@ -48,7 +46,7 @@ export function AppointmentActions({
         </>
       )}
       
-      {status === "in_progress" && (
+      {(status === "start" || status === "in_progress") && (
         <>
           <Button
             size="sm"
@@ -59,36 +57,29 @@ export function AppointmentActions({
           <Button
             size="sm"
             variant="outline"
-            onClick={onPause}
+            onClick={onCancel}
           >
-            Pause
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={onHold}
-          >
-            Hold
+            Cancel
           </Button>
         </>
       )}
       
       {status === "hold" && (
-        <Button
-          size="sm"
-          onClick={onMarkAsStarted}
-        >
-          Resume
-        </Button>
-      )}
-
-      {status === "pause" && (
-        <Button
-          size="sm"
-          onClick={onMarkAsStarted}
-        >
-          Resume
-        </Button>
+        <>
+          <Button
+            size="sm"
+            onClick={onMarkAsStarted}
+          >
+            Start
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onCancel}
+          >
+            Cancel
+          </Button>
+        </>
       )}
     </div>
   );

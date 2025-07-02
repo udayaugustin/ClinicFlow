@@ -351,19 +351,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Validate status transitions
       const currentStatus = currentAppointment.status;
       const validTransitions: Record<string, string[]> = {
-        "scheduled": ["start", "hold", "cancel"],
-        "start": ["completed", "pause", "hold"],
-        "hold": ["start", "cancel"],
-        "pause": ["start", "cancel"],
+        "token_started": ["in_progress", "hold", "cancel"], // Doctor not arrived yet
+        "scheduled": ["in_progress", "hold", "cancel"], // Alternative initial status
+        "in_progress": ["completed", "cancel"], // Appointment is happening
+        "hold": ["in_progress", "cancel"], // Patient not arrived, can start or cancel
         "cancel": [], // Terminal state
         "completed": [] // Terminal state
       };
 
       if (!validTransitions[currentStatus]?.includes(status)) {
+        console.log(`❌ Invalid transition: ${currentStatus} → ${status}`);
+        console.log(`Valid transitions for ${currentStatus}:`, validTransitions[currentStatus]);
         return res.status(400).json({ 
           error: `Invalid status transition from ${currentStatus} to ${status}` 
         });
       }
+
+      console.log(`✅ Valid transition: ${currentStatus} → ${status}`);
 
       // Use transaction for status update and ETA calculations
       let updatedAppointment: any;
