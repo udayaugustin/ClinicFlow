@@ -1448,19 +1448,24 @@ export class DatabaseStorage implements IStorage {
     return db.insert(doctorSchedules).values(schedule).returning();
   }
 
-  async getDoctorSchedules(doctorId: number, date?: Date): Promise<DoctorSchedule[]> {
-    let query = db
-      .select()
-      .from(doctorSchedules)
-      .where(eq(doctorSchedules.doctorId, doctorId))
-      .orderBy(doctorSchedules.date, doctorSchedules.startTime);
-
+  async getDoctorSchedules(doctorId: number, date?: Date, visibleOnly: boolean = false): Promise<DoctorSchedule[]> {
+    let conditions = [eq(doctorSchedules.doctorId, doctorId)];
+    
     if (date) {
       // If date is provided, filter schedules for that specific date
-      query = query.where(eq(doctorSchedules.date, date));
+      conditions.push(eq(doctorSchedules.date, date));
+    }
+    
+    if (visibleOnly) {
+      // For patient views, only show visible schedules
+      conditions.push(eq(doctorSchedules.isVisible, true));
     }
 
-    return query;
+    return db
+      .select()
+      .from(doctorSchedules)
+      .where(and(...conditions))
+      .orderBy(doctorSchedules.date, doctorSchedules.startTime);
   }
 
   async getDoctorSchedule(scheduleId: number): Promise<DoctorSchedule | null> {
@@ -1484,7 +1489,8 @@ export class DatabaseStorage implements IStorage {
           eq(doctorSchedules.doctorId, doctorId),
           eq(doctorSchedules.clinicId, clinicId),
           eq(doctorSchedules.date, dateStr),
-          eq(doctorSchedules.isActive, true)
+          eq(doctorSchedules.isActive, true), // Schedule must be active to accept bookings
+          eq(doctorSchedules.isVisible, true) // Schedule must be visible to patients
         )
       );
 
@@ -1529,7 +1535,7 @@ export class DatabaseStorage implements IStorage {
         and(
           eq(doctorSchedules.doctorId, doctorId),
           sql`DATE(${doctorSchedules.date}) = DATE(${date.toISOString()})`,
-          eq(doctorSchedules.isActive, true)
+          eq(doctorSchedules.isVisible, true) // Only show visible schedules to patients
         )
       )
       .orderBy(doctorSchedules.startTime);

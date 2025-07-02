@@ -1000,7 +1000,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Get the doctor's schedules
       const date = req.query.date ? new Date(req.query.date as string) : undefined;
-      const schedules = await storage.getDoctorSchedules(doctorId, date);
+      // For patients, only show visible schedules
+      const isPatient = req.user?.role === 'patient' || !req.user;
+      const schedules = await storage.getDoctorSchedules(doctorId, date, isPatient);
       
       // Filter by clinic ID if provided
       let filteredSchedules = [...schedules];
@@ -1137,6 +1139,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         startTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/),
         endTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/),
         isActive: z.boolean().optional().default(true),
+        isVisible: z.boolean().optional().default(false),
         maxTokens: z.number().min(1).default(20),
       });
 
@@ -1232,6 +1235,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         startTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/).optional(),
         endTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/).optional(),
         isActive: z.boolean().optional(),
+        isVisible: z.boolean().optional(),
         maxTokens: z.number().min(1).optional(),
       });
 
