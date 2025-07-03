@@ -115,7 +115,7 @@ export interface IStorage {
   getAttendersByRole(): Promise<User[]>;
   updateAppointmentStatus(
     appointmentId: number, 
-    status: "scheduled" | "start" | "hold" | "pause" | "cancel" | "completed", 
+    status: "scheduled" | "in_progress" | "hold" | "pause" | "cancel" | "completed", 
     statusNotes?: string
   ): Promise<Appointment>;
   updateDoctorAvailability(
@@ -810,7 +810,7 @@ export class DatabaseStorage implements IStorage {
 
   async updateAppointmentStatus(
     appointmentId: number, 
-    status: "scheduled" | "start" | "hold" | "pause" | "cancel" | "completed", 
+    status: "scheduled" | "in_progress" | "hold" | "pause" | "cancel" | "completed", 
     statusNotes?: string
   ): Promise<Appointment> {
     try {
@@ -824,7 +824,7 @@ export class DatabaseStorage implements IStorage {
 
       // Add timestamp updates based on status
       const now = new Date();
-      if (status === "start") {
+      if (status === "in_progress") {
         updateData.actualStartTime = now;
       } else if (status === "completed") {
         updateData.actualEndTime = now;
