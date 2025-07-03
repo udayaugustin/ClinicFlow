@@ -122,6 +122,7 @@ export const doctorSchedules = pgTable("doctor_schedules", {
   pausedAt: timestamp("paused_at"),
   resumedAt: timestamp("resumed_at"),
   isActive: boolean("is_active").default(true),
+  isVisible: boolean("is_visible").default(false), // Controls visibility to patients
   status: varchar("status", { length: 20 }).default("active"),
   cancelReason: text("cancel_reason"),
   cancelledAt: timestamp("cancelled_at"),
@@ -305,6 +306,7 @@ export const insertDoctorScheduleSchema = createInsertSchema(doctorSchedules, {
   endTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/),
   maxTokens: z.number().min(1).default(20),
   isActive: z.boolean().default(true),
+  isVisible: z.boolean().default(false),
 });
 
 export const insertPatientFavoriteSchema = createInsertSchema(patientFavorites);

@@ -38,6 +38,7 @@ type DoctorSchedule = {
   startTime: string;
   endTime: string;
   isActive: boolean;
+  isVisible: boolean;
   maxTokens: number;
   doctor?: Doctor;
   clinic?: Clinic;
@@ -64,6 +65,7 @@ export default function DoctorSchedulesPage() {
     startTime: "09:00",
     endTime: "17:00",
     isActive: false,
+    isVisible: false, // Default to hidden
     maxTokens: 20,
   });
 
@@ -349,6 +351,7 @@ export default function DoctorSchedulesPage() {
       startTime: schedule.startTime,
       endTime: schedule.endTime,
       isActive: schedule.isActive,
+      isVisible: schedule.isVisible,
       maxTokens: schedule.maxTokens,
     });
     setActiveTab("create");
@@ -531,11 +534,14 @@ export default function DoctorSchedulesPage() {
                         <TableCell>{schedule.endTime}</TableCell>
                         <TableCell>{schedule.maxTokens}</TableCell>
                         <TableCell>
-                          {schedule.isActive ? (
-                            <span className="text-green-600">Active</span>
-                          ) : (
-                            <span className="text-red-600">Inactive</span>
-                          )}
+                          <div className="flex flex-col gap-1">
+                            <span className={schedule.isActive ? "text-green-600" : "text-red-600"}>
+                              {schedule.isActive ? "Active" : "Inactive"}
+                            </span>
+                            <span className={schedule.isVisible ? "text-blue-600 text-sm" : "text-gray-400 text-sm"}>
+                              {schedule.isVisible ? "Visible" : "Hidden"}
+                            </span>
+                          </div>
                         </TableCell>
                         <TableCell>{user?.name || "Unknown_User"}</TableCell>
                         <TableCell className="text-right space-x-2">
@@ -648,6 +654,20 @@ export default function DoctorSchedulesPage() {
                       onCheckedChange={(checked) => handleSwitchChange("isActive", checked)}
                     />
                     <Label htmlFor="isActive">Active</Label>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <Switch
+                        id="isVisible"
+                        checked={formData.isVisible}
+                        onCheckedChange={(checked) => handleSwitchChange("isVisible", checked)}
+                      />
+                      <Label htmlFor="isVisible">Show to Patients</Label>
+                    </div>
+                    <p className="text-sm text-muted-foreground ml-6">
+                      When enabled, this schedule will be visible to patients for booking appointments
+                    </p>
                   </div>
 
                   <div>

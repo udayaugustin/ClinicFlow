@@ -71,7 +71,11 @@ export default function PatientClinicDetails() {
       }
 
       // Create a new date object for the selected date and time
-      const [hours, minutes] = appointmentData.time.split(":");
+      // Extract the start time from the time range if it's in that format
+      const timeStr = appointmentData.time.includes(" - ") 
+        ? appointmentData.time.split(" - ")[0] 
+        : appointmentData.time;
+      const [hours, minutes] = timeStr.split(":");
       const appointmentDate = new Date(appointmentData.date);
       appointmentDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
 
@@ -242,8 +246,9 @@ export default function PatientClinicDetails() {
       // Get the current date to use as a fallback
       const currentDate = new Date();
       
-      // Extract the time from the selected slot
-      const [hours, minutes] = selectedSlot.time.split(":").map(Number);
+      // Extract the start time from the time range (e.g., "18:00 - 19:00" -> "18:00")
+      const startTime = selectedSlot.time.split(" - ")[0];
+      const [hours, minutes] = startTime.split(":").map(Number);
       
       // Create a date object using the schedule's raw date if available, or current date as fallback
       let appointmentDate;
@@ -364,15 +369,10 @@ export default function PatientClinicDetails() {
         const dayName = date.toLocaleDateString('en-US', { weekday: 'long' });
         const formattedDate = date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
         
-        // Generate time slots from startTime to endTime
+        // Create a single time range slot instead of individual slots
         const slots = [];
         if (schedule.startTime && schedule.endTime) {
-          const startHour = parseInt(schedule.startTime.split(':')[0]);
-          const endHour = parseInt(schedule.endTime.split(':')[0]);
-          
-          for (let hour = startHour; hour < endHour; hour++) {
-            slots.push(`${hour.toString().padStart(2, '0')}:00`);
-          }
+          slots.push(`${schedule.startTime} - ${schedule.endTime}`);
         }
         
         return [{
@@ -395,15 +395,10 @@ export default function PatientClinicDetails() {
       const dayName = date.toLocaleDateString('en-US', { weekday: 'long' });
       const formattedDate = date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
       
-      // Generate time slots from startTime to endTime
+      // Create a single time range slot instead of individual slots
       const slots = [];
       if (schedule.startTime && schedule.endTime) {
-        const startHour = parseInt(schedule.startTime.split(':')[0]);
-        const endHour = parseInt(schedule.endTime.split(':')[0]);
-        
-        for (let hour = startHour; hour < endHour; hour++) {
-          slots.push(`${hour.toString().padStart(2, '0')}:00`);
-        }
+        slots.push(`${schedule.startTime} - ${schedule.endTime}`);
       }
       
       return {
@@ -599,7 +594,7 @@ export default function PatientClinicDetails() {
                         <TabsContent key={schedule.id} value={schedule.id}>
                           <div className="mb-4 flex items-center justify-between">
                             <p className="text-sm text-muted-foreground">
-                              <span className="font-medium">Available Slots:</span> {schedule.slots.length}
+                              <span className="font-medium">Available Time:</span> {schedule.slots[0] || 'No slots'}
                               {schedule.maxTokens && (
                                 <> | <span className="font-medium">Max Appointments:</span> {schedule.maxTokens}</>
                               )}
@@ -631,16 +626,16 @@ export default function PatientClinicDetails() {
                             )}
                           </div>
                           
-                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                          <div className="flex justify-center">
                             {schedule.slots.map((time) => (
                               <Button
                                 key={time}
                                 variant={selectedSlot?.day === schedule.day && selectedSlot?.time === time ? "default" : "outline"}
-                                className="flex items-center justify-center"
+                                className="flex items-center justify-center px-8 py-6 text-lg"
                                 onClick={() => setSelectedSlot({ day: schedule.day, time })}
                                 disabled={!schedule.isActive}
                               >
-                                <Clock className="mr-2 h-4 w-4" />
+                                <Clock className="mr-2 h-5 w-5" />
                                 {time}
                               </Button>
                             ))}
