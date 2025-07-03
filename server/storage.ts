@@ -1846,21 +1846,31 @@ export class DatabaseStorage implements IStorage {
       .where(
         and(
           eq(appointments.doctorId, appointment.doctorId),
-          eq(appointments.clinicId, clinicId),
-          eq(appointments.scheduleId, schedule.id)
+          eq(appointments.clinicId, appointment.clinicId),
+          eq(appointments.scheduleId, scheduleId)
         )
       );
       
+    // Get the schedule to check token limit
+    const [scheduleData] = await db
+      .select()
+      .from(doctorSchedules)
+      .where(eq(doctorSchedules.id, scheduleId));
+      
+    if (!scheduleData) {
+      throw new Error("Schedule not found");
+    }
+      
     // Check if token limit has been reached
-    if (schedule.maxTokens !== null && tokenCount.count >= schedule.maxTokens) {
-      throw new Error(`Maximum number of tokens (${schedule.maxTokens}) has been reached for this schedule`);
+    if (scheduleData.maxTokens !== null && tokenCount.count >= scheduleData.maxTokens) {
+      throw new Error(`Maximum number of tokens (${scheduleData.maxTokens}) has been reached for this schedule`);
     }
     
     // Get the next token number
     const tokenNumber = await this.getNextTokenNumber(
       appointment.doctorId,
       appointment.clinicId,
-      schedule.id
+      scheduleId
     );
     
     // Create the appointment - explicitly set patientId to null for walk-ins
