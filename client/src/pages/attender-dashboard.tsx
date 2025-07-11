@@ -575,22 +575,21 @@ export default function AttenderDashboard() {
       <NavHeader />
       <TooltipProvider>
         <main className="container mx-auto px-4 py-8">
-          <h1 className="text-2xl font-bold mb-6">Doctor Appointments Dashboard</h1>
+          <h1 className="text-2xl font-bold mb-6">Today's Doctor Appointments</h1>
 
-          <div className="grid md:grid-cols-[300px,1fr] gap-6">
-            <Card>
-              <CardContent className="p-6">
-                <h2 className="text-lg font-semibold mb-4">Select Date</h2>
-                <Calendar
-                  mode="single"
-                  selected={selectedDate}
-                  onSelect={(date) => setSelectedDate(date || new Date())}
-                  className="rounded-md border"
-                />
-              </CardContent>
-            </Card>
+          {/* <Card>
+            <CardContent className="p-6">
+              <h2 className="text-lg font-semibold mb-4">Select Date</h2>
+              <Calendar
+                mode="single"
+                selected={selectedDate}
+                onSelect={(date) => setSelectedDate(date || new Date())}
+                className="rounded-md border"
+              />
+            </CardContent>
+          </Card> */}
 
-            <Card>
+          <Card>
               <CardContent className="p-6">
                 <Tabs defaultValue={managedDoctors?.[0]?.doctor?.id?.toString()}>
                   <TabsList className="mb-4">
@@ -878,7 +877,6 @@ export default function AttenderDashboard() {
                 </Tabs>
               </CardContent>
             </Card>
-          </div>
         </main>
       </TooltipProvider>
       <Dialog open={isWalkInDialogOpen} onOpenChange={setIsWalkInDialogOpen}>

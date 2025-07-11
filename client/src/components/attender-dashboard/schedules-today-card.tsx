@@ -5,6 +5,7 @@ import { Calendar, ChevronRight } from "lucide-react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { Badge } from "@/components/ui/badge";
+import React from "react";
 
 interface SchedulesToday {
   schedules: Array<{
