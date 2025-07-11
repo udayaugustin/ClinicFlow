@@ -136,7 +136,7 @@ export default function PatientFavorites() {
           <p className="text-gray-600 mb-4">
             Start adding doctors to your favorites to get notified when their schedules become available.
           </p>
-          <Button onClick={() => navigate('/patient/clinics')}>
+          <Button onClick={() => navigate('/')}>
             Browse Doctors
           </Button>
         </div>
