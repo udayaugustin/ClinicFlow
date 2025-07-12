@@ -45,9 +45,15 @@ export function ETADisplay({ appointmentId, tokenNumber, className = "", showDet
         <span className="font-medium">
           ETA: {format(etaDate, "h:mm a")}
         </span>
-        {showDetails && eta.currentConsultingToken > 0 && (
+        {showDetails && (
           <div className="text-xs text-muted-foreground mt-1">
-            Current Token: {eta.currentConsultingToken} | Avg time: {eta.avgConsultationTime} min
+            {eta.currentAppointmentStatus === 'completed' ? (
+              // For completed appointments, only show your token and avg time
+              `Your Token: ${eta.tokenNumber} | Avg time: ${eta.avgConsultationTime} min`
+            ) : (
+              // For active appointments, show current, completed, and your token
+              `Current Token: ${eta.currentConsultingToken || '-'} | Completed: ${eta.completedTokenCount || '-'} | Your Token: ${eta.tokenNumber} | Avg time: ${eta.avgConsultationTime} min`
+            )}
           </div>
         )}
       </div>

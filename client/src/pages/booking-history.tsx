@@ -317,7 +317,7 @@ export default function BookingHistoryPage() {
                                 ) : appointment.status === "completed" ? (
                                   <div>
                                     <div className="flex justify-between text-sm mb-1">
-                                      <span className="text-muted-foreground">Current token: {appointment.tokenNumber}</span>
+                                      <span className="text-muted-foreground">Current token: -</span>
                                       <span className="text-muted-foreground">Your token: {appointment.tokenNumber}</span>
                                     </div>
                                     <Progress value={100} className="h-2" />

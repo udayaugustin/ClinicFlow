@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { appointments, doctorSchedules } from "@shared/schema";
-import { eq, and, lt, gte, desc, asc, ne, isNull, not, or } from "drizzle-orm";
+import { eq, and, lt, gte, desc, asc, ne, isNull, not, or, sql } from "drizzle-orm";
 import { format, parse, addMinutes, differenceInMinutes, setHours, setMinutes } from "date-fns";
 
 export interface ETACalculationResult {
@@ -8,7 +8,11 @@ export interface ETACalculationResult {
   tokenNumber: number;
   estimatedStartTime: Date;
   currentConsultingToken: number;
+  completedTokenCount: number;
   avgConsultationTime: number;
+  doctorHasArrived: boolean;
+  consultationStarted: boolean;
+  currentAppointmentStatus: string;
 }
 
 export class ETAService {
@@ -536,7 +540,8 @@ export class ETAService {
         tokenNumber: appointments.tokenNumber,
         scheduleId: appointments.scheduleId,
         estimatedStartTime: appointments.estimatedStartTime,
-        status: appointments.status
+        status: appointments.status,
+        date: appointments.date
       })
       .from(appointments)
       .where(eq(appointments.id, appointmentId))
@@ -544,7 +549,7 @@ export class ETAService {
 
     if (!appointment.length) return null;
 
-    const { tokenNumber, estimatedStartTime, scheduleId } = appointment[0];
+    const { tokenNumber, estimatedStartTime, scheduleId, date } = appointment[0];
 
     // Get schedule details
     const schedule = await db
@@ -557,7 +562,28 @@ export class ETAService {
 
     const avgConsultationTime = schedule[0].averageConsultationTime || this.DEFAULT_CONSULTATION_TIME;
 
-    // Get current consulting token (in progress)
+    // Check if doctor has arrived for this schedule and date
+    const { doctorDailyPresence } = await import("@shared/schema");
+    
+    const doctorPresence = await db
+      .select({
+        hasArrived: doctorDailyPresence.hasArrived
+      })
+      .from(doctorDailyPresence)
+      .where(
+        and(
+          eq(doctorDailyPresence.doctorId, schedule[0].doctorId),
+          eq(doctorDailyPresence.clinicId, schedule[0].clinicId),
+          eq(doctorDailyPresence.scheduleId, scheduleId),
+          // Check for the same date as the appointment
+          eq(doctorDailyPresence.date, date)
+        )
+      )
+      .limit(1);
+
+    const doctorHasArrived = doctorPresence.length > 0 ? doctorPresence[0].hasArrived : false;
+
+    // Get current consulting token (in progress) - ONLY show if someone is actually consulting
     const currentConsulting = await db
       .select({
         tokenNumber: appointments.tokenNumber
@@ -566,11 +592,37 @@ export class ETAService {
       .where(
         and(
           eq(appointments.scheduleId, scheduleId),
-          eq(appointments.status, "start")
+          or(
+            eq(appointments.status, "start"),
+            eq(appointments.status, "in_progress")
+          )
         )
       )
       .orderBy(asc(appointments.tokenNumber))
       .limit(1);
+
+    // Current consulting token - ONLY if someone is actually being consulted right now
+    const currentConsultingToken = currentConsulting.length > 0 ? currentConsulting[0].tokenNumber : null;
+
+    // Check if consultation has started (any appointment is in progress OR has been completed)
+    const consultationStartedCheck = await db
+      .select({
+        tokenNumber: appointments.tokenNumber
+      })
+      .from(appointments)
+      .where(
+        and(
+          eq(appointments.scheduleId, scheduleId),
+          or(
+            eq(appointments.status, "start"),
+            eq(appointments.status, "in_progress"),
+            eq(appointments.status, "completed")
+          )
+        )
+      )
+      .limit(1);
+
+    const consultationStarted = consultationStartedCheck.length > 0;
 
     // Get completed appointments to determine next token if no one is currently consulting
     const completedAppointments = await db
@@ -587,18 +639,33 @@ export class ETAService {
       .orderBy(desc(appointments.tokenNumber))
       .limit(1);
 
-    const currentConsultingToken = currentConsulting.length > 0 
-      ? currentConsulting[0].tokenNumber 
-      : (completedAppointments.length > 0 
-          ? completedAppointments[0].tokenNumber + 1
-          : 1);
+    // Get count of completed appointments for display
+    const completedAppointmentsCount = await db
+      .select({
+        count: sql<number>`COUNT(*)::integer`
+      })
+      .from(appointments)
+      .where(
+        and(
+          eq(appointments.scheduleId, scheduleId),
+          eq(appointments.status, "completed")
+        )
+      );
+
+    const completedTokenCount = completedAppointmentsCount[0]?.count || 0;
+
+    console.log(`[ETA] Appointment ${appointmentId}: currentToken=${currentConsultingToken}, completed=${completedTokenCount}`);
 
     return {
       appointmentId,
       tokenNumber,
       estimatedStartTime: estimatedStartTime || new Date(),
       currentConsultingToken,
-      avgConsultationTime
+      completedTokenCount,
+      avgConsultationTime,
+      doctorHasArrived,
+      consultationStarted,
+      currentAppointmentStatus: appointment[0].status
     };
   }
 
