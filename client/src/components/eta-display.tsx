@@ -52,7 +52,7 @@ export function ETADisplay({ appointmentId, tokenNumber, className = "", showDet
               `Your Token: ${eta.tokenNumber} | Avg time: ${eta.avgConsultationTime} min`
             ) : (
               // For active appointments, show current, completed, and your token
-              `Current Token: ${eta.currentConsultingToken || '-'} | Completed: ${eta.completedTokenCount || '-'} | Your Token: ${eta.tokenNumber} | Avg time: ${eta.avgConsultationTime} min`
+              `Current Token: ${eta.currentConsultingToken || '-'} | Completed: ${eta.completedTokenCount || '-'}  | Avg time: ${eta.avgConsultationTime} min`
             )}
           </div>
         )}
