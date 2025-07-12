@@ -781,7 +781,8 @@ export default function AttenderDashboard() {
                                             <tr className="border-b">
                                               <th className="text-left py-4 px-4">Token #</th>
                                               <th className="text-left py-4 px-4">Patient</th>
-                                              <th className="text-left py-4 px-4">Time</th>
+                                              <th className="text-left py-4 px-4">In Time</th>
+                                              <th className="text-left py-4 px-4">Out Time</th>
                                               <th className="text-left py-4 px-4">ETA</th>
                                               <th className="text-left py-4 px-4">Status</th>
                                               <th className="text-left py-4 px-4">Actions</th>
@@ -790,7 +791,7 @@ export default function AttenderDashboard() {
                                           <tbody>
                                             {scheduleAppointments.length === 0 ? (
                                               <tr>
-                                                <td colSpan={6} className="text-center py-8 text-muted-foreground">
+                                                <td colSpan={7} className="text-center py-8 text-muted-foreground">
                                                   No appointments scheduled for {format(selectedDate, "PPP")}
                                                 </td>
                                               </tr>
@@ -811,7 +812,18 @@ export default function AttenderDashboard() {
                                                       <div className="font-medium">{appointment.patient?.name}</div>
                                                     )}
                                                   </td>
-                                                  <td className="py-4 px-4">{format(new Date(appointment.date), "hh:mm a")}</td>
+                                                  <td className="py-4 px-4">
+                                                    {appointment.actualStartTime ? 
+                                                      format(new Date(appointment.actualStartTime), "hh:mm a") : 
+                                                      "-"
+                                                    }
+                                                  </td>
+                                                  <td className="py-4 px-4">
+                                                    {appointment.actualEndTime ? 
+                                                      format(new Date(appointment.actualEndTime), "hh:mm a") : 
+                                                      "-"
+                                                    }
+                                                  </td>
                                                   <td className="py-4 px-4">
                                                     <ETADisplay 
                                                       appointmentId={appointment.id} 
