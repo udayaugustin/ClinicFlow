@@ -40,6 +40,8 @@ type DoctorSchedule = {
   maxTokens?: number;
   isPaused?: boolean;
   pauseReason?: string;
+  scheduleStatus?: 'active' | 'completed';
+  bookingStatus?: 'open' | 'closed';
   createdAt?: string;
   updatedAt?: string;
   appointments: (Appointment & { patient?: User })[];
@@ -406,6 +408,59 @@ export default function AttenderDashboard() {
     }
   });
 
+  // Mutation for completing a schedule
+  const completeScheduleMutation = useMutation({
+    mutationFn: async (scheduleId: number) => {
+      const res = await apiRequest("PATCH", `/api/schedules/${scheduleId}/complete`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries([`/api/attender/${user?.id}/doctors/appointments`]);
+      queryClient.invalidateQueries({ queryKey: ["schedulesToday"] });
+      toast({
+        title: "Schedule completed",
+        description: "The schedule has been marked as completed."
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: "Failed to complete schedule: " + error.message,
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Mutation for toggling booking status
+  const toggleBookingMutation = useMutation({
+    mutationFn: async ({ 
+      scheduleId, 
+      isClosing 
+    }: { 
+      scheduleId: number; 
+      isClosing: boolean;
+    }) => {
+      const endpoint = isClosing ? 'booking-close' : 'booking-open';
+      const res = await apiRequest("PATCH", `/api/schedules/${scheduleId}/${endpoint}`);
+      return res.json();
+    },
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries([`/api/attender/${user?.id}/doctors/appointments`]);
+      queryClient.invalidateQueries({ queryKey: ["schedulesToday"] });
+      toast({
+        title: "Booking status updated",
+        description: variables.isClosing ? "Booking has been closed for new appointments." : "Booking has been reopened for new appointments."
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: "Failed to update booking status: " + error.message,
+        variant: "destructive"
+      });
+    }
+  });
+
   // Handler for canceling a schedule
   const handleCancelSchedule = async (scheduleId: number) => {
     if (!confirm("Are you sure you want to cancel this schedule? All pending appointments will be cancelled.")) {
@@ -417,6 +472,27 @@ export default function AttenderDashboard() {
       scheduleId,
       cancelReason: reason || undefined
     });
+  };
+
+  // Handler for completing a schedule
+  const handleCompleteSchedule = async (scheduleId: number) => {
+    if (!confirm("Are you sure you want to mark this schedule as completed? This indicates the doctor has finished and left.")) {
+      return;
+    }
+
+    await completeScheduleMutation.mutate(scheduleId);
+  };
+
+  // Handler for toggling booking status
+  const handleToggleBooking = async (scheduleId: number, currentStatus: 'open' | 'closed' = 'open') => {
+    const isClosing = currentStatus === 'open';
+    const action = isClosing ? 'close' : 'reopen';
+    
+    if (!confirm(`Are you sure you want to ${action} booking for this schedule?`)) {
+      return;
+    }
+
+    await toggleBookingMutation.mutate({ scheduleId, isClosing });
   };
 
   const handleCreateWalkInAppointment = () => {
@@ -739,6 +815,23 @@ export default function AttenderDashboard() {
                                                 Mark as Arrived
                                               </>
                                             )}
+                                          </Button>
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="gap-2"
+                                            disabled={schedule.scheduleStatus === 'completed'}
+                                            onClick={() => handleCompleteSchedule(schedule.id)}
+                                          >
+                                            Schedule Completed
+                                          </Button>
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="gap-2"
+                                            onClick={() => handleToggleBooking(schedule.id, schedule.bookingStatus)}
+                                          >
+                                            {schedule.bookingStatus === 'closed' ? 'Open Booking' : 'Close Booking'}
                                           </Button>
                                             <div className="flex gap-2">
                                               <Button

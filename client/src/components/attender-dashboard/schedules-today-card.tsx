@@ -13,7 +13,7 @@ interface SchedulesToday {
     doctorName: string;
     timeSlot: string;
     appointmentCount: number;
-    status: 'token_started' | 'in_progress' | 'paused' | 'completed' | 'cancelled' | 'inactive_hidden' | 'inactive_visible';
+    status: 'token_started' | 'in_progress' | 'paused' | 'completed' | 'cancelled' | 'inactive_hidden' | 'inactive_visible' | 'schedule_completed' | 'booking_closed';
   }>;
   summary: {
     totalSchedules: number;
@@ -30,6 +30,8 @@ const statusColors = {
   cancelled: "destructive",
   inactive_hidden: "secondary",
   inactive_visible: "outline",
+  schedule_completed: "outline",
+  booking_closed: "secondary",
 } as const;
 
 export function SchedulesTodayCard() {
@@ -114,6 +116,8 @@ export function SchedulesTodayCard() {
                    schedule.status === 'in_progress' ? 'In Progress' :
                    schedule.status === 'inactive_hidden' ? 'Inactive/Hidden' :
                    schedule.status === 'inactive_visible' ? 'Inactive/Visible' :
+                   schedule.status === 'schedule_completed' ? 'Schedule Completed' :
+                   schedule.status === 'booking_closed' ? 'Booking Closed' :
                    schedule.status.charAt(0).toUpperCase() + schedule.status.slice(1)}
                 </Badge>
                 <p className="text-sm text-gray-600 mt-1">

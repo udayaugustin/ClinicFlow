@@ -31,6 +31,8 @@ type DoctorSchedule = {
   maxTokens: number;
   clinic: Clinic;
   currentTokenCount?: number;
+  scheduleStatus?: 'active' | 'completed';
+  bookingStatus?: 'open' | 'closed';
 };
 
 type AvailableSlotsResponse = {
@@ -232,13 +234,37 @@ export default function PatientBookingPage() {
                         schedule.currentTokenCount !== undefined && 
                         schedule.currentTokenCount >= schedule.maxTokens;
                       
+                      // Check for new status conditions
+                      const isScheduleCompleted = schedule.scheduleStatus === 'completed';
+                      const isBookingClosed = schedule.bookingStatus === 'closed';
+                      const isUnavailable = isAtCapacity || isScheduleCompleted || isBookingClosed;
+                      
+                      // Determine status message and badge
+                      let statusBadge = "Select";
+                      let statusMessage = "";
+                      let badgeVariant: "outline" | "destructive" | "secondary" = "outline";
+                      
+                      if (isScheduleCompleted) {
+                        statusBadge = "Completed";
+                        statusMessage = "Schedule completed - doctor has finished";
+                        badgeVariant = "secondary";
+                      } else if (isBookingClosed) {
+                        statusBadge = "Booking Closed";
+                        statusMessage = "New appointments not accepted";
+                        badgeVariant = "secondary";
+                      } else if (isAtCapacity) {
+                        statusBadge = "Full";
+                        statusMessage = "No tokens available";
+                        badgeVariant = "destructive";
+                      }
+                      
                       return (
                         <Button
                           key={schedule.id}
                           variant={selectedSchedule?.id === schedule.id ? "default" : "outline"}
                           className="w-full flex justify-between items-center h-auto py-4 px-4"
-                          onClick={() => setSelectedSchedule(schedule)}
-                          disabled={isAtCapacity}
+                          onClick={() => !isUnavailable ? setSelectedSchedule(schedule) : undefined}
+                          disabled={isUnavailable}
                         >
                           <div className="flex flex-col items-start">
                             <div className="font-medium text-base">{schedule.clinic.name}</div>
@@ -246,7 +272,7 @@ export default function PatientBookingPage() {
                               <Clock className="mr-1 h-4 w-4" />
                               {schedule.startTime} - {schedule.endTime}
                             </div>
-                            {schedule.maxTokens > 0 && (
+                            {schedule.maxTokens > 0 && !isScheduleCompleted && !isBookingClosed && (
                               <div className="text-xs mt-1 flex items-center">
                                 <span className={isAtCapacity ? "text-red-500" : "text-green-600"}>
                                   Tokens: {schedule.currentTokenCount || 0}/{schedule.maxTokens}
@@ -254,9 +280,14 @@ export default function PatientBookingPage() {
                                 </span>
                               </div>
                             )}
+                            {statusMessage && (
+                              <div className="text-xs mt-1 text-gray-500">
+                                {statusMessage}
+                              </div>
+                            )}
                           </div>
-                          <Badge variant="outline">
-                            {isAtCapacity ? "Full" : "Select"}
+                          <Badge variant={badgeVariant}>
+                            {statusBadge}
                           </Badge>
                         </Button>
                       );

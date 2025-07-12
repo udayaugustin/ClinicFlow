@@ -67,7 +67,7 @@ export interface IStorage {
       doctorName: string;
       timeSlot: string;
       appointmentCount: number;
-      status: 'token_started' | 'in_progress' | 'paused' | 'completed' | 'cancelled' | 'inactive_hidden' | 'inactive_visible';
+      status: 'token_started' | 'in_progress' | 'paused' | 'completed' | 'cancelled' | 'inactive_hidden' | 'inactive_visible' | 'schedule_completed' | 'booking_closed';
     }>;
     summary: {
       totalSchedules: number;
@@ -80,6 +80,9 @@ export interface IStorage {
   updateSchedule(scheduleId: number, data: { isActive?: boolean; isPaused?: boolean; cancelReason?: string }): Promise<DoctorSchedule>;
   pauseSchedule(scheduleId: number, reason: string): Promise<void>;
   resumeSchedule(scheduleId: number): Promise<void>;
+  completeSchedule(scheduleId: number): Promise<void>;
+  closeScheduleBooking(scheduleId: number): Promise<void>;
+  openScheduleBooking(scheduleId: number): Promise<void>;
   getAppointment(appointmentId: number): Promise<Appointment | null>;
   getAppointmentsBySchedule(scheduleId: number): Promise<Appointment[]>;
 
@@ -277,6 +280,36 @@ export class DatabaseStorage implements IStorage {
         isPaused: false,
         pauseReason: null,
         resumedAt: sql`CURRENT_TIMESTAMP`
+      })
+      .where(eq(doctorSchedules.id, scheduleId));
+  }
+
+  async completeSchedule(scheduleId: number): Promise<void> {
+    await db
+      .update(doctorSchedules)
+      .set({
+        scheduleStatus: 'completed',
+        completedAt: sql`CURRENT_TIMESTAMP`
+      })
+      .where(eq(doctorSchedules.id, scheduleId));
+  }
+
+  async closeScheduleBooking(scheduleId: number): Promise<void> {
+    await db
+      .update(doctorSchedules)
+      .set({
+        bookingStatus: 'closed',
+        bookingClosedAt: sql`CURRENT_TIMESTAMP`
+      })
+      .where(eq(doctorSchedules.id, scheduleId));
+  }
+
+  async openScheduleBooking(scheduleId: number): Promise<void> {
+    await db
+      .update(doctorSchedules)
+      .set({
+        bookingStatus: 'open',
+        bookingClosedAt: null
       })
       .where(eq(doctorSchedules.id, scheduleId));
   }
@@ -1535,7 +1568,8 @@ export class DatabaseStorage implements IStorage {
         and(
           eq(doctorSchedules.doctorId, doctorId),
           sql`DATE(${doctorSchedules.date}) = DATE(${date.toISOString()})`,
-          eq(doctorSchedules.isVisible, true) // Only show visible schedules to patients
+          eq(doctorSchedules.isVisible, true), // Only show visible schedules to patients
+          // Show schedules unless they are completed (patients should see completed/closed for info)
         )
       )
       .orderBy(doctorSchedules.startTime);
@@ -1571,9 +1605,13 @@ export class DatabaseStorage implements IStorage {
       schedule.currentTokenCount = clinicAppointmentCount.get(schedule.clinicId) || 0;
     });
 
-    // Calculate available slots
+    // Calculate available slots - exclude completed schedules and closed bookings
     const availableSlots = schedules
-      .filter(schedule => (schedule.currentTokenCount || 0) < schedule.maxTokens)
+      .filter(schedule => 
+        (schedule.currentTokenCount || 0) < schedule.maxTokens &&
+        schedule.scheduleStatus !== 'completed' &&
+        schedule.bookingStatus !== 'closed'
+      )
       .map(schedule => ({
         startTime: schedule.startTime,
         endTime: schedule.endTime,
@@ -2337,6 +2375,8 @@ export class DatabaseStorage implements IStorage {
     isActive: doctorSchedules.isActive,
     isVisible: doctorSchedules.isVisible,
     cancelReason: doctorSchedules.cancelReason,
+    scheduleStatus: doctorSchedules.scheduleStatus,
+    bookingStatus: doctorSchedules.bookingStatus,
     scheduleDate: doctorSchedules.date
   })
         .from(doctorSchedules)
@@ -2413,10 +2453,15 @@ export class DatabaseStorage implements IStorage {
             console.log(`Schedule ${schedule.id}: doctorHasArrived=${doctorHasArrived}`);
 
             // Determine schedule status based on doctor presence and schedule state
-            let scheduleStatus: 'token_started' | 'in_progress' | 'paused' | 'completed' | 'cancelled' | 'inactive_hidden' | 'inactive_visible';
+            let scheduleStatus: 'token_started' | 'in_progress' | 'paused' | 'completed' | 'cancelled' | 'inactive_hidden' | 'inactive_visible' | 'schedule_completed' | 'booking_closed';
             
+            // Status hierarchy in order of precedence
             if (schedule.cancelReason) {
               scheduleStatus = 'cancelled';
+            } else if (schedule.scheduleStatus === 'completed') {
+              scheduleStatus = 'schedule_completed';
+            } else if (schedule.bookingStatus === 'closed') {
+              scheduleStatus = 'booking_closed';
             } else if (schedule.isPaused) {
               scheduleStatus = 'paused';
             } else if (currentTime > schedule.endTime) {
