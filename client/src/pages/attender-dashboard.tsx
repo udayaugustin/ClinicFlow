@@ -26,6 +26,7 @@ import { ETADisplay } from "@/components/eta-display";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { NavigationButtons } from "@/components/navigation-buttons";
 import React from "react";
 
 // Updated type definition without presence info in schedules
@@ -40,6 +41,8 @@ type DoctorSchedule = {
   maxTokens?: number;
   isPaused?: boolean;
   pauseReason?: string;
+  scheduleStatus?: 'active' | 'completed';
+  bookingStatus?: 'open' | 'closed';
   createdAt?: string;
   updatedAt?: string;
   appointments: (Appointment & { patient?: User })[];
@@ -406,6 +409,59 @@ export default function AttenderDashboard() {
     }
   });
 
+  // Mutation for completing a schedule
+  const completeScheduleMutation = useMutation({
+    mutationFn: async (scheduleId: number) => {
+      const res = await apiRequest("PATCH", `/api/schedules/${scheduleId}/complete`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries([`/api/attender/${user?.id}/doctors/appointments`]);
+      queryClient.invalidateQueries({ queryKey: ["schedulesToday"] });
+      toast({
+        title: "Schedule completed",
+        description: "The schedule has been marked as completed."
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: "Failed to complete schedule: " + error.message,
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Mutation for toggling booking status
+  const toggleBookingMutation = useMutation({
+    mutationFn: async ({ 
+      scheduleId, 
+      isClosing 
+    }: { 
+      scheduleId: number; 
+      isClosing: boolean;
+    }) => {
+      const endpoint = isClosing ? 'booking-close' : 'booking-open';
+      const res = await apiRequest("PATCH", `/api/schedules/${scheduleId}/${endpoint}`);
+      return res.json();
+    },
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries([`/api/attender/${user?.id}/doctors/appointments`]);
+      queryClient.invalidateQueries({ queryKey: ["schedulesToday"] });
+      toast({
+        title: "Booking status updated",
+        description: variables.isClosing ? "Booking has been closed for new appointments." : "Booking has been reopened for new appointments."
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: "Failed to update booking status: " + error.message,
+        variant: "destructive"
+      });
+    }
+  });
+
   // Handler for canceling a schedule
   const handleCancelSchedule = async (scheduleId: number) => {
     if (!confirm("Are you sure you want to cancel this schedule? All pending appointments will be cancelled.")) {
@@ -417,6 +473,27 @@ export default function AttenderDashboard() {
       scheduleId,
       cancelReason: reason || undefined
     });
+  };
+
+  // Handler for completing a schedule
+  const handleCompleteSchedule = async (scheduleId: number) => {
+    if (!confirm("Are you sure you want to mark this schedule as completed? This indicates the doctor has finished and left.")) {
+      return;
+    }
+
+    await completeScheduleMutation.mutate(scheduleId);
+  };
+
+  // Handler for toggling booking status
+  const handleToggleBooking = async (scheduleId: number, currentStatus: 'open' | 'closed' = 'open') => {
+    const isClosing = currentStatus === 'open';
+    const action = isClosing ? 'close' : 'reopen';
+    
+    if (!confirm(`Are you sure you want to ${action} booking for this schedule?`)) {
+      return;
+    }
+
+    await toggleBookingMutation.mutate({ scheduleId, isClosing });
   };
 
   const handleCreateWalkInAppointment = () => {
@@ -575,22 +652,24 @@ export default function AttenderDashboard() {
       <NavHeader />
       <TooltipProvider>
         <main className="container mx-auto px-4 py-8">
-          <h1 className="text-2xl font-bold mb-6">Doctor Appointments Dashboard</h1>
+          <div className="flex items-center justify-between mb-6">
+            <h1 className="text-2xl font-bold">Today's Doctor Appointments</h1>
+            <NavigationButtons showBack={false} />
+          </div>
 
-          <div className="grid md:grid-cols-[300px,1fr] gap-6">
-            <Card>
-              <CardContent className="p-6">
-                <h2 className="text-lg font-semibold mb-4">Select Date</h2>
-                <Calendar
-                  mode="single"
-                  selected={selectedDate}
-                  onSelect={(date) => setSelectedDate(date || new Date())}
-                  className="rounded-md border"
-                />
-              </CardContent>
-            </Card>
+          {/* <Card>
+            <CardContent className="p-6">
+              <h2 className="text-lg font-semibold mb-4">Select Date</h2>
+              <Calendar
+                mode="single"
+                selected={selectedDate}
+                onSelect={(date) => setSelectedDate(date || new Date())}
+                className="rounded-md border"
+              />
+            </CardContent>
+          </Card> */}
 
-            <Card>
+          <Card>
               <CardContent className="p-6">
                 <Tabs defaultValue={managedDoctors?.[0]?.doctor?.id?.toString()}>
                   <TabsList className="mb-4">
@@ -741,6 +820,23 @@ export default function AttenderDashboard() {
                                               </>
                                             )}
                                           </Button>
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="gap-2"
+                                            disabled={schedule.scheduleStatus === 'completed'}
+                                            onClick={() => handleCompleteSchedule(schedule.id)}
+                                          >
+                                            Schedule Completed
+                                          </Button>
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="gap-2"
+                                            onClick={() => handleToggleBooking(schedule.id, schedule.bookingStatus)}
+                                          >
+                                            {schedule.bookingStatus === 'closed' ? 'Open Booking' : 'Close Booking'}
+                                          </Button>
                                             <div className="flex gap-2">
                                               <Button
                                                 variant="outline"
@@ -782,7 +878,8 @@ export default function AttenderDashboard() {
                                             <tr className="border-b">
                                               <th className="text-left py-4 px-4">Token #</th>
                                               <th className="text-left py-4 px-4">Patient</th>
-                                              <th className="text-left py-4 px-4">Time</th>
+                                              <th className="text-left py-4 px-4">In Time</th>
+                                              <th className="text-left py-4 px-4">Out Time</th>
                                               <th className="text-left py-4 px-4">ETA</th>
                                               <th className="text-left py-4 px-4">Status</th>
                                               <th className="text-left py-4 px-4">Actions</th>
@@ -791,7 +888,7 @@ export default function AttenderDashboard() {
                                           <tbody>
                                             {scheduleAppointments.length === 0 ? (
                                               <tr>
-                                                <td colSpan={6} className="text-center py-8 text-muted-foreground">
+                                                <td colSpan={7} className="text-center py-8 text-muted-foreground">
                                                   No appointments scheduled for {format(selectedDate, "PPP")}
                                                 </td>
                                               </tr>
@@ -812,7 +909,18 @@ export default function AttenderDashboard() {
                                                       <div className="font-medium">{appointment.patient?.name}</div>
                                                     )}
                                                   </td>
-                                                  <td className="py-4 px-4">{format(new Date(appointment.date), "hh:mm a")}</td>
+                                                  <td className="py-4 px-4">
+                                                    {appointment.actualStartTime ? 
+                                                      format(new Date(appointment.actualStartTime), "hh:mm a") : 
+                                                      "-"
+                                                    }
+                                                  </td>
+                                                  <td className="py-4 px-4">
+                                                    {appointment.actualEndTime ? 
+                                                      format(new Date(appointment.actualEndTime), "hh:mm a") : 
+                                                      "-"
+                                                    }
+                                                  </td>
                                                   <td className="py-4 px-4">
                                                     <ETADisplay 
                                                       appointmentId={appointment.id} 
@@ -824,15 +932,17 @@ export default function AttenderDashboard() {
                                                     <Badge
                                                       variant={
                                                         appointment.status === "completed" ? "outline" :
-                                                        appointment.status === "start" ? "default" :
+                                                        appointment.status === "in_progress" ? "default" :
                                                         appointment.status === "hold" ? "secondary" :
                                                         appointment.status === "pause" ? "destructive" :
                                                         appointment.status === "cancel" ? "destructive" :
+                                                        appointment.status === "token_started" ? "outline" :
                                                         "outline"
                                                       }
                                                     >
-                                                      {appointment.status === "scheduled" ? "Scheduled" :
-                                                      appointment.status === "start" ? "In Progress" :
+                                                      {appointment.status === "token_started" ? "Token Started" :
+                                                      appointment.status === "scheduled" ? "Scheduled" :
+                                                      appointment.status === "in_progress" ? "In Progress" :
                                                       appointment.status === "hold" ? "On Hold" :
                                                       appointment.status === "pause" ? "Paused" :
                                                       appointment.status === "cancel" ? "Cancelled" :
@@ -878,7 +988,6 @@ export default function AttenderDashboard() {
                 </Tabs>
               </CardContent>
             </Card>
-          </div>
         </main>
       </TooltipProvider>
       <Dialog open={isWalkInDialogOpen} onOpenChange={setIsWalkInDialogOpen}>

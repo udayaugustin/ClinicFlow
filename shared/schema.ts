@@ -126,6 +126,11 @@ export const doctorSchedules = pgTable("doctor_schedules", {
   status: varchar("status", { length: 20 }).default("active"),
   cancelReason: text("cancel_reason"),
   cancelledAt: timestamp("cancelled_at"),
+  // Schedule-level status fields
+  scheduleStatus: varchar("schedule_status", { length: 20 }).default("active"), // active, completed
+  bookingStatus: varchar("booking_status", { length: 20 }).default("open"), // open, closed
+  completedAt: timestamp("completed_at"),
+  bookingClosedAt: timestamp("booking_closed_at"),
   // ETA calculation fields
   averageConsultationTime: integer("average_consultation_time").default(15), // in minutes
   actualArrivalTime: timestamp("actual_arrival_time"), // when doctor actually arrives
@@ -307,6 +312,8 @@ export const insertDoctorScheduleSchema = createInsertSchema(doctorSchedules, {
   maxTokens: z.number().min(1).default(20),
   isActive: z.boolean().default(true),
   isVisible: z.boolean().default(false),
+  scheduleStatus: z.enum(['active', 'completed']).default('active'),
+  bookingStatus: z.enum(['open', 'closed']).default('open'),
 });
 
 export const insertPatientFavoriteSchema = createInsertSchema(patientFavorites);

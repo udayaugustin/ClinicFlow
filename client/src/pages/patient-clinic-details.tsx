@@ -12,6 +12,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { NavHeader } from "@/components/nav-header";
+import { NavigationButtons } from "@/components/navigation-buttons";
 import axios from "axios";
 import React from "react";
 
@@ -401,6 +402,11 @@ export default function PatientClinicDetails() {
         slots.push(`${schedule.startTime} - ${schedule.endTime}`);
       }
       
+      // Check availability based on multiple conditions
+      const isScheduleCompleted = schedule.scheduleStatus === 'completed';
+      const isBookingClosed = schedule.bookingStatus === 'closed';
+      const isAvailable = schedule.isActive && !isScheduleCompleted && !isBookingClosed;
+
       return {
         id: schedule.id.toString(),
         day: dayName,
@@ -409,7 +415,13 @@ export default function PatientClinicDetails() {
         slots: slots,
         maxTokens: schedule.maxTokens,
         isActive: schedule.isActive,
-        isFavorite: schedule.isFavorite || false
+        scheduleStatus: schedule.scheduleStatus || 'active',
+        bookingStatus: schedule.bookingStatus || 'open',
+        isAvailable: isAvailable,
+        isFavorite: schedule.isFavorite || false,
+        statusMessage: isScheduleCompleted ? 'Schedule completed - doctor has finished' :
+                      isBookingClosed ? 'Booking closed - new appointments not accepted' :
+                      !schedule.isActive ? 'Currently inactive' : ''
       };
     });
   }, [scheduleData]);
@@ -466,7 +478,10 @@ export default function PatientClinicDetails() {
             </div>
           </div>
           <div className="flex-1">
-            <h1 className="text-3xl font-bold">{clinic.name}</h1>
+            <div className="flex items-center justify-between">
+              <h1 className="text-3xl font-bold">{clinic.name}</h1>
+              <NavigationButtons />
+            </div>
             <p className="text-muted-foreground mt-2">{clinic.address}</p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
               <div>
@@ -592,19 +607,37 @@ export default function PatientClinicDetails() {
                       
                       {processedSchedules.map((schedule) => (
                         <TabsContent key={schedule.id} value={schedule.id}>
-                          <div className="mb-4 flex items-center justify-between">
-                            <p className="text-sm text-muted-foreground">
-                              <span className="font-medium">Available Time:</span> {schedule.slots[0] || 'No slots'}
-                              {schedule.maxTokens && (
-                                <> | <span className="font-medium">Max Appointments:</span> {schedule.maxTokens}</>
-                              )}
-                              {schedule.isActive === false && (
-                                <span className="ml-2 text-red-500"> (Currently Inactive)</span>
-                              )}
-                              {schedule.isActive === true && schedule.isFavorite && (
-                                <span className="ml-2 text-green-600 font-medium"> ⭐ Active & Favorited</span>
-                              )}
-                            </p>
+                          <div className="mb-4">
+                            <div className="flex items-center justify-between">
+                              <p className="text-sm text-muted-foreground">
+                                <span className="font-medium">Available Time:</span> {schedule.slots[0] || 'No slots'}
+                                {schedule.maxTokens && (
+                                  <> | <span className="font-medium">Max Appointments:</span> {schedule.maxTokens}</>
+                                )}
+                                {schedule.statusMessage && (
+                                  <span className="ml-2 text-red-500"> ({schedule.statusMessage})</span>
+                                )}
+                                {schedule.isAvailable && schedule.isFavorite && (
+                                  <span className="ml-2 text-green-600 font-medium"> ⭐ Available & Favorited</span>
+                                )}
+                              </p>
+                              
+                              {/* Status Badge */}
+                              <div className="flex items-center gap-2">
+                                {schedule.scheduleStatus === 'completed' && (
+                                  <Badge variant="secondary">Schedule Completed</Badge>
+                                )}
+                                {schedule.bookingStatus === 'closed' && schedule.scheduleStatus !== 'completed' && (
+                                  <Badge variant="secondary">Booking Closed</Badge>
+                                )}
+                                {!schedule.isActive && schedule.scheduleStatus !== 'completed' && schedule.bookingStatus !== 'closed' && (
+                                  <Badge variant="destructive">Inactive</Badge>
+                                )}
+                                {schedule.isAvailable && (
+                                  <Badge variant="default">Available</Badge>
+                                )}
+                              </div>
+                            </div>
                             
                             {/* Favorite Toggle Button */}
                             {user && user.role === 'patient' && (
@@ -632,8 +665,8 @@ export default function PatientClinicDetails() {
                                 key={time}
                                 variant={selectedSlot?.day === schedule.day && selectedSlot?.time === time ? "default" : "outline"}
                                 className="flex items-center justify-center px-8 py-6 text-lg"
-                                onClick={() => setSelectedSlot({ day: schedule.day, time })}
-                                disabled={!schedule.isActive}
+                                onClick={() => schedule.isAvailable ? setSelectedSlot({ day: schedule.day, time }) : undefined}
+                                disabled={!schedule.isAvailable}
                               >
                                 <Clock className="mr-2 h-5 w-5" />
                                 {time}
@@ -644,7 +677,7 @@ export default function PatientClinicDetails() {
                           {selectedSlot?.day === schedule.day && (
                             <div className="mt-6 flex justify-end">
                               <Button 
-                                disabled={!schedule.isActive || bookingMutation.isPending}
+                                disabled={!schedule.isAvailable || bookingMutation.isPending}
                                 onClick={() => handleBookAppointment(schedule)}
                               >
                                 {bookingMutation.isPending ? (

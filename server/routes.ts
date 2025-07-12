@@ -281,6 +281,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'Invalid or inactive schedule for this appointment' });
       }
 
+      // Check if schedule is completed or booking is closed
+      if (schedule.scheduleStatus === 'completed') {
+        return res.status(400).json({ 
+          message: 'Cannot book appointment: Schedule has been completed. The doctor has finished for this session.' 
+        });
+      }
+
+      if (schedule.bookingStatus === 'closed') {
+        return res.status(400).json({ 
+          message: 'Cannot book appointment: Booking is currently closed for this schedule.' 
+        });
+      }
+
       // Get current token count for this date
       const appointments = await storage.getAppointmentCountForDoctor(
         Number(req.body.doctorId),
@@ -1118,6 +1131,82 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error resuming schedule:", error);
       res.status(500).json({ error: "Failed to resume schedule" });
+    }
+  });
+
+  // Schedule completion endpoint
+  app.patch("/api/schedules/:id/complete", async (req, res) => {
+    if (!req.user || !['hospital_admin', 'attender'].includes(req.user.role)) {
+      return res.status(403).json({ message: 'Unauthorized access' });
+    }
+    try {
+      const scheduleId = parseInt(req.params.id);
+      if (isNaN(scheduleId)) {
+        return res.status(400).json({ error: "Invalid schedule ID" });
+      }
+
+      await storage.completeSchedule(scheduleId);
+
+      // Get all appointments for this schedule that are not completed or cancelled
+      const appointments = await storage.getAppointmentsBySchedule(scheduleId);
+      const affectedAppointments = appointments.filter(apt => 
+        !['completed', 'cancel'].includes(apt.status || '')
+      );
+
+      // Notify patients about schedule completion
+      for (const appointment of affectedAppointments) {
+        if (appointment.patientId) {
+          await notificationService.createNotification({
+            userId: appointment.patientId,
+            appointmentId: appointment.id,
+            title: "Schedule Completed",
+            message: "The doctor's schedule has been completed. Please contact the clinic for any rescheduling needs.",
+            type: "schedule_completed"
+          });
+        }
+      }
+
+      res.json({ message: "Schedule marked as completed successfully" });
+    } catch (error) {
+      console.error("Error completing schedule:", error);
+      res.status(500).json({ error: "Failed to complete schedule" });
+    }
+  });
+
+  // Booking control endpoints
+  app.patch("/api/schedules/:id/booking-close", async (req, res) => {
+    if (!req.user || !['hospital_admin', 'attender'].includes(req.user.role)) {
+      return res.status(403).json({ message: 'Unauthorized access' });
+    }
+    try {
+      const scheduleId = parseInt(req.params.id);
+      if (isNaN(scheduleId)) {
+        return res.status(400).json({ error: "Invalid schedule ID" });
+      }
+
+      await storage.closeScheduleBooking(scheduleId);
+      res.json({ message: "Booking closed for schedule successfully" });
+    } catch (error) {
+      console.error("Error closing booking for schedule:", error);
+      res.status(500).json({ error: "Failed to close booking for schedule" });
+    }
+  });
+
+  app.patch("/api/schedules/:id/booking-open", async (req, res) => {
+    if (!req.user || !['hospital_admin', 'attender'].includes(req.user.role)) {
+      return res.status(403).json({ message: 'Unauthorized access' });
+    }
+    try {
+      const scheduleId = parseInt(req.params.id);
+      if (isNaN(scheduleId)) {
+        return res.status(400).json({ error: "Invalid schedule ID" });
+      }
+
+      await storage.openScheduleBooking(scheduleId);
+      res.json({ message: "Booking opened for schedule successfully" });
+    } catch (error) {
+      console.error("Error opening booking for schedule:", error);
+      res.status(500).json({ error: "Failed to open booking for schedule" });
     }
   });
 
