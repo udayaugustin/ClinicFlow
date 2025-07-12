@@ -67,7 +67,7 @@ export interface IStorage {
       doctorName: string;
       timeSlot: string;
       appointmentCount: number;
-      status: 'token_started' | 'in_progress' | 'paused' | 'completed' | 'cancelled';
+      status: 'token_started' | 'in_progress' | 'paused' | 'completed' | 'cancelled' | 'inactive_hidden' | 'inactive_visible';
     }>;
     summary: {
       totalSchedules: number;
@@ -2335,6 +2335,8 @@ export class DatabaseStorage implements IStorage {
     endTime: doctorSchedules.endTime,
     isPaused: doctorSchedules.isPaused,
     isActive: doctorSchedules.isActive,
+    isVisible: doctorSchedules.isVisible,
+    cancelReason: doctorSchedules.cancelReason,
     scheduleDate: doctorSchedules.date
   })
         .from(doctorSchedules)
@@ -2411,24 +2413,22 @@ export class DatabaseStorage implements IStorage {
             console.log(`Schedule ${schedule.id}: doctorHasArrived=${doctorHasArrived}`);
 
             // Determine schedule status based on doctor presence and schedule state
-            let scheduleStatus: 'token_started' | 'in_progress' | 'paused' | 'completed' | 'cancelled';
+            let scheduleStatus: 'token_started' | 'in_progress' | 'paused' | 'completed' | 'cancelled' | 'inactive_hidden' | 'inactive_visible';
             
-            if (!schedule.isActive) {
+            if (schedule.cancelReason) {
               scheduleStatus = 'cancelled';
             } else if (schedule.isPaused) {
               scheduleStatus = 'paused';
             } else if (currentTime > schedule.endTime) {
-              // Only mark as completed if the entire schedule time period has ended
-              // e.g., if schedule is 9 AM - 5 PM, only mark completed after 5 PM
-              // Individual appointments within this time should have their own status
               scheduleStatus = 'completed';
+            } else if (!schedule.isVisible) {
+              scheduleStatus = 'inactive_hidden';
+            } else if (schedule.isVisible && !schedule.isActive) {
+              scheduleStatus = 'inactive_visible';
+            } else if (schedule.isVisible && schedule.isActive) {
+              scheduleStatus = 'token_started';
             } else {
-              // Within schedule time period - status depends on doctor presence
-              if (doctorHasArrived) {
-                scheduleStatus = 'in_progress';
-              } else {
-                scheduleStatus = 'token_started'; // Default when doctor hasn't arrived yet
-              }
+              scheduleStatus = 'inactive_hidden'; // Default fallback
             }
             
             console.log(`Schedule ${schedule.id}: final status=${scheduleStatus}`);
@@ -2450,7 +2450,7 @@ export class DatabaseStorage implements IStorage {
   
       // Step 5: Summary stats
       const activeSchedules = schedulesWithAppointments.filter(
-        (s) => s.status === 'in_progress' || s.status === 'token_started'
+        (s) => s.status === 'in_progress' || s.status === 'token_started' || s.status === 'inactive_visible'
       ).length;
   
       const totalAppointments = schedulesWithAppointments.reduce(
