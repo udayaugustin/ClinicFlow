@@ -835,15 +835,17 @@ export default function AttenderDashboard() {
                                                     <Badge
                                                       variant={
                                                         appointment.status === "completed" ? "outline" :
-                                                        appointment.status === "start" ? "default" :
+                                                        appointment.status === "in_progress" ? "default" :
                                                         appointment.status === "hold" ? "secondary" :
                                                         appointment.status === "pause" ? "destructive" :
                                                         appointment.status === "cancel" ? "destructive" :
+                                                        appointment.status === "token_started" ? "outline" :
                                                         "outline"
                                                       }
                                                     >
-                                                      {appointment.status === "scheduled" ? "Scheduled" :
-                                                      appointment.status === "start" ? "In Progress" :
+                                                      {appointment.status === "token_started" ? "Token Started" :
+                                                      appointment.status === "scheduled" ? "Scheduled" :
+                                                      appointment.status === "in_progress" ? "In Progress" :
                                                       appointment.status === "hold" ? "On Hold" :
                                                       appointment.status === "pause" ? "Paused" :
                                                       appointment.status === "cancel" ? "Cancelled" :
