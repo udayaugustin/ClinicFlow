@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { LogOut, User, Calendar, UserPlus, Clock, Star } from "lucide-react";
 import { NotificationPopover } from "./notifications/notification-popover";
+import { CompactNavigationButtons } from "./navigation-buttons";
 import React from "react";
 
 export function NavHeader() {
@@ -89,6 +90,9 @@ export function NavHeader() {
               
               {/* Show notification bell for patients and doctors */}
               {canReceiveNotifications && <NotificationPopover />}
+              
+              {/* Compact Navigation Buttons */}
+              <CompactNavigationButtons className="hidden md:flex" />
               
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>

@@ -12,6 +12,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { NavHeader } from "@/components/nav-header";
+import { NavigationButtons } from "@/components/navigation-buttons";
 import axios from "axios";
 import React from "react";
 
@@ -477,7 +478,10 @@ export default function PatientClinicDetails() {
             </div>
           </div>
           <div className="flex-1">
-            <h1 className="text-3xl font-bold">{clinic.name}</h1>
+            <div className="flex items-center justify-between">
+              <h1 className="text-3xl font-bold">{clinic.name}</h1>
+              <NavigationButtons />
+            </div>
             <p className="text-muted-foreground mt-2">{clinic.address}</p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
               <div>

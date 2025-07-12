@@ -14,6 +14,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, Clock, UserCheck, UserX, Building } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { NavigationButtons } from "@/components/navigation-buttons";
 
 // Define types
 type Clinic = {
@@ -171,7 +172,10 @@ export default function PatientBookingPage() {
     <div className="min-h-screen bg-gray-50">
       <NavHeader />
       <main className="container mx-auto px-4 py-8">
-        <h1 className="text-2xl font-bold mb-6">Book Appointment</h1>
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-bold">Book Appointment</h1>
+          <NavigationButtons />
+        </div>
 
         <div className="grid md:grid-cols-[300px,1fr] gap-6">
           <Card>

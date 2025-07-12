@@ -26,6 +26,7 @@ import { ETADisplay } from "@/components/eta-display";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { NavigationButtons } from "@/components/navigation-buttons";
 import React from "react";
 
 // Updated type definition without presence info in schedules
@@ -651,7 +652,10 @@ export default function AttenderDashboard() {
       <NavHeader />
       <TooltipProvider>
         <main className="container mx-auto px-4 py-8">
-          <h1 className="text-2xl font-bold mb-6">Today's Doctor Appointments</h1>
+          <div className="flex items-center justify-between mb-6">
+            <h1 className="text-2xl font-bold">Today's Doctor Appointments</h1>
+            <NavigationButtons showBack={false} />
+          </div>
 
           {/* <Card>
             <CardContent className="p-6">

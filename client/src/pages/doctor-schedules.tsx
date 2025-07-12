@@ -16,6 +16,7 @@ import { format } from "date-fns";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import React from "react";
 import { useAuth } from "@/hooks/use-auth";
+import { NavigationButtons } from "@/components/navigation-buttons";
 import { apiRequest } from "@/lib/queryClient";
 
 // Define types
@@ -447,7 +448,10 @@ export default function DoctorSchedulesPage() {
     <div className="container mx-auto py-4">
       <NavHeader />
       <div className="flex justify-between items-center my-6">
-        <h1 className="text-3xl font-bold">Doctor Schedules</h1>
+        <div className="flex items-center gap-4">
+          <h1 className="text-3xl font-bold">Doctor Schedules</h1>
+          <NavigationButtons />
+        </div>
         <div className="flex items-center space-x-4">
           <Label htmlFor="doctor-select">Select Doctor:</Label>
           <Select
