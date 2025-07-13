@@ -9,6 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import { Clock, ArrowRight, Users, Ticket, CheckCircle2 } from "lucide-react";
 import { AppointmentStatusBadge } from "@/components/appointment-status-badge";
 import { ETADisplay } from "@/components/eta-display";
+import { NavigationButtons } from "@/components/navigation-buttons";
 import { apiRequest } from "@/lib/queryClient";
 import React, { useEffect, useState, useRef, useCallback } from "react";
 
@@ -201,7 +202,10 @@ export default function BookingHistoryPage() {
     <div className="min-h-screen bg-gray-50">
       <NavHeader />
       <main className="container mx-auto px-4 py-8">
-        <h1 className="text-2xl font-bold mb-6">My Appointments</h1>
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-bold">My Appointments</h1>
+          <NavigationButtons />
+        </div>
         <Card>
           <CardContent className="p-6">
             {!appointments?.length ? (
