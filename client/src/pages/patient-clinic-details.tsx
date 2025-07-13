@@ -362,10 +362,31 @@ export default function PatientClinicDetails() {
 
   // Process schedule data into a format suitable for the UI
   const processedSchedules = React.useMemo(() => {
+    const currentDate = new Date();
+    currentDate.setHours(0, 0, 0, 0); // Set to start of day for comparison
+
     if (!Array.isArray(scheduleData)) {
       // If we got a single schedule object, convert it to an array
       const schedule = scheduleData;
       if (schedule && schedule.date) {
+        const scheduleDate = new Date(schedule.date);
+        scheduleDate.setHours(0, 0, 0, 0); // Set to start of day for comparison
+
+        // Apply filtering logic:
+        // 1. Never show past dates
+        if (scheduleDate < currentDate) {
+          return [];
+        }
+
+        // 2. Always show current date schedules
+        const isToday = scheduleDate.getTime() === currentDate.getTime();
+
+        // 3. For future dates, only show if isVisible is true
+        const isFuture = scheduleDate > currentDate;
+        if (isFuture && !schedule.isVisible) {
+          return [];
+        }
+
         const date = new Date(schedule.date);
         const dayName = date.toLocaleDateString('en-US', { weekday: 'long' });
         const formattedDate = date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
@@ -384,46 +405,73 @@ export default function PatientClinicDetails() {
           slots: slots,
           maxTokens: schedule.maxTokens,
           isActive: schedule.isActive,
-          isFavorite: schedule.isFavorite || false
+          isFavorite: schedule.isFavorite || false,
+          isVisible: schedule.isVisible || false
         }];
       }
       return [];
     }
     
-    // If we have an array of schedules
-    return scheduleData.map(schedule => {
-      const date = new Date(schedule.date);
-      const dayName = date.toLocaleDateString('en-US', { weekday: 'long' });
-      const formattedDate = date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-      
-      // Create a single time range slot instead of individual slots
-      const slots = [];
-      if (schedule.startTime && schedule.endTime) {
-        slots.push(`${schedule.startTime} - ${schedule.endTime}`);
-      }
-      
-      // Check availability based on multiple conditions
-      const isScheduleCompleted = schedule.scheduleStatus === 'completed';
-      const isBookingClosed = schedule.bookingStatus === 'closed';
-      const isAvailable = schedule.isActive && !isScheduleCompleted && !isBookingClosed;
+   // If we have an array of schedules, filter them first, then map
+   return scheduleData
+     .filter(schedule => {
+       const scheduleDate = new Date(schedule.date);
+       scheduleDate.setHours(0, 0, 0, 0); // Set to start of day for comparison
 
-      return {
-        id: schedule.id.toString(),
-        day: dayName,
-        date: formattedDate,
-        rawDate: schedule.date, // Store the original date string for booking
-        slots: slots,
-        maxTokens: schedule.maxTokens,
-        isActive: schedule.isActive,
-        scheduleStatus: schedule.scheduleStatus || 'active',
-        bookingStatus: schedule.bookingStatus || 'open',
-        isAvailable: isAvailable,
-        isFavorite: schedule.isFavorite || false,
-        statusMessage: isScheduleCompleted ? 'Schedule completed - doctor has finished' :
-                      isBookingClosed ? 'Booking closed - new appointments not accepted' :
-                      !schedule.isActive ? 'Currently inactive' : ''
-      };
-    });
+       // Apply filtering logic:
+       // 1. Never show past dates
+       if (scheduleDate < currentDate) {
+         return false;
+       }
+
+       // 2. Always show current date schedules
+       const isToday = scheduleDate.getTime() === currentDate.getTime();
+       if (isToday) {
+         return true;
+       }
+
+       // 3. For future dates, only show if isVisible is true
+       const isFuture = scheduleDate > currentDate;
+       if (isFuture && schedule.isVisible) {
+         return true;
+       }
+
+       return false;
+     })
+     .map(schedule => {
+       const date = new Date(schedule.date);
+       const dayName = date.toLocaleDateString('en-US', { weekday: 'long' });
+       const formattedDate = date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
+       // Create a single time range slot instead of individual slots
+       const slots = [];
+       if (schedule.startTime && schedule.endTime) {
+         slots.push(`${schedule.startTime} - ${schedule.endTime}`);
+       }
+
+       // Check availability based on multiple conditions (colleague's logic)
+       const isScheduleCompleted = schedule.scheduleStatus === 'completed';
+       const isBookingClosed = schedule.bookingStatus === 'closed';
+       const isAvailable = schedule.isActive && !isScheduleCompleted && !isBookingClosed;
+
+       return {
+         id: schedule.id.toString(),
+         day: dayName,
+         date: formattedDate,
+         rawDate: schedule.date, // Store the original date string for booking
+         slots: slots,
+         maxTokens: schedule.maxTokens,
+         isActive: schedule.isActive,
+         scheduleStatus: schedule.scheduleStatus || 'active',
+         bookingStatus: schedule.bookingStatus || 'open',
+         isAvailable: isAvailable,
+         isFavorite: schedule.isFavorite || false,
+         isVisible: schedule.isVisible || false,
+         statusMessage: isScheduleCompleted ? 'Schedule completed - doctor has finished' :
+                       isBookingClosed ? 'Booking closed - new appointments not accepted' :
+                       !schedule.isActive ? 'Currently inactive' : ''
+       };
+     });
   }, [scheduleData]);
 
   // Filter doctors based on search term
@@ -621,7 +669,7 @@ export default function PatientClinicDetails() {
                                   <span className="ml-2 text-green-600 font-medium"> ⭐ Available & Favorited</span>
                                 )}
                               </p>
-                              
+
                               {/* Status Badge */}
                               <div className="flex items-center gap-2">
                                 {schedule.scheduleStatus === 'completed' && (

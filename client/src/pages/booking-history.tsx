@@ -321,7 +321,7 @@ export default function BookingHistoryPage() {
                                 ) : appointment.status === "completed" ? (
                                   <div>
                                     <div className="flex justify-between text-sm mb-1">
-                                      <span className="text-muted-foreground">Current token: {appointment.tokenNumber}</span>
+                                      <span className="text-muted-foreground">Current token: -</span>
                                       <span className="text-muted-foreground">Your token: {appointment.tokenNumber}</span>
                                     </div>
                                     <Progress value={100} className="h-2" />
@@ -332,8 +332,7 @@ export default function BookingHistoryPage() {
                                 ) : progress?.currentToken !== undefined && (
                                   <div>
                                     <div className="flex justify-between text-sm mb-1">
-                                      <span className="text-muted-foreground">Current token: {progress.currentToken}</span>
-                                      <span className="text-muted-foreground">Your token: {appointment.tokenNumber}</span>
+                                      <span className="text-muted-foreground text-right w-full">Your token: {appointment.tokenNumber}</span>
                                     </div>
                                     <Progress value={(progress.currentToken / maxTokenNumber) * 100} className="h-2" />
                                     <div className="text-sm text-center mt-1">
