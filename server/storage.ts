@@ -2536,6 +2536,55 @@ export class DatabaseStorage implements IStorage {
       throw error;
     }
   }
+
+  // Check if password already exists
+  async checkPasswordExists(password: string): Promise<boolean> {
+    const { scrypt, randomBytes, timingSafeEqual } = await import('crypto');
+    const { promisify } = await import('util');
+    const scryptAsync = promisify(scrypt);
+    
+    // Get all users to check password hashes
+    const allUsers = await db.select().from(users);
+    
+    for (const user of allUsers) {
+      try {
+        const [hashed, salt] = user.password.split(".");
+        if (!hashed || !salt) {
+          continue; // Skip invalid password format
+        }
+        const hashedBuf = Buffer.from(hashed, "hex");
+        const suppliedBuf = (await scryptAsync(password, salt, 64)) as Buffer;
+        if (timingSafeEqual(hashedBuf, suppliedBuf)) {
+          return true;
+        }
+      } catch (error) {
+        console.error("Error checking password:", error);
+        continue;
+      }
+    }
+    
+    return false;
+  }
+
+  // Reset attender password
+  async resetAttenderPassword(attenderId: number, newPassword: string): Promise<void> {
+    const { scrypt, randomBytes } = await import('crypto');
+    const { promisify } = await import('util');
+    const scryptAsync = promisify(scrypt);
+    
+    // Hash password using the same method as auth.ts
+    const salt = randomBytes(16).toString("hex");
+    const buf = (await scryptAsync(newPassword, salt, 64)) as Buffer;
+    const hashedPassword = `${buf.toString("hex")}.${salt}`;
+    
+    await db
+      .update(users)
+      .set({ 
+        password: hashedPassword,
+        updatedAt: sql`CURRENT_TIMESTAMP`
+      })
+      .where(eq(users.id, attenderId));
+  }
 }
 
 export const storage = new DatabaseStorage();

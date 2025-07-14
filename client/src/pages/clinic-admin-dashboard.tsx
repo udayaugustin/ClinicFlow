@@ -34,6 +34,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -142,6 +143,15 @@ export default function ClinicAdminDashboard() {
   const [isAssignDoctorDialogOpen, setIsAssignDoctorDialogOpen] = useState(false);
   const [selectedAttender, setSelectedAttender] = useState<Attender | null>(null);
   const [attenderId, setAttenderId] = useState<number | null>(null);
+  
+  // Reset password state
+  const [resetPasswordDialog, setResetPasswordDialog] = useState({
+    isOpen: false,
+    attenderId: null,
+    attenderName: ''
+  });
+  const [newPassword, setNewPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   // Form hooks
   const addDoctorForm = useForm<z.infer<typeof doctorSchema>>({ 
     resolver: zodResolver(doctorSchema),
@@ -491,6 +501,56 @@ export default function ClinicAdminDashboard() {
       });
     }
   });
+
+  // Reset password mutation
+  const resetPasswordMutation = useMutation({
+    mutationFn: async ({ attenderId, newPassword }: { attenderId: number; newPassword: string }) => {
+      const res = await apiRequest('PATCH', '/api/admin/reset-attender-password', { attenderId, newPassword });
+      return await res.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Success',
+        description: 'Password reset successfully'
+      });
+      setResetPasswordDialog({ isOpen: false, attenderId: null, attenderName: '' });
+      setNewPassword('');
+      queryClient.invalidateQueries({ queryKey: ['clinic-attenders', params?.id || user?.clinicId] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to reset password',
+        variant: 'destructive'
+      });
+    }
+  });
+
+  // Reset password handlers
+  const handleResetPassword = () => {
+    if (!newPassword.trim()) {
+      toast({
+        title: 'Error',
+        description: 'Please enter a new password',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    resetPasswordMutation.mutate({
+      attenderId: resetPasswordDialog.attenderId!,
+      newPassword: newPassword.trim()
+    });
+  };
+
+  const openResetDialog = (attenderId: number, attenderName: string) => {
+    setResetPasswordDialog({
+      isOpen: true,
+      attenderId,
+      attenderName
+    });
+    setNewPassword('');
+  };
   
   // Fetch clinic details
   const { 
@@ -888,17 +948,17 @@ export default function ClinicAdminDashboard() {
                         </Avatar>
                         <div>
                           <p className="font-medium">{attender.name}</p>
-                          <p className="text-sm text-muted-foreground">
+                          {/* <p className="text-sm text-muted-foreground">
                             Supporting {attender.assignedDoctors?.length || 0} doctor{(attender.assignedDoctors?.length || 0) !== 1 ? 's' : ''}
-                          </p>
+                          </p> */}
                         </div>
                       </div>
                       <div className="flex items-center gap-4">
-                        {attender.isOnDuty === true ? (
+                        {/* {attender.isOnDuty === true ? (
                           <Badge variant="outline" className="bg-green-50 text-green-600">On Duty</Badge>
                         ) : (
                           <Badge variant="outline" className="bg-gray-50 text-gray-600">Off Duty</Badge>
-                        )}
+                        )} */}
                         <div className="flex gap-2">
                           <Button 
                             variant="outline" 
@@ -929,7 +989,7 @@ export default function ClinicAdminDashboard() {
                           >
                             <Trash2 className="h-4 w-4 mr-1" /> Delete
                           </Button>
-                          <Button 
+                          {/* <Button 
                             variant="outline" 
                             size="sm"
                             className="text-blue-600 hover:bg-blue-50"
@@ -940,7 +1000,16 @@ export default function ClinicAdminDashboard() {
                             }}
                           >
                             Assign Doctor
-                          </Button>
+                          </Button> */}
+                          {
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => openResetDialog(attender.id, attender.name)}
+                            >
+                              Reset Password
+                            </Button>
+                          }
                         </div>
                       </div>
                     </div>
@@ -1763,6 +1832,59 @@ export default function ClinicAdminDashboard() {
               Done
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reset Password Dialog */}
+      <Dialog open={resetPasswordDialog.isOpen} onOpenChange={(open) => 
+        setResetPasswordDialog({ isOpen: open, attenderId: null, attenderName: '' })
+      }>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reset Password for {resetPasswordDialog.attenderName}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="newPassword">New Password</Label>
+              <div className="relative">
+                <Input
+                  id="newPassword"
+                  type={showPassword ? "text" : "password"}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Enter new password"
+                  className="pr-10"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? '🙈' : '👁️'}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Minimum 8 characters, 1 number, 1 special character
+              </p>
+            </div>
+            
+            <div className="flex justify-end space-x-2">
+              <Button 
+                variant="outline" 
+                onClick={() => setResetPasswordDialog({ isOpen: false, attenderId: null, attenderName: '' })}
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleResetPassword}
+                disabled={resetPasswordMutation.isPending}
+              >
+                {resetPasswordMutation.isPending ? 'Resetting...' : 'Reset Password'}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

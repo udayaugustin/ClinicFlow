@@ -2247,6 +2247,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Reset attender password by clinic admin
+  app.patch("/api/admin/reset-attender-password", async (req, res) => {
+    if (!req.user || req.user.role !== 'clinic_admin') {
+      return res.status(403).json({ message: 'Only clinic admins can reset passwords' });
+    }
+
+    try {
+      const { attenderId, newPassword } = req.body;
+
+      // Validate password requirements
+      const passwordRegex = /^(?=.*[0-9])(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{8,}$/;
+      if (!passwordRegex.test(newPassword)) {
+        return res.status(400).json({ 
+          message: 'Password must be at least 8 characters with 1 number and 1 special character' 
+        });
+      }
+
+      // Check if password already exists for any user
+      const existingUser = await storage.checkPasswordExists(newPassword);
+      if (existingUser) {
+        return res.status(400).json({ 
+          message: 'This password is already in use. Please choose a different password.' 
+        });
+      }
+
+      // Reset the password
+      await storage.resetAttenderPassword(attenderId, newPassword);
+
+      res.json({ message: 'Password reset successfully' });
+    } catch (error) {
+      console.error('Error resetting password:', error);
+      res.status(500).json({ message: 'Failed to reset password' });
+    }
+  });
+
   // Debug route to test notifications
   app.post("/api/debug/test-notification/:scheduleId", async (req, res) => {
     try {
