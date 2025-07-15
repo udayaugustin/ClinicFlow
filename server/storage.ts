@@ -19,7 +19,7 @@ import {
   type PatientFavorite,
   type InsertPatientFavorite,
 } from "@shared/schema";
-import { eq, or, and, sql, inArray, lte, gte, count, not, gt, lt } from "drizzle-orm";
+import { eq, or, and, sql, inArray, lte, gte, count, not, gt, lt, getTableColumns } from "drizzle-orm";
 import { db } from "./db";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
@@ -1481,7 +1481,7 @@ export class DatabaseStorage implements IStorage {
     return db.insert(doctorSchedules).values(schedule).returning();
   }
 
-  async getDoctorSchedules(doctorId: number, date?: Date, visibleOnly: boolean = false): Promise<DoctorSchedule[]> {
+  async getDoctorSchedules(doctorId: number, date?: Date, visibleOnly: boolean = false): Promise<(DoctorSchedule & { createdByUser?: { id: number; name: string } })[]> {
     let conditions = [eq(doctorSchedules.doctorId, doctorId)];
     
     if (date) {
@@ -1494,11 +1494,24 @@ export class DatabaseStorage implements IStorage {
       conditions.push(eq(doctorSchedules.isVisible, true));
     }
 
-    return db
-      .select()
+    // Join with users table to get creator information
+    const results = await db
+      .select({
+        schedule: doctorSchedules,
+        creator: users,
+      })
       .from(doctorSchedules)
+      .leftJoin(users, eq(doctorSchedules.createdBy, users.id))
       .where(and(...conditions))
       .orderBy(doctorSchedules.date, doctorSchedules.startTime);
+
+    // Transform the results to handle null creator info
+    return results.map(result => ({
+      ...result.schedule,
+      createdByUser: result.creator
+        ? { id: result.creator.id, name: result.creator.name }
+        : { id: 0, name: "Legacy Schedule" }, // Default for old schedules without creator
+    }));
   }
 
   async getDoctorSchedule(scheduleId: number): Promise<DoctorSchedule | null> {
@@ -2584,6 +2597,235 @@ export class DatabaseStorage implements IStorage {
         updatedAt: sql`CURRENT_TIMESTAMP`
       })
       .where(eq(users.id, attenderId));
+  }
+
+  // Clinic Admin - Get all doctors in clinic with their appointments
+  async getClinicDoctorsAppointments(clinicId: number): Promise<Array<{
+    doctor: User, 
+    appointments: (Appointment & { patient?: User })[], 
+    schedules: (typeof doctorSchedules.$inferSelect & { 
+      appointments: (Appointment & { patient?: User })[]
+    })[]
+  }>> {
+    try {
+      console.log('Getting appointments for clinic:', clinicId);
+
+      // Get all doctors in this clinic
+      const clinicDoctors = await db
+        .select()
+        .from(doctorClinics)
+        .innerJoin(users, eq(users.id, doctorClinics.doctorId))
+        .where(eq(doctorClinics.clinicId, clinicId));
+
+      if (!clinicDoctors.length) {
+        return [];
+      }
+
+      // Get appointments for each doctor
+      const doctorsWithAppointments = await Promise.all(
+        clinicDoctors.map(async (relation) => {
+          const doctor = relation.users;
+          const today = new Date();          
+
+          // Get doctor's schedules for today
+          const schedules = await db
+            .select()
+            .from(doctorSchedules)
+            .where(
+              and(
+                eq(doctorSchedules.doctorId, doctor.id),
+                eq(doctorSchedules.isActive, true),
+                eq(doctorSchedules.date, today)
+              )
+            )
+            .orderBy(doctorSchedules.startTime);
+
+          // Get appointments for this doctor
+          const appointmentsForDoctor = await db
+            .select()
+            .from(appointments)
+            .where(
+              and(
+                eq(appointments.doctorId, doctor.id),
+                gte(appointments.date, new Date(today.setHours(0, 0, 0, 0))),
+                lte(appointments.date, new Date(today.setHours(23, 59, 59, 999)))
+              )
+            );
+
+          // Get patient data for these appointments
+          const patientIds = Array.from(new Set(appointmentsForDoctor.map(apt => apt.patientId)));
+          const patients = patientIds.length > 0 ? await db
+            .select()
+            .from(users)
+            .where(inArray(users.id, patientIds)) : [];
+
+          const patientsMap = new Map(patients.map(p => [p.id, p]));
+
+          // Add patient data to appointments
+          const appointmentsWithPatients = appointmentsForDoctor.map(apt => ({
+            ...apt,
+            patient: patientsMap.get(apt.patientId),
+          }));
+
+          // Map schedules with their appointments
+          const schedulesWithAppointments = schedules.map(schedule => {
+            const scheduleAppointments = appointmentsWithPatients.filter(apt => {
+              if (apt.scheduleId === schedule.id) {
+                return true;
+              }
+              return false;
+            });
+            
+            return {
+              ...schedule,
+              appointments: scheduleAppointments
+            };
+          });
+
+          return {
+            doctor,
+            appointments: appointmentsWithPatients,
+            schedules: schedulesWithAppointments,
+          };
+        })
+      );
+
+      return doctorsWithAppointments;
+    } catch (error) {
+      console.error('Error in getClinicDoctorsAppointments:', error);
+      throw error;
+    }
+  }
+
+  // Clinic Admin - Get today's schedules for the clinic
+  async getClinicSchedulesToday(clinicId: number): Promise<{
+    schedules: Array<{
+      id: number;
+      doctorName: string;
+      startTime: string;
+      endTime: string;
+      specialty: string;
+      hasArrived: boolean;
+      totalAppointments: number;
+      currentToken: number;
+    }>;
+    summary: {
+      totalDoctors: number;
+      presentDoctors: number;
+      totalAppointments: number;
+      completedAppointments: number;
+    };
+  }> {
+    try {
+      console.log('Getting schedules for clinic:', clinicId);
+
+      // Get all doctors in this clinic
+      const clinicDoctors = await db
+        .select({
+          doctorId: doctorClinics.doctorId,
+        })
+        .from(doctorClinics)
+        .where(eq(doctorClinics.clinicId, clinicId));
+
+      if (!clinicDoctors.length) {
+        return {
+          schedules: [],
+          summary: { totalDoctors: 0, presentDoctors: 0, totalAppointments: 0, completedAppointments: 0 },
+        };
+      }
+
+      const doctorIds = clinicDoctors.map((d) => d.doctorId);
+
+      // Get today's schedules
+      const today = new Date();
+      const todayString = today.toISOString().split('T')[0];
+
+      const schedulesResult = await db
+        .select({
+          id: doctorSchedules.id,
+          doctorId: doctorSchedules.doctorId,
+          doctorName: users.name,
+          specialty: users.specialty,
+          startTime: doctorSchedules.startTime,
+          endTime: doctorSchedules.endTime,
+          isPaused: doctorSchedules.isPaused,
+          isActive: doctorSchedules.isActive,
+          scheduleDate: doctorSchedules.date
+        })
+        .from(doctorSchedules)
+        .innerJoin(users, eq(users.id, doctorSchedules.doctorId))
+        .where(
+          and(
+            inArray(doctorSchedules.doctorId, doctorIds),
+            eq(doctorSchedules.date, todayString)
+          )
+        );
+
+      // Get doctor presence data
+      const presenceData = await db
+        .select()
+        .from(doctorDailyPresence)
+        .where(
+          and(
+            inArray(doctorDailyPresence.doctorId, doctorIds),
+            eq(doctorDailyPresence.date, today)
+          )
+        );
+
+      const presenceMap = new Map(presenceData.map(p => [p.doctorId, p.hasArrived]));
+
+      // Get appointment counts
+      const appointmentCounts = await db
+        .select({
+          doctorId: appointments.doctorId,
+          count: count(),
+          completedCount: sql<number>`COUNT(CASE WHEN ${appointments.status} = 'completed' THEN 1 END)`,
+        })
+        .from(appointments)
+        .where(
+          and(
+            inArray(appointments.doctorId, doctorIds),
+            gte(appointments.date, new Date(today.setHours(0, 0, 0, 0))),
+            lte(appointments.date, new Date(today.setHours(23, 59, 59, 999)))
+          )
+        )
+        .groupBy(appointments.doctorId);
+
+      const appointmentCountMap = new Map(
+        appointmentCounts.map(ac => [ac.doctorId, { total: ac.count, completed: ac.completedCount }])
+      );
+
+      // Format schedules
+      const formattedSchedules = schedulesResult.map(schedule => ({
+        id: schedule.id,
+        doctorName: schedule.doctorName,
+        startTime: schedule.startTime,
+        endTime: schedule.endTime,
+        specialty: schedule.specialty || 'General',
+        hasArrived: presenceMap.get(schedule.doctorId) || false,
+        totalAppointments: appointmentCountMap.get(schedule.doctorId)?.total || 0,
+        currentToken: 0, // Would need additional logic to get current token
+      }));
+
+      // Calculate summary
+      const totalDoctors = schedulesResult.length;
+      const presentDoctors = formattedSchedules.filter(s => s.hasArrived).length;
+      const totalAppointments = Array.from(appointmentCountMap.values()).reduce((sum, counts) => sum + counts.total, 0);
+      const completedAppointments = Array.from(appointmentCountMap.values()).reduce((sum, counts) => sum + counts.completed, 0);
+
+      return {
+        schedules: formattedSchedules,
+        summary: {
+          totalDoctors,
+          presentDoctors,
+          totalAppointments,
+          completedAppointments,
+        },
+      };
+    } catch (error) {
+      console.error('Error in getClinicSchedulesToday:', error);
+      throw error;
+    }
   }
 }
 

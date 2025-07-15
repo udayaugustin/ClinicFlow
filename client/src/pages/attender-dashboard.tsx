@@ -76,13 +76,14 @@ export default function AttenderDashboard() {
     date: Date;
   } | null>(null);
 
-  // Main query for fetching doctor data with schedules and appointments
+  // Main query for fetching doctor data with schedules and appointments  
   const { data: managedDoctors, isLoading, error } = useQuery<DoctorWithAppointments[]>({
-    queryKey: [`/api/attender/${user?.id}/doctors/appointments`, selectedDate],
+    queryKey: [`/api/attender/${user?.id}/doctors/appointments`, selectedDate, user?.role],
     enabled: !!user?.id,
     // Refresh every 30 seconds to keep appointments data current
     refetchInterval: 30000,
     queryFn: async () => {
+      // The shared route already handles both attender and clinic_admin roles
       const res = await apiRequest("GET", `/api/attender/${user?.id}/doctors/appointments`);
       const data = await res.json();
       

@@ -544,13 +544,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Attender appointments route - Single endpoint for attender appointments
   app.get("/api/attender/:id/doctors/appointments", async (req, res) => {
     if (!req.user) return res.sendStatus(401);
-    if (req.user.role !== "attender") return res.sendStatus(403);
+    
+    // Allow both attenders and clinic admins
+    if (req.user.role !== "attender" && req.user.role !== "clinic_admin") {
+      return res.sendStatus(403);
+    }
 
     try {
-      const doctorsWithAppointments = await storage.getAttenderDoctorsAppointments(parseInt(req.params.id));
-      res.json(doctorsWithAppointments);
+      const userId = parseInt(req.params.id);
+      
+      // For clinic admins, we need to get their clinic's data differently
+      if (req.user.role === "clinic_admin") {
+        // Use clinic admin's clinic ID to get all doctors in the clinic
+        if (!req.user.clinicId) {
+          return res.status(400).json({ message: 'Clinic admin not assigned to a clinic' });
+        }
+        const doctorsWithAppointments = await storage.getClinicDoctorsAppointments(req.user.clinicId);
+        return res.json(doctorsWithAppointments);
+      } else {
+        // Original attender logic
+        const doctorsWithAppointments = await storage.getAttenderDoctorsAppointments(userId);
+        return res.json(doctorsWithAppointments);
+      }
     } catch (error) {
-      console.error('Error fetching attender doctor appointments:', error);
+      console.error('Error fetching doctor appointments:', error);
       res.status(500).json({ message: 'Failed to fetch appointments' });
     }
   });
@@ -1211,7 +1228,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/doctors/:id/schedules", async (req, res) => {
-    if (!req.user || !['hospital_admin', 'attender'].includes(req.user.role)) {
+    if (!req.user || !['hospital_admin', 'attender', 'clinic_admin'].includes(req.user.role)) {
       return res.status(403).json({ message: 'Unauthorized access' });
     }
 
@@ -1276,10 +1293,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Create the schedule
+      // Create the schedule with proper creator tracking
       const schedule = await storage.createDoctorSchedule({
         doctorId,
         ...validData,
+        createdBy: req.user.id, // Now properly tracking who created the schedule
       });
 
       // If schedule is created as active, notify patients who might have favorited this doctor
@@ -1940,16 +1958,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/attender/schedules-today', async (req, res) => {
     console.log('Schedules request:', { user: req.user });
   
-    // Auth check
-    if (!req.user || req.user.role !== 'attender') {
+    // Allow both attenders and clinic admins
+    if (!req.user || (req.user.role !== 'attender' && req.user.role !== 'clinic_admin')) {
       console.log('Auth failed:', { user: req.user?.role });
       return res.sendStatus(403);
     }
   
     try {
-      const attenderId = req.user.id;
-  
-      const schedules = await storage.getAttenderSchedulesToday(attenderId);
+      let schedules;
+      
+      if (req.user.role === 'clinic_admin') {
+        // For clinic admins, use their clinic ID directly
+        if (!req.user.clinicId) {
+          return res.status(400).json({ message: 'Clinic admin not assigned to a clinic' });
+        }
+        schedules = await storage.getClinicSchedulesToday(req.user.clinicId);
+      } else {
+        // Original attender logic
+        const attenderId = req.user.id;
+        schedules = await storage.getAttenderSchedulesToday(attenderId);
+      }
+      
       res.json(schedules);
     } catch (error) {
       console.error('Error fetching schedules:', error);

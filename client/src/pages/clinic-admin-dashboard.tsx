@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { Redirect, useLocation, useRoute } from 'wouter';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -123,6 +123,40 @@ const attenderSchema = z.object({
 // Edit schemas (without password)
 const editDoctorSchema = doctorSchema.omit({ password: true });
 const editAttenderSchema = attenderSchema.omit({ password: true });
+
+// Doctor Dashboard Content Component - Navigate to dedicated doctor dashboard page
+function DoctorDashboardContent() {
+  const [_, navigate] = useLocation();
+  
+  // Navigate to the attender dashboard page immediately
+  useEffect(() => {
+    navigate('/attender-dashboard');
+  }, [navigate]);
+
+  return (
+    <div className="flex items-center justify-center h-64">
+      <Loader2 className="h-8 w-8 animate-spin" />
+      <span className="ml-2">Redirecting to doctor dashboard...</span>
+    </div>
+  );
+}
+
+// Schedules Content Component - Navigate to dedicated schedules page
+function SchedulesContent() {
+  const [_, navigate] = useLocation();
+  
+  // Navigate to the schedules page immediately
+  useEffect(() => {
+    navigate('/schedules');
+  }, [navigate]);
+
+  return (
+    <div className="flex items-center justify-center h-64">
+      <Loader2 className="h-8 w-8 animate-spin" />
+      <span className="ml-2">Redirecting to schedules...</span>
+    </div>
+  );
+}
 
 export default function ClinicAdminDashboard() {
   const { user } = useAuth();
@@ -719,9 +753,11 @@ export default function ClinicAdminDashboard() {
       </div>
 
       <Tabs defaultValue="overview" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="staff">Staff</TabsTrigger>
+          <TabsTrigger value="doctor-dashboard">Doctor Dashboard</TabsTrigger>
+          <TabsTrigger value="schedules">Schedules</TabsTrigger>
           <TabsTrigger value="appointments">Appointments</TabsTrigger>
         </TabsList>
 
@@ -1102,6 +1138,16 @@ export default function ClinicAdminDashboard() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Doctor Dashboard Tab */}
+        <TabsContent value="doctor-dashboard" className="space-y-6">
+          <DoctorDashboardContent />
+        </TabsContent>
+
+        {/* Schedules Tab */}
+        <TabsContent value="schedules" className="space-y-6">
+          <SchedulesContent />
         </TabsContent>
       </Tabs>
       

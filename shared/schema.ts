@@ -134,6 +134,7 @@ export const doctorSchedules = pgTable("doctor_schedules", {
   // ETA calculation fields
   averageConsultationTime: integer("average_consultation_time").default(15), // in minutes
   actualArrivalTime: timestamp("actual_arrival_time"), // when doctor actually arrives
+  createdBy: integer("created_by").references(() => users.id), // Track who created the schedule
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
 });
@@ -259,10 +260,16 @@ export const doctorSchedulesRelations = relations(doctorSchedules, ({ one, many 
   doctor: one(users, {
     fields: [doctorSchedules.doctorId],
     references: [users.id],
+    relationName: "doctor",
   }),
   clinic: one(clinics, {
     fields: [doctorSchedules.clinicId],
     references: [clinics.id],
+  }),
+  createdByUser: one(users, {
+    fields: [doctorSchedules.createdBy],
+    references: [users.id],
+    relationName: "creator",
   }),
   favorites: many(patientFavorites),
 }));
