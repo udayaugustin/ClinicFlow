@@ -854,8 +854,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Doctor management routes
   app.post("/api/doctors", async (req, res) => {
     try {
-      // Check if user is authorized (must be hospital_admin or attender)
-      if (!req.user || (req.user.role !== "hospital_admin" && req.user.role !== "attender")) {
+      // Check if user is authorized (must be hospital_admin, attender, or clinic_admin)
+      if (!req.user || (req.user.role !== "hospital_admin" && req.user.role !== "attender" && req.user.role !== "clinic_admin")) {
         return res.status(403).json({ message: "Unauthorized" });
       }
 
@@ -937,8 +937,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Update doctor details
   app.patch("/api/doctors/:id/details", async (req, res) => {
     try {
-      // Check if user is authorized (must be hospital_admin or attender)
-      if (!req.user || (req.user.role !== "hospital_admin" && req.user.role !== "attender")) {
+      // Check if user is authorized (must be hospital_admin, attender, or clinic_admin)
+      if (!req.user || (req.user.role !== "hospital_admin" && req.user.role !== "attender" && req.user.role !== "clinic_admin")) {
         return res.status(403).json({ message: "Unauthorized" });
       }
       
@@ -968,8 +968,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Toggle doctor status (enable/disable)
   app.patch("/api/doctors/:id/status", async (req, res) => {
     try {
-      // Check if user is authorized (must be hospital_admin or attender)
-      if (!req.user || (req.user.role !== "hospital_admin" && req.user.role !== "attender")) {
+      // Check if user is authorized (must be hospital_admin, attender, or clinic_admin)
+      if (!req.user || (req.user.role !== "hospital_admin" && req.user.role !== "attender" && req.user.role !== "clinic_admin")) {
         return res.status(403).json({ message: "Unauthorized" });
       }
       
@@ -1072,7 +1072,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Schedule pause routes
   app.patch("/api/schedules/:id/pause", async (req, res) => {
-    if (!req.user || !['hospital_admin', 'attender', 'doctor'].includes(req.user.role)) {
+    if (!req.user || !['hospital_admin', 'attender', 'doctor', 'clinic_admin'].includes(req.user.role)) {
       return res.status(403).json({ message: 'Unauthorized access' });
     }
     try {
@@ -1115,7 +1115,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.patch("/api/schedules/:id/resume", async (req, res) => {
-    if (!req.user || !['hospital_admin', 'attender', 'doctor'].includes(req.user.role)) {
+    if (!req.user || !['hospital_admin', 'attender', 'doctor', 'clinic_admin'].includes(req.user.role)) {
       return res.status(403).json({ message: 'Unauthorized access' });
     }
     try {
@@ -1153,7 +1153,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Schedule completion endpoint
   app.patch("/api/schedules/:id/complete", async (req, res) => {
-    if (!req.user || !['hospital_admin', 'attender'].includes(req.user.role)) {
+    if (!req.user || !['hospital_admin', 'attender', 'clinic_admin'].includes(req.user.role)) {
       return res.status(403).json({ message: 'Unauthorized access' });
     }
     try {
@@ -1192,7 +1192,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Booking control endpoints
   app.patch("/api/schedules/:id/booking-close", async (req, res) => {
-    if (!req.user || !['hospital_admin', 'attender'].includes(req.user.role)) {
+    if (!req.user || !['hospital_admin', 'attender', 'clinic_admin'].includes(req.user.role)) {
       return res.status(403).json({ message: 'Unauthorized access' });
     }
     try {
@@ -1210,7 +1210,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.patch("/api/schedules/:id/booking-open", async (req, res) => {
-    if (!req.user || !['hospital_admin', 'attender'].includes(req.user.role)) {
+    if (!req.user || !['hospital_admin', 'attender', 'clinic_admin'].includes(req.user.role)) {
       return res.status(403).json({ message: 'Unauthorized access' });
     }
     try {
@@ -1322,7 +1322,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.patch("/api/doctors/schedules/:id", async (req, res) => {
-    if (!req.user || !['hospital_admin', 'attender'].includes(req.user.role)) {
+    if (!req.user || !['hospital_admin', 'attender', 'clinic_admin'].includes(req.user.role)) {
       return res.status(403).json({ message: 'Unauthorized access' });
     }
 
@@ -1405,7 +1405,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.delete("/api/doctors/schedules/:id", async (req, res) => {
-    if (!req.user || !['hospital_admin', 'attender'].includes(req.user.role)) {
+    if (!req.user || !['hospital_admin', 'attender', 'clinic_admin'].includes(req.user.role)) {
       return res.status(403).json({ message: 'Unauthorized access' });
     }
 
@@ -1640,7 +1640,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Add an endpoint to reset all doctor presence for today (for debugging)
   app.post("/api/debug/reset-doctor-presence", async (req, res) => {
-    if (!req.user || !['hospital_admin', 'attender'].includes(req.user.role)) {
+    if (!req.user || !['hospital_admin', 'attender', 'clinic_admin'].includes(req.user.role)) {
       return res.status(403).json({ message: 'Unauthorized access' });
     }
 
@@ -1676,16 +1676,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
+      const clinicIdNumber = parseInt(clinicId as string);
+      if (isNaN(clinicIdNumber)) {
+        return res.status(400).json({ 
+          message: 'Invalid clinicId parameter - must be a valid number' 
+        });
+      }
+      
       const presenceRecord = await storage.getDoctorArrivalStatus(
         doctorId,
-        parseInt(clinicId as string),
+        clinicIdNumber,
         new Date(date as string)
       );
       
       if (!presenceRecord) {
         return res.json({
           doctorId,
-          clinicId: parseInt(clinicId as string),
+          clinicId: clinicIdNumber,
           date: new Date(date as string).toISOString(),
           hasArrived: false,
           scheduleId: null

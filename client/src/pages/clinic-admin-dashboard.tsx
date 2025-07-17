@@ -753,12 +753,11 @@ export default function ClinicAdminDashboard() {
       </div>
 
       <Tabs defaultValue="overview" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="staff">Staff</TabsTrigger>
           <TabsTrigger value="doctor-dashboard">Doctor Dashboard</TabsTrigger>
           <TabsTrigger value="schedules">Schedules</TabsTrigger>
-          <TabsTrigger value="appointments">Appointments</TabsTrigger>
         </TabsList>
 
         {/* Clinic Overview Tab */}
@@ -1056,89 +1055,7 @@ export default function ClinicAdminDashboard() {
           </Card>
         </TabsContent>
 
-        {/* Appointments Tab */}
-        <TabsContent value="appointments" className="space-y-6">
-          {/* {isAppointmentsError && (
-            <Card className="border-red-200 bg-red-50">
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-2 text-red-600">
-                  <AlertCircle className="h-5 w-5" />
-                  <p>Unable to load appointment information. Please try again later.</p>
-                  <Button variant="ghost" size="sm" onClick={() => window.location.reload()} className="ml-auto">Retry</Button>
-                </div>
-              </CardContent>
-            </Card>
-          )} */}
-          <Card>
-            <CardHeader>
-              <div className="flex justify-between items-center">
-                <CardTitle className="flex items-center gap-2">
-                  <Calendar className="h-5 w-5" />
-                  Today's Appointments
-                </CardTitle>
-                <Button size="sm">Add Walk-in</Button>
-              </div>
-              <CardDescription>Manage today's appointments and walk-ins</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {isAppointmentsLoading ? (
-                <div className="flex justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {appointments.map((appointment) => (
-                    <div key={appointment.id} className="flex items-center justify-between p-3 border rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <Avatar>
-                          <AvatarFallback>{appointment.patientName.substring(0, 2).toUpperCase()}</AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <p className="font-medium">{appointment.patientName}</p>
-                            {appointment.isWalkIn && (
-                              <Badge variant="outline" className="text-purple-600 bg-purple-50">Walk-in</Badge>
-                            )}
-                          </div>
-                          <p className="text-sm text-muted-foreground">
-                            Token #{appointment.tokenNumber} • {appointment.time} • {appointment.doctorName}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        {appointment.status === 'completed' && (
-                          <Badge variant="outline" className="flex items-center gap-1 bg-green-50 text-green-600">
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                            Completed
-                          </Badge>
-                        )}
-                        {appointment.status === 'in-progress' && (
-                          <Badge variant="outline" className="flex items-center gap-1 bg-blue-50 text-blue-600">
-                            <Clock className="h-3.5 w-3.5" />
-                            In Progress
-                          </Badge>
-                        )}
-                        {appointment.status === 'scheduled' && (
-                          <Badge variant="outline" className="flex items-center gap-1 bg-yellow-50 text-yellow-600">
-                            <AlertCircle className="h-3.5 w-3.5" />
-                            Scheduled
-                          </Badge>
-                        )}
-                        {appointment.status === 'cancelled' && (
-                          <Badge variant="outline" className="flex items-center gap-1 bg-red-50 text-red-600">
-                            <XCircle className="h-3.5 w-3.5" />
-                            Cancelled
-                          </Badge>
-                        )}
-                        <Button variant="outline" size="sm">Manage</Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+        
 
         {/* Doctor Dashboard Tab */}
         <TabsContent value="doctor-dashboard" className="space-y-6">
