@@ -146,12 +146,23 @@ export default function AttenderDashboard() {
       return res.json();
     },
     onSuccess: (data) => {
+      // Invalidate all relevant queries to ensure data consistency
       queryClient.invalidateQueries({ queryKey: [`/api/attender/${user?.id}/doctors/appointments`] });
+      queryClient.invalidateQueries({ queryKey: ['doctorPresences', managedDoctors, selectedDate] });
+      
       toast({
         title: "Success",
         description: data.hasArrived ? "Doctor marked as arrived" : "Doctor marked as not arrived",
       });
     },
+    onError: (error) => {
+      console.error('Error updating doctor arrival:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update doctor arrival status. Please try again.",
+        variant: "destructive"
+      });
+    }
   });
 
   // Add a mutation for toggling schedule pause status
@@ -185,6 +196,8 @@ export default function AttenderDashboard() {
   const { data: doctorPresences } = useQuery({
     queryKey: ['doctorPresences', managedDoctors, selectedDate],
     enabled: !!managedDoctors && managedDoctors.length > 0,
+    staleTime: 0, // Always consider data stale to ensure fresh updates
+    refetchOnWindowFocus: true, // Refetch when window gets focus
     queryFn: async () => {
       // Collect all doctor IDs and their schedules
       const presenceData: Record<number, Record<number, { hasArrived: boolean }>> = {};
@@ -195,8 +208,11 @@ export default function AttenderDashboard() {
       for (const doctorData of managedDoctors) {
         const { doctor, schedules, clinicId } = doctorData;
         
-        // Skip if no schedules
-        if (!schedules || schedules.length === 0) continue;
+        // For clinic admins, use user's clinicId as fallback if doctorData.clinicId is undefined
+        const actualClinicId = clinicId || user?.clinicId;
+        
+        // Skip if no schedules or no clinic ID
+        if (!schedules || schedules.length === 0 || !actualClinicId) continue;
         
         // Initialize record for this doctor
         presenceData[doctor.id] = {};
@@ -205,7 +221,7 @@ export default function AttenderDashboard() {
         for (const schedule of schedules) {
           try {
             const res = await apiRequest("GET", 
-              `/api/doctors/${doctor.id}/arrival?clinicId=${clinicId}&date=${selectedDate.toISOString()}`
+              `/api/doctors/${doctor.id}/arrival?clinicId=${actualClinicId}&date=${selectedDate.toISOString()}`
             );
             const presence = await res.json();
             
@@ -281,46 +297,12 @@ export default function AttenderDashboard() {
     scheduleId: number | null, 
     hasArrived: boolean = true
   ) => {
-    // Create a cache key for this specific doctor/schedule
-    const cacheKey = `doctorPresence-${doctorId}-${scheduleId}`;
-    
-    // Optimistically update the UI
-    queryClient.setQueryData(['doctorPresences', managedDoctors, selectedDate], (oldData: any) => {
-      const newData = { ...oldData };
-      if (!newData[doctorId]) {
-        newData[doctorId] = {};
-      }
-      if (!newData[doctorId][scheduleId]) {
-        newData[doctorId][scheduleId] = {};
-      }
-      newData[doctorId][scheduleId] = { hasArrived };
-      return newData;
-    });
-    
-    // Make the API call
+    // Directly make the API call without optimistic updates to avoid race conditions
     updateDoctorArrivalMutation.mutate({ 
       doctorId, 
       clinicId, 
       scheduleId, 
       hasArrived
-    }, {
-      onError: () => {
-        // Revert optimistic update on error
-        queryClient.setQueryData(['doctorPresences', managedDoctors, selectedDate], (oldData: any) => {
-          const newData = { ...oldData };
-          if (newData[doctorId] && newData[doctorId][scheduleId]) {
-            newData[doctorId][scheduleId] = { hasArrived: !hasArrived };
-          }
-          return newData;
-        });
-        
-        // Show error toast
-        toast({
-          title: "Error",
-          description: "Failed to update doctor arrival status. Please try again.",
-          variant: "destructive"
-        });
-      }
     });
   };
 
@@ -804,7 +786,7 @@ export default function AttenderDashboard() {
                                             className="gap-2"
                                             onClick={() => handleToggleDoctorArrival(
                                               doctorData.doctor.id,
-                                              schedule.clinicId,
+                                              schedule.clinicId || doctorData.clinicId || user?.clinicId,
                                               schedule.id,
                                               !getPresenceData(doctorData.doctor.id, schedule.id).hasArrived
                                             )}

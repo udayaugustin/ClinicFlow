@@ -4,10 +4,12 @@ import cors from 'cors';
 import { storage, getTokens } from './storage';
 import { createSessionMiddleware, setupAuth } from './auth';
 import { insertAppointmentSchema, insertAttenderDoctorSchema, insertClinicSchema, insertUserSchema, type AttenderDoctor, type User } from "../shared/schema";
-import { insertDoctorDetailSchema } from "../shared/schema";
+import { insertDoctorDetailSchema, appointments } from "../shared/schema";
 import { z } from "zod";
 import { notificationService } from './services/notification';
 import { ETAService } from './services/eta';
+import { db } from './db';
+import { eq, and, sql } from 'drizzle-orm';
 
 // Simple in-memory notification store as fallback
 const memoryNotifications: any[] = [];
@@ -342,7 +344,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.patch("/api/appointments/:id/status", async (req, res) => {
-    if (!req.user || req.user.role !== "attender") return res.sendStatus(403);
+    if (!req.user || !['attender', 'clinic_admin'].includes(req.user.role)) return res.sendStatus(403);
     try {
       const appointmentId = parseInt(req.params.id);
       const { status, statusNotes } = req.body;
@@ -491,7 +493,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/doctors/:id/availability", async (req, res) => {
     if (!req.user) return res.sendStatus(401);
-    if (req.user.role !== "doctor" && req.user.role !== "attender") return res.sendStatus(403);
+    if (req.user.role !== "doctor" && !['attender', 'clinic_admin'].includes(req.user.role)) return res.sendStatus(403);
     if (req.user.role === "doctor" && req.user.id !== parseInt(req.params.id)) return res.sendStatus(403);
 
     try {
@@ -826,7 +828,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Update token progress (Attender only)
   app.patch("/api/doctors/:id/token-progress", async (req, res) => {
     if (!req.user) return res.sendStatus(401);
-    if (req.user.role !== "attender") return res.sendStatus(403);
+    if (!['attender', 'clinic_admin'].includes(req.user.role)) return res.sendStatus(403);
 
     try {
       const doctorId = parseInt(req.params.id);
@@ -1539,7 +1541,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Add a new endpoint for doctor arrival status
   app.patch("/api/doctors/:id/arrival", async (req, res) => {
-    if (!req.user || req.user.role !== "attender") return res.sendStatus(403);
+    if (!req.user || !['attender', 'clinic_admin'].includes(req.user.role)) return res.sendStatus(403);
     
     try {
       const doctorId = parseInt(req.params.id);
@@ -1556,7 +1558,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const parsedScheduleId = scheduleId ? parseInt(scheduleId) : null;
       const dateObj = new Date(date);
       
-      console.log('Updating doctor arrival status in storage');
+      console.log('📝 CALLING updateDoctorArrivalStatus...');
       const presenceRecord = await storage.updateDoctorArrivalStatus(
         doctorId,
         parseInt(clinicId),
@@ -1564,7 +1566,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         dateObj,
         hasArrived
       );
-      console.log('Doctor presence record updated:', presenceRecord);
+      console.log('✅ PRESENCE RECORD UPDATED:', presenceRecord);
       
       // Update ETAs if doctor has arrived
       if (hasArrived && parsedScheduleId) {
@@ -1633,7 +1635,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(presenceRecord);
     } catch (error) {
-      console.error('Error updating doctor arrival status:', error);
+      console.error('❌ ERROR updating doctor arrival status:', error);
       res.status(500).json({ message: 'Failed to update doctor arrival status' });
     }
   });
@@ -1708,7 +1710,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Add a new endpoint for attenders to create walk-in appointments
   app.post("/api/attender/walk-in-appointments", async (req, res) => {
-    if (!req.user || req.user.role !== "attender") return res.sendStatus(403);
+    if (!req.user || !['attender', 'clinic_admin'].includes(req.user.role)) return res.sendStatus(403);
     
     try {
       const { doctorId, clinicId, scheduleId, date, guestName, guestPhone } = req.body;
@@ -1720,12 +1722,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Validate the doctor exists and is managed by this attender
-      const managedDoctors = await storage.getAttenderDoctors(req.user.id);
-      const canManageDoctor = managedDoctors.some(md => md.doctorId === Number(doctorId));
+      // Validate the doctor exists and user is authorized to manage them
+      let canManageDoctor = false;
+      
+      if (req.user.role === 'attender') {
+        // For attenders: check if they manage this doctor via attender_doctors table
+        const managedDoctors = await storage.getAttenderDoctors(req.user.id);
+        canManageDoctor = managedDoctors.some(md => md.doctorId === Number(doctorId));
+      } else if (req.user.role === 'clinic_admin') {
+        // For clinic admins: check if the doctor belongs to their clinic
+        // First verify the clinic admin has a clinic assigned
+        if (!req.user.clinicId) {
+          return res.status(400).json({ message: 'Clinic admin not assigned to a clinic' });
+        }
+        
+        // Check if the doctor belongs to the admin's clinic via doctor_clinics table
+        const doctorClinics = await storage.getDoctorClinics(Number(doctorId));
+        canManageDoctor = doctorClinics.some(clinic => clinic.id === req.user.clinicId);
+      }
       
       if (!canManageDoctor) {
-        return res.status(403).json({ message: 'You are not authorized to manage this doctor' });
+        return res.status(403).json({ 
+          message: req.user.role === 'clinic_admin' 
+            ? 'You can only manage doctors in your clinic' 
+            : 'You are not authorized to manage this doctor' 
+        });
       }
       
       // Create appointment date object
@@ -1928,10 +1949,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Attender Dashboard Endpoints
   app.get('/api/attender/:id/clinic-overview', async (req, res) => {
-    if (!req.user || req.user.role !== 'attender') return res.sendStatus(403);
+    if (!req.user || !['attender', 'clinic_admin'].includes(req.user.role)) return res.sendStatus(403);
     try {
       const attenderId = parseInt(req.params.id);
-      if (req.user.id !== attenderId) return res.sendStatus(403);
+      if (req.user.role === 'attender' && req.user.id !== attenderId) return res.sendStatus(403);
 
       const overview = await storage.getAttenderClinicOverview(attenderId);
       res.json(overview);
@@ -1943,7 +1964,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/attender/:id/doctors-summary', async (req, res) => {
     console.log('Doctors summary request:', { user: req.user, params: req.params });
-    if (!req.user || req.user.role !== 'attender') {
+    if (!req.user || !['attender', 'clinic_admin'].includes(req.user.role)) {
       console.log('Auth failed:', { user: req.user?.role });
       return res.sendStatus(403);
     }
@@ -2039,7 +2060,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     // Cancel a schedule and notify affected patients
     app.patch("/api/schedules/:id/cancel", async (req, res) => {
-      if (!req.user || req.user.role !== 'attender') {
+      if (!req.user || !['attender', 'clinic_admin'].includes(req.user.role)) {
         return res.sendStatus(403);
       }
 
@@ -2174,7 +2195,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Update doctor (complete record) Endpoints
   app.patch('/api/doctors/:id', async (req, res) => {
-    if (!req.user || req.user.role !== 'attender') return res.sendStatus(403);
+    if (!req.user || !['attender', 'clinic_admin'].includes(req.user.role)) return res.sendStatus(403);
     try {
       const doctorId = parseInt(req.params.id);
 
