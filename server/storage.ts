@@ -8,6 +8,7 @@ import {
   doctorDetails,
   doctorClinics,
   patientFavorites,
+  notifications,
   type User,
   type AttenderDoctor,
   type InsertUser,
@@ -339,7 +340,57 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteUser(id: number): Promise<void> {
-    await db.delete(users).where(eq(users.id, id));
+    // Begin transaction to ensure data consistency
+    await db.transaction(async (tx) => {
+      // Get user info to determine what to clean up
+      const [user] = await tx.select().from(users).where(eq(users.id, id));
+      
+      if (!user) {
+        throw new Error('User not found');
+      }
+      
+      if (user.role === 'doctor') {
+        // For doctors, we'll remove all their data since they're being deleted entirely
+        // Important: Delete in the correct order to avoid foreign key constraints
+        
+        // 1. Delete notifications related to this doctor's appointments first
+        await tx.delete(notifications).where(
+          sql`appointment_id IN (SELECT id FROM appointments WHERE doctor_id = ${id})`
+        );
+        
+        // 2. Delete all appointments for this doctor (both active and completed)
+        await tx.delete(appointments).where(eq(appointments.doctorId, id));
+        
+        // 3. Delete doctor availability records BEFORE schedules (since it references schedules)
+        await tx.delete(doctorDailyPresence).where(eq(doctorDailyPresence.doctorId, id));
+        
+        // 4. Delete doctor schedules AFTER daily presence records
+        await tx.delete(doctorSchedules).where(eq(doctorSchedules.doctorId, id));
+        
+        // 5. Delete patient favorites for this doctor
+        await tx.delete(patientFavorites).where(eq(patientFavorites.doctorId, id));
+        
+        // 6. Delete attender-doctor relationships
+        await tx.delete(attenderDoctors).where(eq(attenderDoctors.doctorId, id));
+        
+        // 7. Delete doctor-clinic associations
+        await tx.delete(doctorClinics).where(eq(doctorClinics.doctorId, id));
+        
+        // 8. Delete doctor details
+        await tx.delete(doctorDetails).where(eq(doctorDetails.doctorId, id));
+        
+      } else if (user.role === 'attender') {
+        // For attenders, just clean up their relationships
+        // 1. Delete attender-doctor relationships
+        await tx.delete(attenderDoctors).where(eq(attenderDoctors.attenderId, id));
+        
+        // 2. Delete notifications for this attender
+        await tx.delete(notifications).where(eq(notifications.userId, id));
+      }
+      
+      // Finally, delete the user
+      await tx.delete(users).where(eq(users.id, id));
+    });
   }
 
   async getDoctors(): Promise<User[]> {

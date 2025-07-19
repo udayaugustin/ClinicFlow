@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { constructNow, format, isSameDay } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, CheckCircle2, XCircle, Clock, Calendar as CalendarIcon, Building, Plus } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
@@ -27,7 +28,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { NavigationButtons } from "@/components/navigation-buttons";
-import React from "react";
+import React, { useEffect } from "react";
 
 // Updated type definition without presence info in schedules
 type DoctorSchedule = {
@@ -60,6 +61,7 @@ export default function AttenderDashboard() {
   const { toast } = useToast();
   const [isPaused, setIsPaused] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [selectedDoctorId, setSelectedDoctorId] = useState<string>("");
   const [isWalkInDialogOpen, setIsWalkInDialogOpen] = useState(false);
   const [walkInFormValues, setWalkInFormValues] = useState({
     doctorId: 0,
@@ -248,6 +250,13 @@ export default function AttenderDashboard() {
       return presenceData;
     }
   });
+
+  // Auto-select the first doctor when data loads
+  useEffect(() => {
+    if (managedDoctors && managedDoctors.length > 0 && !selectedDoctorId) {
+      setSelectedDoctorId(managedDoctors[0].doctor.id.toString());
+    }
+  }, [managedDoctors, selectedDoctorId]);
 
   // Helper function to get presence data for a doctor's schedule
   const getPresenceData = (doctorId: number, scheduleId: number) => {
@@ -654,89 +663,102 @@ export default function AttenderDashboard() {
 
           <Card>
               <CardContent className="p-6">
-                <Tabs defaultValue={managedDoctors?.[0]?.doctor?.id?.toString()}>
-                  <TabsList className="mb-4">
-                    {managedDoctors?.map((item) => (
-                      <TabsTrigger 
-                        key={item.doctor.id} 
-                        value={item.doctor.id.toString()}
-                      >
-                        {item.doctor.name}
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
+                {/* Doctor Selection Dropdown */}
+                <div className="mb-4">
+                  <Select
+                    value={selectedDoctorId}
+                    onValueChange={(value) => setSelectedDoctorId(value)}
+                  >
+                    <SelectTrigger className="w-[200px]">
+                      <SelectValue placeholder="Select a doctor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {managedDoctors?.map((item) => (
+                        <SelectItem 
+                          key={item.doctor.id} 
+                          value={item.doctor.id.toString()}
+                        >
+                          {item.doctor.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-                  {managedDoctors?.map((doctorData) => {
-                    // Filter schedules for the selected date by checking if schedule.date matches selectedDate
-                    const schedulesForDay = doctorData.schedules?.filter(
-                      schedule => isSameDay(new Date(schedule.date), selectedDate)
-                    ) || [];
-                    
-                    // Filter appointments for the selected date
-                    const appointmentsForDay = doctorData.appointments?.filter(
-                      apt => isSameDay(new Date(apt.date), selectedDate)
-                    ) || [];
-                    
-                    return (
-                      <TabsContent 
-                        key={doctorData.doctor.id} 
-                        value={doctorData.doctor.id.toString()}
-                      >
-                        <div className="flex justify-between items-center mb-6">
-                          <div>
-                            <h2 className="text-xl font-semibold">{doctorData.doctor.name}</h2>
-                            <p className="text-muted-foreground">{doctorData.doctor.specialty}</p>
-                          </div>
+                {/* Show selected doctor's content */}
+                {selectedDoctorId && managedDoctors?.map((doctorData) => {
+                  // Only show the selected doctor
+                  if (doctorData.doctor.id.toString() !== selectedDoctorId) {
+                    return null;
+                  }
+
+                  // Filter schedules for the selected date by checking if schedule.date matches selectedDate
+                  const schedulesForDay = doctorData.schedules?.filter(
+                    schedule => isSameDay(new Date(schedule.date), selectedDate)
+                  ) || [];
+                  
+                  // Filter appointments for the selected date
+                  const appointmentsForDay = doctorData.appointments?.filter(
+                    apt => isSameDay(new Date(apt.date), selectedDate)
+                  ) || [];
+                  
+                  return (
+                    <div key={doctorData.doctor.id}>
+                      <div className="flex justify-between items-center mb-6">
+                        <div>
+                          <h2 className="text-xl font-semibold">{doctorData.doctor.name}</h2>
+                          <p className="text-muted-foreground">{doctorData.doctor.specialty}</p>
                         </div>
+                      </div>
 
-                        {schedulesForDay.length === 0 ? (
-                          <div className="bg-muted p-6 rounded-lg text-center">
-                            <CalendarIcon className="mx-auto h-10 w-10 text-muted-foreground mb-2" />
-                            <p className="text-muted-foreground">No schedules for this doctor on {format(selectedDate, "EEEE")}.</p>
+                      {schedulesForDay.length === 0 ? (
+                        <div className="bg-muted p-6 rounded-lg text-center">
+                          <CalendarIcon className="mx-auto h-10 w-10 text-muted-foreground mb-2" />
+                          <p className="text-muted-foreground">No schedules for this doctor on {format(selectedDate, "EEEE")}.</p>
+                        </div>
+                      ) : (
+                        // Implement nested tabs for schedules
+                        <Tabs defaultValue={schedulesForDay[0]?.id?.toString()} className="w-full">
+                          <div className="overflow-x-auto py-4">
+                            <TabsList className="flex space-x-4 p-1 min-w-max bg-transparent">
+                              {schedulesForDay.map(schedule => {
+                                // Get presence status for visual indication
+                                const hasArrived = getPresenceData(doctorData.doctor.id, schedule.id).hasArrived;
+                                
+                                // Count appointments for this schedule that are not canceled
+                                const activeAppointments = schedule.appointments
+                                  .filter(apt => 
+                                    isSameDay(new Date(apt.date), selectedDate) && 
+                                    apt.status !== "cancel"
+                                  ).length;
+                                
+                                return (
+                                  <TabsTrigger 
+                                    key={schedule.id} 
+                                    value={schedule.id.toString()}
+                                    className="min-w-[240px] flex-col items-start px-4 py-3 rounded-lg border data-[state=active]:border-blue-300 data-[state=active]:bg-blue-50 data-[state=active]:shadow-sm"
+                                  >
+                                    <div className="flex items-center w-full mb-2">
+                                      <Clock className="h-5 w-5 text-blue-500 mr-2" />
+                                      <span className="text-base font-medium">{schedule.startTime} - {schedule.endTime}</span>
+                                    </div>
+                                    <div className="flex items-center gap-3 w-full">
+                                      {hasArrived ? (
+                                        <div className="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">Doctor Present</div>
+                                      ) : (
+                                        <div className="px-3 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">Awaiting Doctor</div>
+                                      )}
+                                      <div className="px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                        {activeAppointments} Patient{activeAppointments !== 1 ? 's' : ''}
+                                      </div>
+                                    </div>
+                                  </TabsTrigger>
+                                );
+                              })}
+                            </TabsList>
                           </div>
-                        ) : (
-                          // Implement nested tabs for schedules
-                          <Tabs defaultValue={schedulesForDay[0]?.id?.toString()} className="w-full">
-                            <div className="overflow-x-auto py-4">
-                              <TabsList className="flex space-x-4 p-1 min-w-max bg-transparent">
-                                {schedulesForDay.map(schedule => {
-                                  // Get presence status for visual indication
-                                  const hasArrived = getPresenceData(doctorData.doctor.id, schedule.id).hasArrived;
-                                  
-                                  // Count appointments for this schedule that are not canceled
-                                  const activeAppointments = schedule.appointments
-                                    .filter(apt => 
-                                      isSameDay(new Date(apt.date), selectedDate) && 
-                                      apt.status !== "cancel"
-                                    ).length;
-                                  
-                                  return (
-                                    <TabsTrigger 
-                                      key={schedule.id} 
-                                      value={schedule.id.toString()}
-                                      className="min-w-[240px] flex-col items-start px-4 py-3 rounded-lg border data-[state=active]:border-blue-300 data-[state=active]:bg-blue-50 data-[state=active]:shadow-sm"
-                                    >
-                                      <div className="flex items-center w-full mb-2">
-                                        <Clock className="h-5 w-5 text-blue-500 mr-2" />
-                                        <span className="text-base font-medium">{schedule.startTime} - {schedule.endTime}</span>
-                                      </div>
-                                      <div className="flex items-center gap-3 w-full">
-                                        {hasArrived ? (
-                                          <div className="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">Doctor Present</div>
-                                        ) : (
-                                          <div className="px-3 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">Awaiting Doctor</div>
-                                        )}
-                                        <div className="px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                          {activeAppointments} Patient{activeAppointments !== 1 ? 's' : ''}
-                                        </div>
-                                      </div>
-                                    </TabsTrigger>
-                                  );
-                                })}
-                              </TabsList>
-                            </div>
 
-                            {schedulesForDay.map(schedule => {
+                          {schedulesForDay.map(schedule => {
                               console.log("Check -- ",isSameDay(new Date(schedule.appointments[0]?.date), selectedDate));
                               // First filter appointments for the selected date
                               console.log("Check -- ",schedule);
@@ -965,10 +987,9 @@ export default function AttenderDashboard() {
                             })}
                           </Tabs>
                         )}
-                      </TabsContent>
-                    );
-                  })}
-                </Tabs>
+                    </div>
+                  );
+                })}
               </CardContent>
             </Card>
         </main>

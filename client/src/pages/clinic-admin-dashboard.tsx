@@ -24,7 +24,10 @@ import {
   Save,
   Trash2,
   Check,
-  Plus
+  Plus,
+  Upload,
+  Image as ImageIcon,
+  X
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '../lib/queryClient';
@@ -98,10 +101,8 @@ interface TodayStats {
   cancelled: number;
 }
 
-// Doctor schema for validation
+// Doctor schema - doctors don't need login credentials
 const doctorSchema = z.object({
-  username: z.string().min(1, "Username is required"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
   name: z.string().min(1, "Name is required"),
   specialty: z.string().min(1, "Specialty is required"),
   phone: z.string().min(1, "Phone number is required"),
@@ -109,7 +110,7 @@ const doctorSchema = z.object({
   imageUrl: z.string().optional(),
 });
 
-// Attender schema for validation
+// Attender schema for validation - attenders need login credentials
 const attenderSchema = z.object({
   username: z.string().min(1, "Username is required"),
   password: z.string().min(6, "Password must be at least 6 characters"),
@@ -121,7 +122,7 @@ const attenderSchema = z.object({
 });
 
 // Edit schemas (without password)
-const editDoctorSchema = doctorSchema.omit({ password: true });
+const editDoctorSchema = doctorSchema;
 const editAttenderSchema = attenderSchema.omit({ password: true });
 
 // Doctor Dashboard Content Component - Navigate to dedicated doctor dashboard page
@@ -178,6 +179,16 @@ export default function ClinicAdminDashboard() {
   const [selectedAttender, setSelectedAttender] = useState<Attender | null>(null);
   const [attenderId, setAttenderId] = useState<number | null>(null);
   
+  // File upload state
+  const [doctorImageFile, setDoctorImageFile] = useState<File | null>(null);
+  const [doctorImagePreview, setDoctorImagePreview] = useState<string>("");
+  const [editDoctorImageFile, setEditDoctorImageFile] = useState<File | null>(null);
+  const [editDoctorImagePreview, setEditDoctorImagePreview] = useState<string>("");
+  const [attenderImageFile, setAttenderImageFile] = useState<File | null>(null);
+  const [attenderImagePreview, setAttenderImagePreview] = useState<string>("");
+  const [editAttenderImageFile, setEditAttenderImageFile] = useState<File | null>(null);
+  const [editAttenderImagePreview, setEditAttenderImagePreview] = useState<string>("");
+  
   // Reset password state
   const [resetPasswordDialog, setResetPasswordDialog] = useState({
     isOpen: false,
@@ -186,12 +197,180 @@ export default function ClinicAdminDashboard() {
   });
   const [newPassword, setNewPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  
+  // Alert dialog state for password reset errors
+  const [passwordErrorAlert, setPasswordErrorAlert] = useState({
+    isOpen: false,
+    message: ''
+  });
+  
+  // Utility function to convert file to base64
+  const convertFileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = error => reject(error);
+    });
+  };
+  
+  // File upload handlers
+  const handleDoctorImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      // Validate file type
+      const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+      if (!validTypes.includes(file.type)) {
+        toast({
+          title: "Invalid file type",
+          description: "Please upload a valid image file (JPEG, PNG, GIF, or WebP)",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast({
+          title: "File too large",
+          description: "Please upload an image smaller than 5MB",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      setDoctorImageFile(file);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setDoctorImagePreview(e.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+  
+  const handleEditDoctorImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      // Validate file type
+      const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+      if (!validTypes.includes(file.type)) {
+        toast({
+          title: "Invalid file type",
+          description: "Please upload a valid image file (JPEG, PNG, GIF, or WebP)",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast({
+          title: "File too large",
+          description: "Please upload an image smaller than 5MB",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      setEditDoctorImageFile(file);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setEditDoctorImagePreview(e.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+  
+  const handleAttenderImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      // Validate file type
+      const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+      if (!validTypes.includes(file.type)) {
+        toast({
+          title: "Invalid file type",
+          description: "Please upload a valid image file (JPEG, PNG, GIF, or WebP)",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast({
+          title: "File too large",
+          description: "Please upload an image smaller than 5MB",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      setAttenderImageFile(file);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setAttenderImagePreview(e.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+  
+  const handleEditAttenderImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      // Validate file type
+      const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+      if (!validTypes.includes(file.type)) {
+        toast({
+          title: "Invalid file type",
+          description: "Please upload a valid image file (JPEG, PNG, GIF, or WebP)",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast({
+          title: "File too large",
+          description: "Please upload an image smaller than 5MB",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      setEditAttenderImageFile(file);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setEditAttenderImagePreview(e.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+  
+  // Clear image handlers
+  const clearDoctorImage = () => {
+    setDoctorImageFile(null);
+    setDoctorImagePreview("");
+  };
+  
+  const clearEditDoctorImage = () => {
+    setEditDoctorImageFile(null);
+    setEditDoctorImagePreview("");
+  };
+  
+  const clearAttenderImage = () => {
+    setAttenderImageFile(null);
+    setAttenderImagePreview("");
+  };
+  
+  const clearEditAttenderImage = () => {
+    setEditAttenderImageFile(null);
+    setEditAttenderImagePreview("");
+  };
   // Form hooks
   const addDoctorForm = useForm<z.infer<typeof doctorSchema>>({ 
     resolver: zodResolver(doctorSchema),
     defaultValues: {
-      username: "",
-      password: "",
       name: "",
       specialty: "",
       phone: "",
@@ -203,7 +382,6 @@ export default function ClinicAdminDashboard() {
   const editDoctorForm = useForm<z.infer<typeof editDoctorSchema>>({ 
     resolver: zodResolver(editDoctorSchema),
     defaultValues: {
-      username: "",
       name: "",
       specialty: "",
       phone: "",
@@ -238,22 +416,61 @@ export default function ClinicAdminDashboard() {
   });
   
   // Handler functions
-  const handleAddDoctor = (data: z.infer<typeof doctorSchema>) => {
+  const handleAddDoctor = async (data: z.infer<typeof doctorSchema>) => {
     const clinicId = params?.id || user?.clinicId;
     if (!clinicId) return;
     
+    // Generate username and password automatically for doctors
+    const username = `dr.${data.name.toLowerCase().replace(/\s+/g, '')}.${Math.floor(Math.random() * 1000)}`;
+    const password = Math.random().toString(36).slice(-8); // Generate 8-character random password
+    
+    // Convert uploaded image to base64 if available
+    let imageUrl = "";
+    if (doctorImageFile) {
+      try {
+        imageUrl = await convertFileToBase64(doctorImageFile);
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "Failed to process image file",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+    
     createDoctorMutation.mutate({
       ...data,
+      username,
+      password,
+      imageUrl,
       role: "doctor",
       clinicIds: [parseInt(clinicId.toString())]
     });
   };
   
-  const handleEditDoctor = (data: z.infer<typeof editDoctorSchema>) => {
+  const handleEditDoctor = async (data: z.infer<typeof editDoctorSchema>) => {
     if (!selectedDoctor) return;
+    
+    // Convert uploaded image to base64 if available
+    let imageUrl = data.imageUrl;
+    if (editDoctorImageFile) {
+      try {
+        imageUrl = await convertFileToBase64(editDoctorImageFile);
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "Failed to process image file",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+    
     updateDoctorMutation.mutate({
       id: selectedDoctor.id,
-      ...data
+      ...data,
+      imageUrl
     });
   };
   
@@ -262,22 +479,55 @@ export default function ClinicAdminDashboard() {
     deleteDoctorMutation.mutate(selectedDoctor.id);
   };
   
-  const handleAddAttender = (data: z.infer<typeof attenderSchema>) => {
+  const handleAddAttender = async (data: z.infer<typeof attenderSchema>) => {
     const clinicId = params?.id || user?.clinicId;
     if (!clinicId) return;
     
+    // Convert uploaded image to base64 if available
+    let imageUrl = "";
+    if (attenderImageFile) {
+      try {
+        imageUrl = await convertFileToBase64(attenderImageFile);
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "Failed to process image file",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+    
     createAttenderMutation.mutate({
       ...data,
+      imageUrl,
       role: "attender",
       clinicId: parseInt(clinicId.toString())
     });
   };
   
-  const handleEditAttender = (data: z.infer<typeof editAttenderSchema>) => {
+  const handleEditAttender = async (data: z.infer<typeof editAttenderSchema>) => {
     if (!selectedAttender) return;
+    
+    // Convert uploaded image to base64 if available
+    let imageUrl = data.imageUrl;
+    if (editAttenderImageFile) {
+      try {
+        imageUrl = await convertFileToBase64(editAttenderImageFile);
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "Failed to process image file",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+    
     updateAttenderMutation.mutate({
       id: selectedAttender.id,
-      ...data
+      ...data,
+      imageUrl
     });
   };
   
@@ -322,6 +572,7 @@ export default function ClinicAdminDashboard() {
       queryClient.invalidateQueries({ queryKey: ['attender-doctors'] });
       setIsAddDoctorDialogOpen(false);
       addDoctorForm.reset();
+      clearDoctorImage(); // Clear image state
       toast({
         title: "Success",
         description: "Doctor added successfully and assigned to all attenders",
@@ -349,6 +600,7 @@ export default function ClinicAdminDashboard() {
       queryClient.invalidateQueries({ queryKey: ['clinic-doctors', params?.id || user?.clinicId] });
       setIsEditDoctorDialogOpen(false);
       setSelectedDoctor(null);
+      clearEditDoctorImage(); // Clear image state
       toast({
         title: "Success",
         description: "Doctor updated successfully",
@@ -419,6 +671,7 @@ export default function ClinicAdminDashboard() {
       queryClient.invalidateQueries({ queryKey: ['clinic-attenders', params?.id || user?.clinicId] });
       setIsAddAttenderDialogOpen(false);
       addAttenderForm.reset();
+      clearAttenderImage(); // Clear image state
       toast({
         title: "Success",
         description: "Attender added successfully and assigned all doctors",
@@ -446,6 +699,7 @@ export default function ClinicAdminDashboard() {
       queryClient.invalidateQueries({ queryKey: ['clinic-attenders', params?.id || user?.clinicId] });
       setIsEditAttenderDialogOpen(false);
       setSelectedAttender(null);
+      clearEditAttenderImage(); // Clear image state
       toast({
         title: "Success",
         description: "Attender updated successfully",
@@ -552,10 +806,32 @@ export default function ClinicAdminDashboard() {
       queryClient.invalidateQueries({ queryKey: ['clinic-attenders', params?.id || user?.clinicId] });
     },
     onError: (error: any) => {
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to reset password',
-        variant: 'destructive'
+      // Extract and clean up the error message
+      let errorMessage = error.message || 'Failed to reset password';
+      
+      // Clean up common API error formats
+      if (errorMessage.includes('{"message":')) {
+        try {
+          const match = errorMessage.match(/"message"\s*:\s*"([^"]+)"/);
+          if (match && match[1]) {
+            errorMessage = match[1];
+          }
+        } catch (e) {
+          // If parsing fails, use the original message
+        }
+      }
+      
+      // Remove HTTP status codes and clean up the message
+      errorMessage = errorMessage
+        .replace(/^\d+:\s*/, '') // Remove status codes like "400: "
+        .replace(/^{\s*"message"\s*:\s*"/, '') // Remove JSON wrapper start
+        .replace(/"\s*}$/, '') // Remove JSON wrapper end
+        .trim();
+      
+      // Show custom alert dialog with cleaned message
+      setPasswordErrorAlert({
+        isOpen: true,
+        message: errorMessage
       });
     }
   });
@@ -563,10 +839,9 @@ export default function ClinicAdminDashboard() {
   // Reset password handlers
   const handleResetPassword = () => {
     if (!newPassword.trim()) {
-      toast({
-        title: 'Error',
-        description: 'Please enter a new password',
-        variant: 'destructive'
+      setPasswordErrorAlert({
+        isOpen: true,
+        message: 'Please enter a new password'
       });
       return;
     }
@@ -784,9 +1059,6 @@ export default function ClinicAdminDashboard() {
                   </CardTitle>
                   <CardDescription>Clinic Details</CardDescription>
                 </div>
-                <Button variant="outline" size="sm" className="flex items-center gap-1">
-                  <Edit className="h-4 w-4" /> Edit
-                </Button>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
@@ -826,6 +1098,10 @@ export default function ClinicAdminDashboard() {
                   <div className="flex justify-between items-center">
                     <span className="text-sm font-medium">Scheduled</span>
                     <Badge variant="outline" className="bg-yellow-50 text-yellow-600">{todayStats.scheduled}</Badge>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-medium">In Progress</span>
+                    <Badge variant="outline" className="bg-green-50 text-green-600">{todayStats.completed}</Badge>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm font-medium">Completed</span>
@@ -887,20 +1163,6 @@ export default function ClinicAdminDashboard() {
                           <p className="text-sm text-muted-foreground">{doctor.specialty}</p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-4">
-                        <div className="text-center">
-                          <p className="text-sm text-muted-foreground">Appointments</p>
-                          <p className="font-medium">{doctor.appointmentsToday || 0}</p>
-                        </div>
-                        <div className="text-center">
-                          <p className="text-sm text-muted-foreground">Completed</p>
-                          <p className="font-medium">{doctor.completedToday || 0}</p>
-                        </div>
-                        {doctor.isPresent ? (
-                          <Badge variant="outline" className="bg-green-50 text-green-600">Present</Badge>
-                        ) : (
-                          <Badge variant="outline" className="bg-red-50 text-red-600">Absent</Badge>
-                        )}
                         <div className="flex gap-2">
                           <Button 
                             variant="outline" 
@@ -908,13 +1170,15 @@ export default function ClinicAdminDashboard() {
                             onClick={() => {
                               setSelectedDoctor(doctor);
                               editDoctorForm.reset({
-                                username: doctor.username,
                                 name: doctor.name,
                                 specialty: doctor.specialty,
                                 phone: doctor.phone || '',
                                 bio: doctor.bio || '',
                                 imageUrl: doctor.imageUrl || '',
                               });
+                              // Set existing image preview
+                              setEditDoctorImagePreview(doctor.imageUrl || '');
+                              setEditDoctorImageFile(null);
                               setIsEditDoctorDialogOpen(true);
                             }}
                           >
@@ -932,7 +1196,6 @@ export default function ClinicAdminDashboard() {
                             <Trash2 className="h-4 w-4 mr-1" /> Delete
                           </Button>
                         </div>
-                      </div>
                     </div>
                   ))}
                 </div>
@@ -1008,6 +1271,9 @@ export default function ClinicAdminDashboard() {
                                 imageUrl: attender.imageUrl || '',
                                 assignedDoctors: attender.assignedDoctors || [],
                               });
+                              // Set existing image preview
+                              setEditAttenderImagePreview(attender.imageUrl || '');
+                              setEditAttenderImageFile(null);
                               setIsEditAttenderDialogOpen(true);
                             }}
                           >
@@ -1074,39 +1340,11 @@ export default function ClinicAdminDashboard() {
           <DialogHeader>
             <DialogTitle>Add New Doctor</DialogTitle>
             <DialogDescription>
-              Add a new doctor to this clinic. They will be able to login and manage appointments.
+            Add a new doctor to this clinic. They will be able to login and manage appointments.
             </DialogDescription>
           </DialogHeader>
           <Form {...addDoctorForm}>
             <form onSubmit={addDoctorForm.handleSubmit(handleAddDoctor)} className="space-y-4">
-              <FormField
-                control={addDoctorForm.control}
-                name="username"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Username</FormLabel>
-                    <FormControl>
-                      <Input placeholder="doctor_username" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              
-              <FormField
-                control={addDoctorForm.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Password</FormLabel>
-                    <FormControl>
-                      <Input type="password" placeholder="••••••" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              
               <FormField
                 control={addDoctorForm.control}
                 name="name"
@@ -1177,19 +1415,40 @@ export default function ClinicAdminDashboard() {
                 )}
               />
               
-              <FormField
-                control={addDoctorForm.control}
-                name="imageUrl"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Profile Image URL</FormLabel>
-                    <FormControl>
-                      <Input placeholder="https://example.com/doctor-image.jpg" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <div className="space-y-4">
+                <Label>Profile Image</Label>
+                <div className="flex items-center space-x-4">
+                  <div className="flex-1">
+                    <Input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleDoctorImageUpload}
+                      className="cursor-pointer"
+                    />
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Upload an image (JPEG, PNG, GIF, or WebP, max 5MB)
+                    </p>
+                  </div>
+                  {doctorImagePreview && (
+                    <div className="relative">
+                      <img
+                        src={doctorImagePreview}
+                        alt="Preview"
+                        className="w-16 h-16 object-cover rounded-full border"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute -top-2 -right-2 h-6 w-6 rounded-full p-0"
+                        onClick={clearDoctorImage}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
               
               <DialogFooter>
                 <Button 
@@ -1232,20 +1491,6 @@ export default function ClinicAdminDashboard() {
           </DialogHeader>
           <Form {...editDoctorForm}>
             <form onSubmit={editDoctorForm.handleSubmit(handleEditDoctor)} className="space-y-4">
-              <FormField
-                control={editDoctorForm.control}
-                name="username"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Username</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              
               <FormField
                 control={editDoctorForm.control}
                 name="name"
@@ -1319,22 +1564,40 @@ export default function ClinicAdminDashboard() {
                 )}
               />
               
-              <FormField
-                control={editDoctorForm.control}
-                name="imageUrl"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Profile Image URL</FormLabel>
-                    <FormControl>
-                      <Input 
-                        placeholder="https://example.com/doctor-image.jpg" 
-                        {...field} 
+              <div className="space-y-4">
+                <Label>Profile Image</Label>
+                <div className="flex items-center space-x-4">
+                  <div className="flex-1">
+                    <Input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleEditDoctorImageUpload}
+                      className="cursor-pointer"
+                    />
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Upload an image (JPEG, PNG, GIF, or WebP, max 5MB)
+                    </p>
+                  </div>
+                  {editDoctorImagePreview && (
+                    <div className="relative">
+                      <img
+                        src={editDoctorImagePreview}
+                        alt="Preview"
+                        className="w-16 h-16 object-cover rounded-full border"
                       />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute -top-2 -right-2 h-6 w-6 rounded-full p-0"
+                        onClick={clearEditDoctorImage}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
               
               <DialogFooter>
                 <Button 
@@ -1495,19 +1758,40 @@ export default function ClinicAdminDashboard() {
                 )}
               />
               
-              <FormField
-                control={addAttenderForm.control}
-                name="imageUrl"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Profile Image URL</FormLabel>
-                    <FormControl>
-                      <Input placeholder="https://example.com/attender-image.jpg" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <div className="space-y-4">
+                <Label>Profile Image</Label>
+                <div className="flex items-center space-x-4">
+                  <div className="flex-1">
+                    <Input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleAttenderImageUpload}
+                      className="cursor-pointer"
+                    />
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Upload an image (JPEG, PNG, GIF, or WebP, max 5MB)
+                    </p>
+                  </div>
+                  {attenderImagePreview && (
+                    <div className="relative">
+                      <img
+                        src={attenderImagePreview}
+                        alt="Preview"
+                        className="w-16 h-16 object-cover rounded-full border"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute -top-2 -right-2 h-6 w-6 rounded-full p-0"
+                        onClick={clearAttenderImage}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
               
               <DialogFooter>
                 <Button 
@@ -1606,22 +1890,40 @@ export default function ClinicAdminDashboard() {
                 )}
               />
               
-              <FormField
-                control={editAttenderForm.control}
-                name="imageUrl"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Profile Image URL</FormLabel>
-                    <FormControl>
-                      <Input 
-                        placeholder="https://example.com/attender-image.jpg" 
-                        {...field} 
+              <div className="space-y-4">
+                <Label>Profile Image</Label>
+                <div className="flex items-center space-x-4">
+                  <div className="flex-1">
+                    <Input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleEditAttenderImageUpload}
+                      className="cursor-pointer"
+                    />
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Upload an image (JPEG, PNG, GIF, or WebP, max 5MB)
+                    </p>
+                  </div>
+                  {editAttenderImagePreview && (
+                    <div className="relative">
+                      <img
+                        src={editAttenderImagePreview}
+                        alt="Preview"
+                        className="w-16 h-16 object-cover rounded-full border"
                       />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute -top-2 -right-2 h-6 w-6 rounded-full p-0"
+                        onClick={clearEditAttenderImage}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
               
               <DialogFooter>
                 <Button 
@@ -1848,6 +2150,38 @@ export default function ClinicAdminDashboard() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Password Reset Error Alert Dialog */}
+      <Dialog open={passwordErrorAlert.isOpen} onOpenChange={(open) => 
+        setPasswordErrorAlert({ isOpen: open, message: '' })
+      }>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertCircle className="h-5 w-5" />
+              Password Reset Failed
+            </DialogTitle>
+            <DialogDescription className="text-gray-600">
+              There was an issue resetting the password. Please try again.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <p className="text-red-800 text-sm leading-relaxed">
+                {passwordErrorAlert.message}
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button 
+              onClick={() => setPasswordErrorAlert({ isOpen: false, message: '' })}
+              className="w-full bg-blue-600 hover:bg-blue-700"
+            >
+              Understood
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
