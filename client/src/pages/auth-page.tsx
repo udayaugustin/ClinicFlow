@@ -65,12 +65,12 @@ export default function AuthPage() {
 
               <TabsContent value="login">
                 <LoginForm />
-                <p className="text-sm mt-4">
+                {/* <p className="text-sm mt-4">
                   Are you a super admin?{" "}
                   <Link to="/super-admin-login" className="text-blue-600 hover:text-blue-800">
                     Login here
                   </Link>
-                </p>
+                </p> */}
               </TabsContent>
 
               <TabsContent value="register">

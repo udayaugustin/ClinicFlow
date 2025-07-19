@@ -91,25 +91,34 @@ export default function DoctorSchedulesPage() {
     }
   }, [clinic]);
 
-  // Fetch doctors based on attender assignment
+  // Fetch doctors based on user role
   const { 
-    data: attenderDoctors = [], 
-    isLoading: isLoadingAttenderDoctors 
-  } = useQuery<{doctor: Doctor}[]>({ 
-    queryKey: ['attender-doctors', attenderId], 
+    data: doctorsData = [], 
+    isLoading: isLoadingDoctors 
+  } = useQuery<{doctor: Doctor}[] | Doctor[]>({ 
+    queryKey: ['user-doctors', user?.id, user?.role], 
     queryFn: async () => { 
-      if (!attenderId) return []; 
-      const res = await apiRequest('GET', `/api/attender-doctor/${attenderId}`); 
-      return await res.json(); 
+      if (!user?.id) return []; 
+      
+      if (user.role === 'clinic_admin') {
+        // For clinic admins, get all doctors in their clinic
+        const res = await apiRequest('GET', `/api/clinics/${user.clinicId}/doctors`); 
+        return await res.json(); // Returns Doctor[] directly
+      } else {
+        // For attenders, get assigned doctors
+        const res = await apiRequest('GET', `/api/attender-doctor/${user.id}`); 
+        return await res.json(); // Returns {doctor: Doctor}[]
+      }
     }, 
-    enabled: !!attenderId, 
+    enabled: !!user?.id, 
     refetchOnMount: 'always',  // Always refetch when component mounts
     staleTime: 0,              // Consider data stale immediately
   });
   
-  // Extract just the doctor objects from attenderDoctors
-  const doctors = attenderDoctors.map(item => item.doctor);
-  const isLoadingDoctors = isLoadingAttenderDoctors;
+  // Extract doctor objects based on user role
+  const doctors = user?.role === 'clinic_admin' 
+    ? (doctorsData as Doctor[]) // Clinic admin gets doctors directly
+    : (doctorsData as {doctor: Doctor}[]).map(item => item.doctor); // Attender gets wrapped doctors
   
   // Auto-select first doctor if available and none is selected
   useEffect(() => {
@@ -547,7 +556,7 @@ export default function DoctorSchedulesPage() {
                             </span>
                           </div>
                         </TableCell>
-                        <TableCell>{user?.name || "Unknown_User"}</TableCell>
+                        <TableCell>{schedule.createdByUser?.name || "Unknown"}</TableCell>
                         <TableCell className="text-right space-x-2">
                           <Button
                             variant="ghost"
