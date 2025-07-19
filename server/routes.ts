@@ -2354,6 +2354,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get today's appointment stats for a clinic
+  app.get("/api/clinics/:clinicId/stats/today", async (req, res) => {
+    try {
+      const clinicId = parseInt(req.params.clinicId);
+      if (isNaN(clinicId)) {
+        return res.status(400).json({ message: 'Invalid clinic ID' });
+      }
+
+      const stats = await storage.getClinicAppointmentStatsToday(clinicId);
+      res.json(stats);
+    } catch (error) {
+      console.error('Error fetching clinic appointment stats:', error);
+      res.status(500).json({ message: 'Failed to fetch appointment stats' });
+    }
+  });
+
+  // Get today's schedule stats for a clinic
+  app.get("/api/clinics/:clinicId/stats/schedules/today", async (req, res) => {
+    try {
+      const clinicId = parseInt(req.params.clinicId);
+      if (isNaN(clinicId)) {
+        return res.status(400).json({ message: 'Invalid clinic ID' });
+      }
+
+      const stats = await storage.getClinicScheduleStatsToday(clinicId);
+      res.json(stats);
+    } catch (error) {
+      console.error('Error fetching clinic schedule stats:', error);
+      res.status(500).json({ message: 'Failed to fetch schedule stats' });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

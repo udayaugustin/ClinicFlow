@@ -101,6 +101,13 @@ interface TodayStats {
   cancelled: number;
 }
 
+interface ScheduleStats {
+  total: number;
+  inProgress: number;
+  completed: number;
+  cancelled: number;
+}
+
 // Doctor schema - doctors don't need login credentials
 const doctorSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -900,7 +907,29 @@ export default function ClinicAdminDashboard() {
       const res = await apiRequest('GET', `/api/clinics/${clinicId}/stats/today`); 
       return await res.json(); 
     }, 
-    enabled: !!(params?.id || user?.clinicId), 
+    enabled: !!(params?.id || user?.clinicId),
+    refetchInterval: 30000, // Auto-refresh every 30 seconds
+    refetchOnWindowFocus: true, // Also refresh when window gains focus
+    staleTime: 0, // Always consider data stale to ensure fresh updates
+  });
+
+  // Fetch today's schedule stats (for the Today's Stats card)
+  const { 
+    data: scheduleStats = { total: 0, inProgress: 0, completed: 0, cancelled: 0 }, 
+    isLoading: isScheduleStatsLoading, 
+    isError: isScheduleStatsError 
+  } = useQuery<ScheduleStats>({ 
+    queryKey: ['clinic-schedule-stats', params?.id || user?.clinicId], 
+    queryFn: async () => { 
+      const clinicId = params?.id || user?.clinicId; 
+      if (!clinicId) return { total: 0, inProgress: 0, completed: 0, cancelled: 0 }; 
+      const res = await apiRequest('GET', `/api/clinics/${clinicId}/stats/schedules/today`); 
+      return await res.json(); 
+    }, 
+    enabled: !!(params?.id || user?.clinicId),
+    refetchInterval: 30000, // Auto-refresh every 30 seconds
+    refetchOnWindowFocus: true, // Also refresh when window gains focus
+    staleTime: 0, // Always consider data stale to ensure fresh updates
   });
 
   // Fetch doctors for this clinic
@@ -1097,19 +1126,19 @@ export default function ClinicAdminDashboard() {
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
                     <span className="text-sm font-medium">Scheduled</span>
-                    <Badge variant="outline" className="bg-yellow-50 text-yellow-600">{todayStats.scheduled}</Badge>
+                    <Badge variant="outline" className="bg-yellow-50 text-yellow-600">{scheduleStats.total}</Badge>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm font-medium">In Progress</span>
-                    <Badge variant="outline" className="bg-green-50 text-green-600">{todayStats.completed}</Badge>
+                    <Badge variant="outline" className="bg-blue-50 text-blue-600">{scheduleStats.inProgress}</Badge>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm font-medium">Completed</span>
-                    <Badge variant="outline" className="bg-green-50 text-green-600">{todayStats.completed}</Badge>
+                    <Badge variant="outline" className="bg-green-50 text-green-600">{scheduleStats.completed}</Badge>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm font-medium">Cancelled</span>
-                    <Badge variant="outline" className="bg-red-50 text-red-600">{todayStats.cancelled}</Badge>
+                    <Badge variant="outline" className="bg-red-50 text-red-600">{scheduleStats.cancelled}</Badge>
                   </div>
                 </div>
               </CardContent>

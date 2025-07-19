@@ -2878,6 +2878,167 @@ export class DatabaseStorage implements IStorage {
       throw error;
     }
   }
+
+  // Get appointment stats for a clinic for today
+  async getClinicAppointmentStatsToday(clinicId: number): Promise<{
+    scheduled: number;
+    completed: number;
+    cancelled: number;
+  }> {
+    try {
+      const today = new Date();
+      const startOfDay = new Date(today);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(today);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      // Get all appointments for today in this clinic
+      const appointmentsToday = await db
+        .select({
+          status: appointments.status,
+        })
+        .from(appointments)
+        .where(
+          and(
+            eq(appointments.clinicId, clinicId),
+            gte(appointments.date, startOfDay),
+            lte(appointments.date, endOfDay)
+          )
+        );
+
+      // Count by status
+      const scheduled = appointmentsToday.filter(apt => 
+        apt.status && ['token_started', 'in_progress', 'hold', 'pause'].includes(apt.status)
+      ).length;
+      
+      const completed = appointmentsToday.filter(apt => 
+        apt.status === 'completed'
+      ).length;
+      
+      const cancelled = appointmentsToday.filter(apt => 
+        apt.status === 'cancel'
+      ).length;
+
+      return {
+        scheduled,
+        completed,
+        cancelled
+      };
+    } catch (error) {
+      console.error('Error getting clinic appointment stats:', error);
+      throw error;
+    }
+  }
+
+  // Get schedule stats for a clinic for today  
+  async getClinicScheduleStatsToday(clinicId: number): Promise<{
+    total: number;
+    inProgress: number;
+    completed: number;
+    cancelled: number;
+  }> {
+    try {
+      const today = new Date();
+      const startOfDay = new Date(today);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(today);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      // Get all schedules for today in this clinic
+      const schedulesToday = await db
+        .select({
+          id: doctorSchedules.id,
+          doctorId: doctorSchedules.doctorId,
+          scheduleStatus: doctorSchedules.scheduleStatus,
+          cancelReason: doctorSchedules.cancelReason,
+          isPaused: doctorSchedules.isPaused,
+        })
+        .from(doctorSchedules)
+        .where(
+          and(
+            eq(doctorSchedules.clinicId, clinicId),
+            eq(doctorSchedules.date, today.toISOString().split('T')[0]) // Compare date only
+          )
+        );
+
+      // Get doctor presence data for today to determine in-progress schedules
+      const doctorPresences = await db
+        .select({
+          doctorId: doctorDailyPresence.doctorId,
+          scheduleId: doctorDailyPresence.scheduleId,
+          hasArrived: doctorDailyPresence.hasArrived,
+        })
+        .from(doctorDailyPresence)
+        .where(
+          and(
+            eq(doctorDailyPresence.clinicId, clinicId),
+            gte(doctorDailyPresence.date, startOfDay),
+            lte(doctorDailyPresence.date, endOfDay)
+          )
+        );
+
+      // Create a map of doctor presence by schedule
+      const presenceMap = new Map();
+      doctorPresences.forEach(presence => {
+        if (presence.scheduleId) {
+          presenceMap.set(presence.scheduleId, presence.hasArrived);
+        }
+      });
+
+      // Get appointments that have been started (to determine if schedule is actually in progress)
+      const startedAppointments = await db
+        .select({
+          scheduleId: appointments.scheduleId,
+          status: appointments.status,
+        })
+        .from(appointments)
+        .where(
+          and(
+            eq(appointments.clinicId, clinicId),
+            gte(appointments.date, startOfDay),
+            lte(appointments.date, endOfDay),
+            inArray(appointments.status, ['in_progress', 'token_started', 'hold', 'pause'])
+          )
+        );
+
+      const schedulesWithStartedAppointments = new Set(
+        startedAppointments
+          .filter(apt => apt.scheduleId)
+          .map(apt => apt.scheduleId)
+      );
+
+      // Count schedules by status
+      const total = schedulesToday.length;
+      
+      const completed = schedulesToday.filter(schedule => 
+        schedule.scheduleStatus === 'completed'
+      ).length;
+      
+      const cancelled = schedulesToday.filter(schedule => 
+        schedule.cancelReason !== null && schedule.cancelReason !== undefined
+      ).length;
+      
+      // In-progress: doctor has arrived AND has started appointments AND schedule not completed AND not cancelled
+      const inProgress = schedulesToday.filter(schedule => {
+        const doctorArrived = presenceMap.get(schedule.id) === true;
+        const hasStartedAppointments = schedulesWithStartedAppointments.has(schedule.id);
+        return doctorArrived && 
+               hasStartedAppointments &&
+               schedule.scheduleStatus !== 'completed' && 
+               !schedule.cancelReason;
+      }).length;
+
+      return {
+        total,
+        inProgress,
+        completed,
+        cancelled
+      };
+    } catch (error) {
+      console.error('Error getting clinic schedule stats:', error);
+      throw error;
+    }
+  }
 }
 
 export const storage = new DatabaseStorage();
