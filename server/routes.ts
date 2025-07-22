@@ -2386,6 +2386,156 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Export Report Routes
+
+  // Get doctors managed by current attender for export dropdown
+  app.get("/api/export/doctors", async (req, res) => {
+    if (!req.user || !['attender', 'clinic_admin'].includes(req.user.role)) {
+      return res.sendStatus(403);
+    }
+
+    try {
+      let doctors;
+      
+      if (req.user.role === 'clinic_admin') {
+        // For clinic admins, get all doctors in their clinic
+        if (!req.user.clinicId) {
+          return res.status(400).json({ message: 'Clinic admin not assigned to a clinic' });
+        }
+        doctors = await storage.getDoctorsByClinic(req.user.clinicId);
+      } else {
+        // For attenders, get doctors they manage
+        doctors = await storage.getDoctorsByAttender(req.user.id);
+      }
+      
+      res.json(doctors);
+    } catch (error) {
+      console.error("Error fetching doctors:", error);
+      res.status(500).json({ message: "Failed to fetch doctors" });
+    }
+  });
+
+  // Export appointments for a doctor within date range
+  app.get("/api/export/appointments", async (req, res) => {
+    if (!req.user || !['attender', 'clinic_admin'].includes(req.user.role)) {
+      return res.sendStatus(403);
+    }
+
+    try {
+      const { doctorId, startDate, endDate } = req.query;
+
+      if (!doctorId || !startDate || !endDate) {
+        return res.status(400).json({ 
+          message: "doctorId, startDate, and endDate are required" 
+        });
+      }
+
+      const doctor = await storage.getUser(Number(doctorId));
+      if (!doctor || doctor.role !== "doctor") {
+        return res.status(400).json({ message: "Invalid doctor" });
+      }
+
+      // Validate date range (max 6 months)
+      const start = new Date(startDate as string);
+      const end = new Date(endDate as string);
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+      if (start < sixMonthsAgo) {
+        return res.status(400).json({ 
+          message: "Date range cannot exceed 6 months from current date" 
+        });
+      }
+
+      if (start > end) {
+        return res.status(400).json({ 
+          message: "Start date must be before end date" 
+        });
+      }
+
+      // Check authorization - ensure user can access this doctor's data
+      if (req.user.role === 'attender') {
+        const managedDoctors = await storage.getDoctorsByAttender(req.user.id);
+        const canAccess = managedDoctors.some(d => d.id === Number(doctorId));
+        if (!canAccess) {
+          return res.status(403).json({ message: "Not authorized to access this doctor's data" });
+        }
+      } else if (req.user.role === 'clinic_admin') {
+        // For clinic admins, verify the doctor belongs to their clinic
+        if (!req.user.clinicId) {
+          return res.status(400).json({ message: 'Clinic admin not assigned to a clinic' });
+        }
+        const clinicDoctors = await storage.getDoctorsByClinic(req.user.clinicId);
+        const canAccess = clinicDoctors.some(d => d.id === Number(doctorId));
+        if (!canAccess) {
+          return res.status(403).json({ message: "Not authorized to access this doctor's data" });
+        }
+      }
+
+      const appointments = await storage.getAppointmentsForExport(
+        Number(doctorId),
+        start,
+        end
+      );
+
+      res.json(appointments);
+    } catch (error) {
+      console.error("Export error:", error);
+      res.status(500).json({ message: "Failed to fetch appointment data" });
+    }
+  });
+
+  // Export appointments for a specific schedule
+  app.get("/api/export/appointments/schedule", async (req, res) => {
+    if (!req.user || !['attender', 'clinic_admin'].includes(req.user.role)) {
+      return res.sendStatus(403);
+    }
+
+    try {
+      const { doctorId, scheduleId } = req.query;
+
+      if (!doctorId || !scheduleId) {
+        return res.status(400).json({ 
+          message: "doctorId and scheduleId are required" 
+        });
+      }
+
+      const doctor = await storage.getUser(Number(doctorId));
+      if (!doctor || doctor.role !== "doctor") {
+        return res.status(400).json({ message: "Invalid doctor" });
+      }
+
+      // Check authorization - ensure user can access this doctor's data
+      if (req.user.role === 'attender') {
+        const managedDoctors = await storage.getDoctorsByAttender(req.user.id);
+        const canAccess = managedDoctors.some(d => d.id === Number(doctorId));
+        if (!canAccess) {
+          return res.status(403).json({ message: "Not authorized to access this doctor's data" });
+        }
+      } else if (req.user.role === 'clinic_admin') {
+        // For clinic admins, verify the doctor belongs to their clinic
+        if (!req.user.clinicId) {
+          return res.status(400).json({ message: 'Clinic admin not assigned to a clinic' });
+        }
+        const clinicDoctors = await storage.getDoctorsByClinic(req.user.clinicId);
+        const canAccess = clinicDoctors.some(d => d.id === Number(doctorId));
+        if (!canAccess) {
+          return res.status(403).json({ message: "Not authorized to access this doctor's data" });
+        }
+      }
+
+      const appointments = await storage.getAppointmentsForScheduleExport(
+        Number(doctorId),
+        Number(scheduleId)
+      );
+
+      res.json(appointments);
+    } catch (error) {
+      console.error("Schedule export error:", error);
+      res.status(500).json({ message: "Failed to fetch schedule appointment data" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

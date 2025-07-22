@@ -42,6 +42,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { specialties } from '@shared/schema';
+import { ExportReport } from '@/components/ExportReport';
 
 // Define interfaces for the data types
 interface Clinic {
@@ -1057,11 +1058,12 @@ export default function ClinicAdminDashboard() {
       </div>
 
       <Tabs defaultValue="overview" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="staff">Staff</TabsTrigger>
           <TabsTrigger value="doctor-dashboard">Doctor Dashboard</TabsTrigger>
           <TabsTrigger value="schedules">Schedules</TabsTrigger>
+          <TabsTrigger value="reports">Reports</TabsTrigger>
         </TabsList>
 
         {/* Clinic Overview Tab */}
@@ -1360,6 +1362,11 @@ export default function ClinicAdminDashboard() {
         {/* Schedules Tab */}
         <TabsContent value="schedules" className="space-y-6">
           <SchedulesContent />
+        </TabsContent>
+
+        {/* Reports Tab */}
+        <TabsContent value="reports" className="space-y-6">
+          <ExportReport />
         </TabsContent>
       </Tabs>
       

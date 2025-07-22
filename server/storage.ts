@@ -236,6 +236,18 @@ export interface IStorage {
   })[]>;
   checkIsFavorite(patientId: number, scheduleId: number): Promise<boolean>;
   getPatientsFavoritingSchedule(scheduleId: number): Promise<number[]>;
+  
+  // Export Report methods
+  getDoctorsByAttender(attenderId: number): Promise<User[]>;
+  getAppointmentsForExport(
+    doctorId: number,
+    startDate: Date,
+    endDate: Date
+  ): Promise<any[]>;
+  getAppointmentsForScheduleExport(
+    doctorId: number,
+    scheduleId: number
+  ): Promise<any[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3036,6 +3048,206 @@ export class DatabaseStorage implements IStorage {
       };
     } catch (error) {
       console.error('Error getting clinic schedule stats:', error);
+      throw error;
+    }
+  }
+
+  // Export Report Methods
+
+  async getDoctorsByAttender(attenderId: number): Promise<User[]> {
+    try {
+      const result = await db
+        .select({
+          id: users.id,
+          name: users.name,
+          username: users.username,
+          password: users.password,
+          role: users.role,
+          phone: users.phone,
+          email: users.email,
+          specialty: users.specialty,
+          bio: users.bio,
+          imageUrl: users.imageUrl,
+          address: users.address,
+          city: users.city,
+          state: users.state,
+          zipCode: users.zipCode,
+          latitude: users.latitude,
+          longitude: users.longitude,
+          clinicId: users.clinicId,
+          createdAt: users.createdAt,
+        })
+        .from(users)
+        .innerJoin(attenderDoctors, eq(attenderDoctors.doctorId, users.id))
+        .where(
+          and(
+            eq(users.role, "doctor"),
+            eq(attenderDoctors.attenderId, attenderId)
+          )
+        );
+
+      return result;
+    } catch (error) {
+      console.error("Error fetching doctors by attender:", error);
+      throw error;
+    }
+  }
+
+  async getAppointmentsForExport(
+    doctorId: number,
+    startDate: Date,
+    endDate: Date
+  ): Promise<any[]> {
+    try {
+      const result = await db
+        .select({
+          id: appointments.id,
+          date: appointments.date,
+          tokenNumber: appointments.tokenNumber,
+          status: appointments.status,
+          statusNotes: appointments.statusNotes,
+          actualStartTime: appointments.actualStartTime,
+          actualEndTime: appointments.actualEndTime,
+          isWalkIn: appointments.isWalkIn,
+          guestName: appointments.guestName,
+          guestPhone: appointments.guestPhone,
+          doctorName: users.name,
+          patientName: sql<string>`CASE 
+            WHEN ${appointments.isWalkIn} = true THEN ${appointments.guestName}
+            ELSE patient.name 
+          END`,
+          doctorId: appointments.doctorId,
+          patientId: appointments.patientId,
+          clinicId: appointments.clinicId,
+          scheduleId: appointments.scheduleId,
+          // Get schedule time from doctor_schedules table
+          scheduleTime: sql<string>`CONCAT(schedule.start_time, ' - ', schedule.end_time)`,
+        })
+        .from(appointments)
+        .leftJoin(users, eq(users.id, appointments.doctorId))
+        .leftJoin(
+          sql`${users} as patient`,
+          sql`patient.id = ${appointments.patientId}`
+        )
+        .leftJoin(
+          sql`${doctorSchedules} as schedule`,
+          sql`schedule.id = ${appointments.scheduleId}`
+        )
+        .where(
+          and(
+            eq(appointments.doctorId, doctorId),
+            gte(appointments.date, startDate),
+            lte(appointments.date, endDate)
+          )
+        )
+        .orderBy(appointments.date, appointments.tokenNumber);
+
+      // Transform the data to match expected export format
+      return result.map((appointment, index) => ({
+        serialNumber: index + 1,
+        id: appointment.id,
+        date: appointment.date,
+        tokenNumber: appointment.tokenNumber,
+        status: appointment.status || 'scheduled',
+        scheduleTime: appointment.scheduleTime || '-',
+        inTime: appointment.actualStartTime ? 
+          new Date(appointment.actualStartTime).toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+          }) : '-',
+        outTime: appointment.actualEndTime ? 
+          new Date(appointment.actualEndTime).toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+          }) : '-',
+        doctorName: appointment.doctorName || 'Unknown Doctor',
+        patientName: appointment.patientName || 'Unknown Patient',
+        isWalkIn: appointment.isWalkIn || false,
+        statusNotes: appointment.statusNotes
+      }));
+    } catch (error) {
+      console.error("Error fetching appointments for export:", error);
+      throw error;
+    }
+  }
+
+  async getAppointmentsForScheduleExport(
+    doctorId: number,
+    scheduleId: number
+  ): Promise<any[]> {
+    try {
+      const result = await db
+        .select({
+          id: appointments.id,
+          date: appointments.date,
+          tokenNumber: appointments.tokenNumber,
+          status: appointments.status,
+          statusNotes: appointments.statusNotes,
+          actualStartTime: appointments.actualStartTime,
+          actualEndTime: appointments.actualEndTime,
+          isWalkIn: appointments.isWalkIn,
+          guestName: appointments.guestName,
+          guestPhone: appointments.guestPhone,
+          doctorName: users.name,
+          patientName: sql<string>`CASE 
+            WHEN ${appointments.isWalkIn} = true THEN ${appointments.guestName}
+            ELSE patient.name 
+          END`,
+          doctorId: appointments.doctorId,
+          patientId: appointments.patientId,
+          clinicId: appointments.clinicId,
+          scheduleId: appointments.scheduleId,
+          // Get schedule time from doctor_schedules table
+          scheduleTime: sql<string>`CONCAT(schedule.start_time, ' - ', schedule.end_time)`,
+          scheduleDate: sql<string>`schedule.date`,
+        })
+        .from(appointments)
+        .leftJoin(users, eq(users.id, appointments.doctorId))
+        .leftJoin(
+          sql`${users} as patient`,
+          sql`patient.id = ${appointments.patientId}`
+        )
+        .leftJoin(
+          sql`${doctorSchedules} as schedule`,
+          sql`schedule.id = ${appointments.scheduleId}`
+        )
+        .where(
+          and(
+            eq(appointments.doctorId, doctorId),
+            eq(appointments.scheduleId, scheduleId)
+          )
+        )
+        .orderBy(appointments.tokenNumber);
+
+      // Transform the data to match expected export format
+      return result.map((appointment, index) => ({
+        serialNumber: index + 1,
+        id: appointment.id,
+        date: appointment.scheduleDate || appointment.date,
+        tokenNumber: appointment.tokenNumber,
+        status: appointment.status || 'scheduled',
+        scheduleTime: appointment.scheduleTime || '-',
+        inTime: appointment.actualStartTime ? 
+          new Date(appointment.actualStartTime).toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+          }) : '-',
+        outTime: appointment.actualEndTime ? 
+          new Date(appointment.actualEndTime).toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+          }) : '-',
+        doctorName: appointment.doctorName || 'Unknown Doctor',
+        patientName: appointment.patientName || 'Unknown Patient',
+        isWalkIn: appointment.isWalkIn || false,
+        statusNotes: appointment.statusNotes
+      }));
+    } catch (error) {
+      console.error("Error fetching appointments for schedule export:", error);
       throw error;
     }
   }
