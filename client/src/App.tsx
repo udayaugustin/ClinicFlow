@@ -16,6 +16,7 @@ import { useAuth } from "./hooks/use-auth";
 import SuperAdminDashboard from "@/pages/super-admin-dashboard";
 import DoctorCreation from "@/pages/doctor-creation";
 import ClinicCreation from "@/pages/clinic-creation";
+import ClinicAdminCreation from "@/pages/clinic-admin-creation";
 import ClinicView from "@/pages/clinic-view";
 import DoctorManagementPage from "./pages/doctor-management";
 import { ProtectedRoute } from "./components/ProtectedRoute";
@@ -74,6 +75,7 @@ function Router() {
       {/* <Route path="/super-admin-dashboard" component={SuperAdminDashboard} /> */}
       <Route path="/doctor-creation" component={DoctorCreation} />
       <Route path="/clinic-creation" component={ClinicCreation} />
+      <Route path="/clinic-admin-creation" component={ClinicAdminCreation} />
       <Route path="/clinic/:id" component={ClinicView} />
       <Route path="/doctor-management" component={ProtectedDoctorManagement} />
       <Route path="/schedules" component={ProtectedDoctorSchedules} />

@@ -89,6 +89,7 @@ export interface IStorage {
 
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
+  getUserWithClinic(id: number): Promise<(User & { clinic?: Clinic }) | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: number, userData: Partial<InsertUser>): Promise<User>;
   deleteUser(id: number): Promise<void>;
@@ -96,6 +97,7 @@ export interface IStorage {
   getDoctorsBySpecialty(specialty: string): Promise<User[]>;
   getDoctorWithClinic(id: number): Promise<(User & { clinic?: Clinic }) | undefined>;
   getDoctorsNearLocation(lat: number, lng: number, radiusInMiles?: number): Promise<User[]>;
+  getClinicAdmins(): Promise<(User & { clinic?: Clinic })[]>;
   getClinics(): Promise<Clinic[]>;
   getClinic(id: number): Promise<Clinic | undefined>;
   createClinic(clinic: typeof clinics.$inferInsert): Promise<Clinic>;
@@ -337,6 +339,42 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+  async getUserWithClinic(id: number): Promise<(User & { clinic?: Clinic }) | undefined> {
+    const [result] = await db
+      .select({
+        id: users.id,
+        username: users.username,
+        password: users.password,
+        name: users.name,
+        role: users.role,
+        phone: users.phone,
+        email: users.email,
+        specialty: users.specialty,
+        bio: users.bio,
+        imageUrl: users.imageUrl,
+        address: users.address,
+        city: users.city,
+        state: users.state,
+        zipCode: users.zipCode,
+        latitude: users.latitude,
+        longitude: users.longitude,
+        clinicId: users.clinicId,
+        createdAt: users.createdAt,
+        clinic: clinics,
+      })
+      .from(users)
+      .leftJoin(clinics, eq(users.clinicId, clinics.id))
+      .where(eq(users.id, id));
+
+    if (!result) return undefined;
+
+    const { clinic, ...user } = result;
+    return {
+      ...user,
+      clinic: clinic || undefined,
+    };
+  }
+
   async createUser(insertUser: InsertUser): Promise<User> {
     const [user] = await db.insert(users).values(insertUser).returning();
     return user;
@@ -411,6 +449,42 @@ export class DatabaseStorage implements IStorage {
 
   async getDoctorsBySpecialty(specialty: string): Promise<User[]> {
     return await db.select().from(users).where(eq(users.specialty, specialty));
+  }
+
+  async getClinicAdmins(): Promise<(User & { clinic?: Clinic })[]> {
+    const results = await db
+      .select({
+        id: users.id,
+        username: users.username,
+        password: users.password,
+        name: users.name,
+        role: users.role,
+        phone: users.phone,
+        email: users.email,
+        specialty: users.specialty,
+        bio: users.bio,
+        imageUrl: users.imageUrl,
+        address: users.address,
+        city: users.city,
+        state: users.state,
+        zipCode: users.zipCode,
+        latitude: users.latitude,
+        longitude: users.longitude,
+        clinicId: users.clinicId,
+        createdAt: users.createdAt,
+        clinic: clinics,
+      })
+      .from(users)
+      .leftJoin(clinics, eq(users.clinicId, clinics.id))
+      .where(eq(users.role, 'clinic_admin'));
+
+    return results.map(result => {
+      const { clinic, ...user } = result;
+      return {
+        ...user,
+        clinic: clinic || undefined,
+      };
+    });
   }
 
   async getDoctorWithClinic(id: number): Promise<(User & { clinic?: Clinic }) | undefined> {
