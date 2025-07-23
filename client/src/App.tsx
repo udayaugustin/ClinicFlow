@@ -33,8 +33,14 @@ const ProtectedDoctorManagement = () => (
 );
 
 const ProtectedDoctorSchedules = () => (
-  <ProtectedRoute allowedRoles={["hospital_admin", "attender", "doctor"]}>
+  <ProtectedRoute allowedRoles={["hospital_admin", "attender", "doctor", "clinic_admin"]}>
     <DoctorSchedulesPage />
+  </ProtectedRoute>
+);
+
+const ProtectedAttenderDashboard = () => (
+  <ProtectedRoute allowedRoles={["attender", "clinic_admin"]}>
+    <AttenderDashboard />
   </ProtectedRoute>
 );
 
@@ -64,7 +70,7 @@ function Router() {
       <Route path="/book/:doctorId" component={PatientBookingPage} />
       <Route path="/doctor/bookings" component={DoctorBookingPage} />
       <Route path="/appointments" component={BookingHistoryPage} />
-      <Route path="/attender-dashboard" component={AttenderDashboard} />
+      <Route path="/attender-dashboard" component={ProtectedAttenderDashboard} />
       {/* <Route path="/super-admin-dashboard" component={SuperAdminDashboard} /> */}
       <Route path="/doctor-creation" component={DoctorCreation} />
       <Route path="/clinic-creation" component={ClinicCreation} />

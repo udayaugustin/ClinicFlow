@@ -4,10 +4,12 @@ import cors from 'cors';
 import { storage, getTokens } from './storage';
 import { createSessionMiddleware, setupAuth } from './auth';
 import { insertAppointmentSchema, insertAttenderDoctorSchema, insertClinicSchema, insertUserSchema, type AttenderDoctor, type User } from "../shared/schema";
-import { insertDoctorDetailSchema } from "../shared/schema";
+import { insertDoctorDetailSchema, appointments } from "../shared/schema";
 import { z } from "zod";
 import { notificationService } from './services/notification';
 import { ETAService } from './services/eta';
+import { db } from './db';
+import { eq, and, sql } from 'drizzle-orm';
 
 // Simple in-memory notification store as fallback
 const memoryNotifications: any[] = [];
@@ -342,7 +344,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.patch("/api/appointments/:id/status", async (req, res) => {
-    if (!req.user || req.user.role !== "attender") return res.sendStatus(403);
+    if (!req.user || !['attender', 'clinic_admin'].includes(req.user.role)) return res.sendStatus(403);
     try {
       const appointmentId = parseInt(req.params.id);
       const { status, statusNotes } = req.body;
@@ -491,7 +493,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/doctors/:id/availability", async (req, res) => {
     if (!req.user) return res.sendStatus(401);
-    if (req.user.role !== "doctor" && req.user.role !== "attender") return res.sendStatus(403);
+    if (req.user.role !== "doctor" && !['attender', 'clinic_admin'].includes(req.user.role)) return res.sendStatus(403);
     if (req.user.role === "doctor" && req.user.id !== parseInt(req.params.id)) return res.sendStatus(403);
 
     try {
@@ -544,13 +546,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Attender appointments route - Single endpoint for attender appointments
   app.get("/api/attender/:id/doctors/appointments", async (req, res) => {
     if (!req.user) return res.sendStatus(401);
-    if (req.user.role !== "attender") return res.sendStatus(403);
+    
+    // Allow both attenders and clinic admins
+    if (req.user.role !== "attender" && req.user.role !== "clinic_admin") {
+      return res.sendStatus(403);
+    }
 
     try {
-      const doctorsWithAppointments = await storage.getAttenderDoctorsAppointments(parseInt(req.params.id));
-      res.json(doctorsWithAppointments);
+      const userId = parseInt(req.params.id);
+      
+      // For clinic admins, we need to get their clinic's data differently
+      if (req.user.role === "clinic_admin") {
+        // Use clinic admin's clinic ID to get all doctors in the clinic
+        if (!req.user.clinicId) {
+          return res.status(400).json({ message: 'Clinic admin not assigned to a clinic' });
+        }
+        const doctorsWithAppointments = await storage.getClinicDoctorsAppointments(req.user.clinicId);
+        return res.json(doctorsWithAppointments);
+      } else {
+        // Original attender logic
+        const doctorsWithAppointments = await storage.getAttenderDoctorsAppointments(userId);
+        return res.json(doctorsWithAppointments);
+      }
     } catch (error) {
-      console.error('Error fetching attender doctor appointments:', error);
+      console.error('Error fetching doctor appointments:', error);
       res.status(500).json({ message: 'Failed to fetch appointments' });
     }
   });
@@ -809,7 +828,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Update token progress (Attender only)
   app.patch("/api/doctors/:id/token-progress", async (req, res) => {
     if (!req.user) return res.sendStatus(401);
-    if (req.user.role !== "attender") return res.sendStatus(403);
+    if (!['attender', 'clinic_admin'].includes(req.user.role)) return res.sendStatus(403);
 
     try {
       const doctorId = parseInt(req.params.id);
@@ -837,8 +856,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Doctor management routes
   app.post("/api/doctors", async (req, res) => {
     try {
-      // Check if user is authorized (must be hospital_admin or attender)
-      if (!req.user || (req.user.role !== "hospital_admin" && req.user.role !== "attender")) {
+      // Check if user is authorized (must be hospital_admin, attender, or clinic_admin)
+      if (!req.user || (req.user.role !== "hospital_admin" && req.user.role !== "attender" && req.user.role !== "clinic_admin")) {
         return res.status(403).json({ message: "Unauthorized" });
       }
 
@@ -920,8 +939,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Update doctor details
   app.patch("/api/doctors/:id/details", async (req, res) => {
     try {
-      // Check if user is authorized (must be hospital_admin or attender)
-      if (!req.user || (req.user.role !== "hospital_admin" && req.user.role !== "attender")) {
+      // Check if user is authorized (must be hospital_admin, attender, or clinic_admin)
+      if (!req.user || (req.user.role !== "hospital_admin" && req.user.role !== "attender" && req.user.role !== "clinic_admin")) {
         return res.status(403).json({ message: "Unauthorized" });
       }
       
@@ -951,8 +970,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Toggle doctor status (enable/disable)
   app.patch("/api/doctors/:id/status", async (req, res) => {
     try {
-      // Check if user is authorized (must be hospital_admin or attender)
-      if (!req.user || (req.user.role !== "hospital_admin" && req.user.role !== "attender")) {
+      // Check if user is authorized (must be hospital_admin, attender, or clinic_admin)
+      if (!req.user || (req.user.role !== "hospital_admin" && req.user.role !== "attender" && req.user.role !== "clinic_admin")) {
         return res.status(403).json({ message: "Unauthorized" });
       }
       
@@ -1055,7 +1074,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Schedule pause routes
   app.patch("/api/schedules/:id/pause", async (req, res) => {
-    if (!req.user || !['hospital_admin', 'attender', 'doctor'].includes(req.user.role)) {
+    if (!req.user || !['hospital_admin', 'attender', 'doctor', 'clinic_admin'].includes(req.user.role)) {
       return res.status(403).json({ message: 'Unauthorized access' });
     }
     try {
@@ -1098,7 +1117,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.patch("/api/schedules/:id/resume", async (req, res) => {
-    if (!req.user || !['hospital_admin', 'attender', 'doctor'].includes(req.user.role)) {
+    if (!req.user || !['hospital_admin', 'attender', 'doctor', 'clinic_admin'].includes(req.user.role)) {
       return res.status(403).json({ message: 'Unauthorized access' });
     }
     try {
@@ -1136,7 +1155,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Schedule completion endpoint
   app.patch("/api/schedules/:id/complete", async (req, res) => {
-    if (!req.user || !['hospital_admin', 'attender'].includes(req.user.role)) {
+    if (!req.user || !['hospital_admin', 'attender', 'clinic_admin'].includes(req.user.role)) {
       return res.status(403).json({ message: 'Unauthorized access' });
     }
     try {
@@ -1175,7 +1194,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Booking control endpoints
   app.patch("/api/schedules/:id/booking-close", async (req, res) => {
-    if (!req.user || !['hospital_admin', 'attender'].includes(req.user.role)) {
+    if (!req.user || !['hospital_admin', 'attender', 'clinic_admin'].includes(req.user.role)) {
       return res.status(403).json({ message: 'Unauthorized access' });
     }
     try {
@@ -1193,7 +1212,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.patch("/api/schedules/:id/booking-open", async (req, res) => {
-    if (!req.user || !['hospital_admin', 'attender'].includes(req.user.role)) {
+    if (!req.user || !['hospital_admin', 'attender', 'clinic_admin'].includes(req.user.role)) {
       return res.status(403).json({ message: 'Unauthorized access' });
     }
     try {
@@ -1211,7 +1230,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/doctors/:id/schedules", async (req, res) => {
-    if (!req.user || !['hospital_admin', 'attender'].includes(req.user.role)) {
+    if (!req.user || !['hospital_admin', 'attender', 'clinic_admin'].includes(req.user.role)) {
       return res.status(403).json({ message: 'Unauthorized access' });
     }
 
@@ -1276,10 +1295,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Create the schedule
+      // Create the schedule with proper creator tracking
       const schedule = await storage.createDoctorSchedule({
         doctorId,
         ...validData,
+        createdBy: req.user.id, // Now properly tracking who created the schedule
       });
 
       // If schedule is created as active, notify patients who might have favorited this doctor
@@ -1304,7 +1324,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.patch("/api/doctors/schedules/:id", async (req, res) => {
-    if (!req.user || !['hospital_admin', 'attender'].includes(req.user.role)) {
+    if (!req.user || !['hospital_admin', 'attender', 'clinic_admin'].includes(req.user.role)) {
       return res.status(403).json({ message: 'Unauthorized access' });
     }
 
@@ -1387,7 +1407,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.delete("/api/doctors/schedules/:id", async (req, res) => {
-    if (!req.user || !['hospital_admin', 'attender'].includes(req.user.role)) {
+    if (!req.user || !['hospital_admin', 'attender', 'clinic_admin'].includes(req.user.role)) {
       return res.status(403).json({ message: 'Unauthorized access' });
     }
 
@@ -1521,7 +1541,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Add a new endpoint for doctor arrival status
   app.patch("/api/doctors/:id/arrival", async (req, res) => {
-    if (!req.user || req.user.role !== "attender") return res.sendStatus(403);
+    if (!req.user || !['attender', 'clinic_admin'].includes(req.user.role)) return res.sendStatus(403);
     
     try {
       const doctorId = parseInt(req.params.id);
@@ -1538,7 +1558,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const parsedScheduleId = scheduleId ? parseInt(scheduleId) : null;
       const dateObj = new Date(date);
       
-      console.log('Updating doctor arrival status in storage');
+      console.log('📝 CALLING updateDoctorArrivalStatus...');
       const presenceRecord = await storage.updateDoctorArrivalStatus(
         doctorId,
         parseInt(clinicId),
@@ -1546,7 +1566,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         dateObj,
         hasArrived
       );
-      console.log('Doctor presence record updated:', presenceRecord);
+      console.log('✅ PRESENCE RECORD UPDATED:', presenceRecord);
       
       // Update ETAs if doctor has arrived
       if (hasArrived && parsedScheduleId) {
@@ -1615,14 +1635,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(presenceRecord);
     } catch (error) {
-      console.error('Error updating doctor arrival status:', error);
+      console.error('❌ ERROR updating doctor arrival status:', error);
       res.status(500).json({ message: 'Failed to update doctor arrival status' });
     }
   });
   
   // Add an endpoint to reset all doctor presence for today (for debugging)
   app.post("/api/debug/reset-doctor-presence", async (req, res) => {
-    if (!req.user || !['hospital_admin', 'attender'].includes(req.user.role)) {
+    if (!req.user || !['hospital_admin', 'attender', 'clinic_admin'].includes(req.user.role)) {
       return res.status(403).json({ message: 'Unauthorized access' });
     }
 
@@ -1658,16 +1678,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
+      const clinicIdNumber = parseInt(clinicId as string);
+      if (isNaN(clinicIdNumber)) {
+        return res.status(400).json({ 
+          message: 'Invalid clinicId parameter - must be a valid number' 
+        });
+      }
+      
       const presenceRecord = await storage.getDoctorArrivalStatus(
         doctorId,
-        parseInt(clinicId as string),
+        clinicIdNumber,
         new Date(date as string)
       );
       
       if (!presenceRecord) {
         return res.json({
           doctorId,
-          clinicId: parseInt(clinicId as string),
+          clinicId: clinicIdNumber,
           date: new Date(date as string).toISOString(),
           hasArrived: false,
           scheduleId: null
@@ -1683,7 +1710,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Add a new endpoint for attenders to create walk-in appointments
   app.post("/api/attender/walk-in-appointments", async (req, res) => {
-    if (!req.user || req.user.role !== "attender") return res.sendStatus(403);
+    if (!req.user || !['attender', 'clinic_admin'].includes(req.user.role)) return res.sendStatus(403);
     
     try {
       const { doctorId, clinicId, scheduleId, date, guestName, guestPhone } = req.body;
@@ -1695,12 +1722,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Validate the doctor exists and is managed by this attender
-      const managedDoctors = await storage.getAttenderDoctors(req.user.id);
-      const canManageDoctor = managedDoctors.some(md => md.doctorId === Number(doctorId));
+      // Validate the doctor exists and user is authorized to manage them
+      let canManageDoctor = false;
+      
+      if (req.user.role === 'attender') {
+        // For attenders: check if they manage this doctor via attender_doctors table
+        const managedDoctors = await storage.getAttenderDoctors(req.user.id);
+        canManageDoctor = managedDoctors.some(md => md.doctorId === Number(doctorId));
+      } else if (req.user.role === 'clinic_admin') {
+        // For clinic admins: check if the doctor belongs to their clinic
+        // First verify the clinic admin has a clinic assigned
+        if (!req.user.clinicId) {
+          return res.status(400).json({ message: 'Clinic admin not assigned to a clinic' });
+        }
+        
+        // Check if the doctor belongs to the admin's clinic via doctor_clinics table
+        const doctorClinics = await storage.getDoctorClinics(Number(doctorId));
+        canManageDoctor = doctorClinics.some(clinic => clinic.id === req.user.clinicId);
+      }
       
       if (!canManageDoctor) {
-        return res.status(403).json({ message: 'You are not authorized to manage this doctor' });
+        return res.status(403).json({ 
+          message: req.user.role === 'clinic_admin' 
+            ? 'You can only manage doctors in your clinic' 
+            : 'You are not authorized to manage this doctor' 
+        });
       }
       
       // Create appointment date object
@@ -1903,10 +1949,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Attender Dashboard Endpoints
   app.get('/api/attender/:id/clinic-overview', async (req, res) => {
-    if (!req.user || req.user.role !== 'attender') return res.sendStatus(403);
+    if (!req.user || !['attender', 'clinic_admin'].includes(req.user.role)) return res.sendStatus(403);
     try {
       const attenderId = parseInt(req.params.id);
-      if (req.user.id !== attenderId) return res.sendStatus(403);
+      if (req.user.role === 'attender' && req.user.id !== attenderId) return res.sendStatus(403);
 
       const overview = await storage.getAttenderClinicOverview(attenderId);
       res.json(overview);
@@ -1918,7 +1964,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/attender/:id/doctors-summary', async (req, res) => {
     console.log('Doctors summary request:', { user: req.user, params: req.params });
-    if (!req.user || req.user.role !== 'attender') {
+    if (!req.user || !['attender', 'clinic_admin'].includes(req.user.role)) {
       console.log('Auth failed:', { user: req.user?.role });
       return res.sendStatus(403);
     }
@@ -1940,16 +1986,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/attender/schedules-today', async (req, res) => {
     console.log('Schedules request:', { user: req.user });
   
-    // Auth check
-    if (!req.user || req.user.role !== 'attender') {
+    // Allow both attenders and clinic admins
+    if (!req.user || (req.user.role !== 'attender' && req.user.role !== 'clinic_admin')) {
       console.log('Auth failed:', { user: req.user?.role });
       return res.sendStatus(403);
     }
   
     try {
-      const attenderId = req.user.id;
-  
-      const schedules = await storage.getAttenderSchedulesToday(attenderId);
+      let schedules;
+      
+      if (req.user.role === 'clinic_admin') {
+        // For clinic admins, use their clinic ID directly
+        if (!req.user.clinicId) {
+          return res.status(400).json({ message: 'Clinic admin not assigned to a clinic' });
+        }
+        schedules = await storage.getClinicSchedulesToday(req.user.clinicId);
+      } else {
+        // Original attender logic
+        const attenderId = req.user.id;
+        schedules = await storage.getAttenderSchedulesToday(attenderId);
+      }
+      
       res.json(schedules);
     } catch (error) {
       console.error('Error fetching schedules:', error);
@@ -2003,7 +2060,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     // Cancel a schedule and notify affected patients
     app.patch("/api/schedules/:id/cancel", async (req, res) => {
-      if (!req.user || req.user.role !== 'attender') {
+      if (!req.user || !['attender', 'clinic_admin'].includes(req.user.role)) {
         return res.sendStatus(403);
       }
 
@@ -2138,7 +2195,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Update doctor (complete record) Endpoints
   app.patch('/api/doctors/:id', async (req, res) => {
-    if (!req.user || req.user.role !== 'attender') return res.sendStatus(403);
+    if (!req.user || !['attender', 'clinic_admin'].includes(req.user.role)) return res.sendStatus(403);
     try {
       const doctorId = parseInt(req.params.id);
 
@@ -2247,6 +2304,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Reset attender password by clinic admin
+  app.patch("/api/admin/reset-attender-password", async (req, res) => {
+    if (!req.user || req.user.role !== 'clinic_admin') {
+      return res.status(403).json({ message: 'Only clinic admins can reset passwords' });
+    }
+
+    try {
+      const { attenderId, newPassword } = req.body;
+
+      // Validate password requirements
+      const passwordRegex = /^(?=.*[0-9])(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{8,}$/;
+      if (!passwordRegex.test(newPassword)) {
+        return res.status(400).json({ 
+          message: 'Password must be at least 8 characters with 1 number and 1 special character' 
+        });
+      }
+
+      // Check if password already exists for any user
+      const existingUser = await storage.checkPasswordExists(newPassword);
+      if (existingUser) {
+        return res.status(400).json({ 
+          message: 'This password is already in use. Please choose a different password.' 
+        });
+      }
+
+      // Reset the password
+      await storage.resetAttenderPassword(attenderId, newPassword);
+
+      res.json({ message: 'Password reset successfully' });
+    } catch (error) {
+      console.error('Error resetting password:', error);
+      res.status(500).json({ message: 'Failed to reset password' });
+    }
+  });
+
   // Debug route to test notifications
   app.post("/api/debug/test-notification/:scheduleId", async (req, res) => {
     try {
@@ -2259,6 +2351,188 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("DEBUG: Notification test failed:", error);
       res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get today's appointment stats for a clinic
+  app.get("/api/clinics/:clinicId/stats/today", async (req, res) => {
+    try {
+      const clinicId = parseInt(req.params.clinicId);
+      if (isNaN(clinicId)) {
+        return res.status(400).json({ message: 'Invalid clinic ID' });
+      }
+
+      const stats = await storage.getClinicAppointmentStatsToday(clinicId);
+      res.json(stats);
+    } catch (error) {
+      console.error('Error fetching clinic appointment stats:', error);
+      res.status(500).json({ message: 'Failed to fetch appointment stats' });
+    }
+  });
+
+  // Get today's schedule stats for a clinic
+  app.get("/api/clinics/:clinicId/stats/schedules/today", async (req, res) => {
+    try {
+      const clinicId = parseInt(req.params.clinicId);
+      if (isNaN(clinicId)) {
+        return res.status(400).json({ message: 'Invalid clinic ID' });
+      }
+
+      const stats = await storage.getClinicScheduleStatsToday(clinicId);
+      res.json(stats);
+    } catch (error) {
+      console.error('Error fetching clinic schedule stats:', error);
+      res.status(500).json({ message: 'Failed to fetch schedule stats' });
+    }
+  });
+
+  // Export Report Routes
+
+  // Get doctors managed by current attender for export dropdown
+  app.get("/api/export/doctors", async (req, res) => {
+    if (!req.user || !['attender', 'clinic_admin'].includes(req.user.role)) {
+      return res.sendStatus(403);
+    }
+
+    try {
+      let doctors;
+      
+      if (req.user.role === 'clinic_admin') {
+        // For clinic admins, get all doctors in their clinic
+        if (!req.user.clinicId) {
+          return res.status(400).json({ message: 'Clinic admin not assigned to a clinic' });
+        }
+        doctors = await storage.getDoctorsByClinic(req.user.clinicId);
+      } else {
+        // For attenders, get doctors they manage
+        doctors = await storage.getDoctorsByAttender(req.user.id);
+      }
+      
+      res.json(doctors);
+    } catch (error) {
+      console.error("Error fetching doctors:", error);
+      res.status(500).json({ message: "Failed to fetch doctors" });
+    }
+  });
+
+  // Export appointments for a doctor within date range
+  app.get("/api/export/appointments", async (req, res) => {
+    if (!req.user || !['attender', 'clinic_admin'].includes(req.user.role)) {
+      return res.sendStatus(403);
+    }
+
+    try {
+      const { doctorId, startDate, endDate } = req.query;
+
+      if (!doctorId || !startDate || !endDate) {
+        return res.status(400).json({ 
+          message: "doctorId, startDate, and endDate are required" 
+        });
+      }
+
+      const doctor = await storage.getUser(Number(doctorId));
+      if (!doctor || doctor.role !== "doctor") {
+        return res.status(400).json({ message: "Invalid doctor" });
+      }
+
+      // Validate date range (max 6 months)
+      const start = new Date(startDate as string);
+      const end = new Date(endDate as string);
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+      if (start < sixMonthsAgo) {
+        return res.status(400).json({ 
+          message: "Date range cannot exceed 6 months from current date" 
+        });
+      }
+
+      if (start > end) {
+        return res.status(400).json({ 
+          message: "Start date must be before end date" 
+        });
+      }
+
+      // Check authorization - ensure user can access this doctor's data
+      if (req.user.role === 'attender') {
+        const managedDoctors = await storage.getDoctorsByAttender(req.user.id);
+        const canAccess = managedDoctors.some(d => d.id === Number(doctorId));
+        if (!canAccess) {
+          return res.status(403).json({ message: "Not authorized to access this doctor's data" });
+        }
+      } else if (req.user.role === 'clinic_admin') {
+        // For clinic admins, verify the doctor belongs to their clinic
+        if (!req.user.clinicId) {
+          return res.status(400).json({ message: 'Clinic admin not assigned to a clinic' });
+        }
+        const clinicDoctors = await storage.getDoctorsByClinic(req.user.clinicId);
+        const canAccess = clinicDoctors.some(d => d.id === Number(doctorId));
+        if (!canAccess) {
+          return res.status(403).json({ message: "Not authorized to access this doctor's data" });
+        }
+      }
+
+      const appointments = await storage.getAppointmentsForExport(
+        Number(doctorId),
+        start,
+        end
+      );
+
+      res.json(appointments);
+    } catch (error) {
+      console.error("Export error:", error);
+      res.status(500).json({ message: "Failed to fetch appointment data" });
+    }
+  });
+
+  // Export appointments for a specific schedule
+  app.get("/api/export/appointments/schedule", async (req, res) => {
+    if (!req.user || !['attender', 'clinic_admin'].includes(req.user.role)) {
+      return res.sendStatus(403);
+    }
+
+    try {
+      const { doctorId, scheduleId } = req.query;
+
+      if (!doctorId || !scheduleId) {
+        return res.status(400).json({ 
+          message: "doctorId and scheduleId are required" 
+        });
+      }
+
+      const doctor = await storage.getUser(Number(doctorId));
+      if (!doctor || doctor.role !== "doctor") {
+        return res.status(400).json({ message: "Invalid doctor" });
+      }
+
+      // Check authorization - ensure user can access this doctor's data
+      if (req.user.role === 'attender') {
+        const managedDoctors = await storage.getDoctorsByAttender(req.user.id);
+        const canAccess = managedDoctors.some(d => d.id === Number(doctorId));
+        if (!canAccess) {
+          return res.status(403).json({ message: "Not authorized to access this doctor's data" });
+        }
+      } else if (req.user.role === 'clinic_admin') {
+        // For clinic admins, verify the doctor belongs to their clinic
+        if (!req.user.clinicId) {
+          return res.status(400).json({ message: 'Clinic admin not assigned to a clinic' });
+        }
+        const clinicDoctors = await storage.getDoctorsByClinic(req.user.clinicId);
+        const canAccess = clinicDoctors.some(d => d.id === Number(doctorId));
+        if (!canAccess) {
+          return res.status(403).json({ message: "Not authorized to access this doctor's data" });
+        }
+      }
+
+      const appointments = await storage.getAppointmentsForScheduleExport(
+        Number(doctorId),
+        Number(scheduleId)
+      );
+
+      res.json(appointments);
+    } catch (error) {
+      console.error("Schedule export error:", error);
+      res.status(500).json({ message: "Failed to fetch schedule appointment data" });
     }
   });
 
