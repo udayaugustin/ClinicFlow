@@ -85,18 +85,20 @@ export function ExportReport() {
       today.setHours(23, 59, 59, 999); // End of today
       
       return data
-        .filter((schedule: any) => {
-          const scheduleDate = new Date(schedule.date);
-          const isRelevantDate = scheduleDate <= today; // Only past and present schedules
-          
-          // Include schedules that have potential appointment data:
-          const hasReportableData = 
-            schedule.isActive || // Currently active schedules
-            schedule.scheduleStatus === 'completed' || // Completed by attender/clinic admin
-            schedule.cancelReason; // Cancelled schedules (might have partial appointment data)
-          
-          return isRelevantDate && hasReportableData;
-        })
+      .filter((schedule: any) => {
+        const scheduleDate = new Date(schedule.date);
+        const isRelevantDate = scheduleDate <= today; // Only past and present schedules
+        
+        // Exclude cancelled schedules from export dropdown
+        const isNotCancelled = !schedule.cancelReason;
+        
+        // Include schedules that have potential appointment data:
+        const hasReportableData = 
+          schedule.isActive || // Currently active schedules
+          schedule.scheduleStatus === 'completed'; // Completed by attender/clinic admin
+        
+        return isRelevantDate && isNotCancelled && hasReportableData;
+      })
         .map((schedule: any) => ({
           id: schedule.id,
           date: schedule.date,
