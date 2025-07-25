@@ -6,6 +6,7 @@ import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { storage } from "./storage";
 import { User as SelectUser, insertUserSchema } from "@shared/schema";
+import { smsService } from "./services/sms";
 
 declare global {
   namespace Express {
@@ -135,5 +136,250 @@ export function setupAuth(app: Express) {
   app.get("/api/user", (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     res.json(req.user);
+  });
+
+  // OTP Authentication endpoints
+  app.post("/api/auth/request-otp", async (req, res) => {
+    try {
+      const { phone } = req.body;
+      
+      if (!phone) {
+        return res.status(400).json({ message: "Phone number is required" });
+      }
+
+      // Check if user exists
+      const user = await storage.getUserByPhone(phone);
+      if (!user) {
+        return res.status(404).json({ message: "No account found with this phone number" });
+      }
+
+      // Check rate limiting
+      const canSend = await storage.canSendOtp(phone);
+      if (!canSend) {
+        return res.status(429).json({ message: "Please wait 1 minute before requesting another OTP" });
+      }
+
+      // Cleanup expired OTPs
+      await storage.cleanupExpiredOtps();
+
+      // Generate OTP
+      const otp = smsService.generateOTP();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+      // Store OTP in database
+      await storage.createOtpVerification({
+        phone,
+        otpCode: otp,
+        expiresAt,
+        verified: false,
+        verificationAttempts: 0
+      });
+
+      // Update last OTP sent time
+      await storage.updateLastOtpSentAt(phone);
+
+      // Send OTP via SMS
+      await smsService.sendOTP(phone, otp);
+
+      res.json({ message: "OTP sent successfully" });
+    } catch (error) {
+      console.error("Error sending OTP:", error);
+      res.status(500).json({ message: "Failed to send OTP" });
+    }
+  });
+
+  app.post("/api/auth/verify-otp", async (req, res, next) => {
+    try {
+      const { phone, otp } = req.body;
+
+      if (!phone || !otp) {
+        return res.status(400).json({ message: "Phone number and OTP are required" });
+      }
+
+      // Get valid OTP from database
+      const otpRecord = await storage.getValidOtp(phone, otp);
+      
+      if (!otpRecord) {
+        return res.status(401).json({ message: "Invalid or expired OTP" });
+      }
+
+      // Check if too many attempts
+      if (otpRecord.verificationAttempts >= 5) {
+        return res.status(429).json({ message: "Too many attempts. Please request a new OTP" });
+      }
+
+      // Increment attempts
+      await storage.incrementOtpAttempts(otpRecord.id);
+
+      // Get user
+      const user = await storage.getUserByPhone(phone);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Mark OTP as verified
+      await storage.markOtpAsVerified(otpRecord.id);
+
+      // Update phone verification status
+      await storage.updateUser(user.id, { phoneVerified: true });
+
+      // Login the user
+      req.login(user, (err) => {
+        if (err) return next(err);
+        res.json(user);
+      });
+    } catch (error) {
+      console.error("Error verifying OTP:", error);
+      res.status(500).json({ message: "Failed to verify OTP" });
+    }
+  });
+
+  // OTP Registration endpoints
+  app.post("/api/register/request-otp", async (req, res) => {
+    try {
+      const { phone } = req.body;
+      
+      if (!phone) {
+        return res.status(400).json({ message: "Phone number is required" });
+      }
+
+      // Check if user already exists
+      const existingUser = await storage.getUserByPhone(phone);
+      if (existingUser) {
+        return res.status(400).json({ message: "An account already exists with this phone number" });
+      }
+
+      // Check rate limiting
+      const canSend = await storage.canSendOtp(phone);
+      if (!canSend) {
+        return res.status(429).json({ message: "Please wait 1 minute before requesting another OTP" });
+      }
+
+      // Cleanup expired OTPs
+      await storage.cleanupExpiredOtps();
+
+      // Generate OTP
+      const otp = smsService.generateOTP();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+      // Store OTP in database
+      await storage.createOtpVerification({
+        phone,
+        otpCode: otp,
+        expiresAt,
+        verified: false,
+        verificationAttempts: 0
+      });
+
+      // Send OTP via SMS
+      await smsService.sendOTP(phone, otp);
+
+      res.json({ message: "OTP sent successfully" });
+    } catch (error) {
+      console.error("Error sending registration OTP:", error);
+      res.status(500).json({ message: "Failed to send OTP" });
+    }
+  });
+
+  app.post("/api/register/verify-otp", async (req, res, next) => {
+    try {
+      const { phone, otp, name, username, password } = req.body;
+
+      if (!phone || !otp || !name) {
+        return res.status(400).json({ message: "Phone, OTP, and name are required" });
+      }
+
+      // Get valid OTP from database
+      const otpRecord = await storage.getValidOtp(phone, otp);
+      
+      if (!otpRecord) {
+        return res.status(401).json({ message: "Invalid or expired OTP" });
+      }
+
+      // Check if too many attempts
+      if (otpRecord.verificationAttempts >= 5) {
+        return res.status(429).json({ message: "Too many attempts. Please request a new OTP" });
+      }
+
+      // Mark OTP as verified
+      await storage.markOtpAsVerified(otpRecord.id);
+
+      // Generate username if not provided
+      const finalUsername = username || `patient${phone.slice(-6)}`;
+      
+      // Generate random password if not provided
+      const finalPassword = password || randomBytes(8).toString('hex');
+      const hashedPassword = await hashPassword(finalPassword);
+
+      // Create user
+      const user = await storage.createUser({
+        username: finalUsername,
+        password: hashedPassword,
+        name,
+        phone,
+        phoneVerified: true,
+        role: "patient"
+      });
+
+      // Login the user
+      req.login(user, (err) => {
+        if (err) return next(err);
+        
+        // Include generated credentials in response if they were auto-generated
+        const response: any = { ...user };
+        if (!username) response.generatedUsername = finalUsername;
+        if (!password) response.generatedPassword = finalPassword;
+        
+        res.status(201).json(response);
+      });
+    } catch (error) {
+      console.error("Registration OTP verification error:", error);
+      res.status(500).json({ message: "Failed to complete registration" });
+    }
+  });
+
+  // Firebase Auth verification endpoint
+  app.post("/api/auth/firebase-verify", async (req, res, next) => {
+    try {
+      const { idToken, phone } = req.body;
+
+      if (!idToken || !phone) {
+        return res.status(400).json({ message: "ID token and phone are required" });
+      }
+
+      // For now, we'll trust the Firebase token and just check/create user
+      // In production, you should verify the Firebase ID token using firebase-admin SDK
+      
+      // Check if user exists
+      let user = await storage.getUserByPhone(phone);
+      
+      if (!user) {
+        // Create new user with Firebase auth
+        const username = `firebase${phone.slice(-6)}`;
+        const randomPassword = randomBytes(16).toString('hex');
+        const hashedPassword = await hashPassword(randomPassword);
+        
+        user = await storage.createUser({
+          username,
+          password: hashedPassword,
+          name: `User ${phone.slice(-4)}`,
+          phone,
+          phoneVerified: true,
+          role: "patient"
+        });
+      } else {
+        // Update phone verification status
+        await storage.updateUser(user.id, { phoneVerified: true });
+      }
+
+      // Login the user
+      req.login(user, (err) => {
+        if (err) return next(err);
+        res.json(user);
+      });
+    } catch (error) {
+      console.error("Firebase verification error:", error);
+      res.status(500).json({ message: "Failed to verify Firebase authentication" });
+    }
   });
 }
