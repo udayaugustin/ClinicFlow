@@ -10,6 +10,17 @@ import { notificationService } from './services/notification';
 import { ETAService } from './services/eta';
 import { db } from './db';
 import { eq, and, sql } from 'drizzle-orm';
+import { scrypt, randomBytes } from "crypto";
+import { promisify } from "util";
+
+const scryptAsync = promisify(scrypt);
+
+async function hashPassword(password: string) {
+  const salt = randomBytes(16).toString("hex");
+  const buf = (await scryptAsync(password, salt, 64)) as Buffer;
+  return `${buf.toString("hex")}.${salt}`;
+}
+
 
 // Simple in-memory notification store as fallback
 const memoryNotifications: any[] = [];
@@ -763,6 +774,111 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error deleting clinic:', error);
       res.status(500).json({ message: 'Failed to delete clinic' });
+    }
+  });
+
+  // Clinic Admin management routes
+  app.get("/api/clinic-admins", async (req, res) => {
+    if (!req.user || req.user.role !== "super_admin") return res.sendStatus(403);
+    try {
+      const clinicAdmins = await storage.getClinicAdmins();
+      res.json(clinicAdmins);
+    } catch (error) {
+      console.error('Error fetching clinic admins:', error);
+      res.status(500).json({ message: 'Failed to fetch clinic admins' });
+    }
+  });
+
+  app.post("/api/clinic-admins", async (req, res) => {
+    if (!req.user || req.user.role !== "super_admin") return res.sendStatus(403);
+    try {
+      const { clinicId, password, ...userData } = req.body;
+      
+      // Validate clinic exists
+      const clinic = await storage.getClinic(clinicId);
+      if (!clinic) {
+        return res.status(400).json({ message: 'Invalid clinic' });
+      }
+      
+      // Check if username already exists
+      const existingUser = await storage.getUserByUsername(userData.username);
+      if (existingUser) {
+        return res.status(400).json({ message: 'Username already exists' });
+      }
+      
+      // Hash the password
+      const hashedPassword = await hashPassword(password);
+      
+      // Add default values and set role
+      const clinicAdminData = {
+        ...userData,
+        password: hashedPassword,
+        role: "clinic_admin",
+        clinicId: clinicId,
+        email: userData.email || `${userData.username}@clinicflow.com`
+      };
+      
+      const adminData = insertUserSchema.parse(clinicAdminData);
+      const clinicAdmin = await storage.createUser(adminData);
+      
+      // Fetch the admin with clinic info
+      const adminWithClinic = await storage.getUserWithClinic(clinicAdmin.id);
+      res.status(201).json(adminWithClinic);
+    } catch (error) {
+      console.error('Error creating clinic admin:', error);
+      res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid clinic admin data' });
+    }
+  });
+
+  app.put("/api/clinic-admins/:id", async (req, res) => {
+    if (!req.user || req.user.role !== "super_admin") return res.sendStatus(403);
+    try {
+      const adminId = parseInt(req.params.id);
+      const admin = await storage.getUser(adminId);
+      
+      if (!admin || admin.role !== 'clinic_admin') {
+        return res.status(404).json({ message: 'Clinic admin not found' });
+      }
+      
+      const { clinicId, ...updateData } = req.body;
+      
+      // If clinic is being changed, validate it exists
+      if (clinicId !== undefined) {
+        const clinic = await storage.getClinic(clinicId);
+        if (!clinic) {
+          return res.status(400).json({ message: 'Invalid clinic' });
+        }
+      }
+      
+      const updatedData = {
+        ...updateData,
+        clinicId: clinicId !== undefined ? clinicId : admin.clinicId
+      };
+      
+      const updatedAdmin = await storage.updateUser(adminId, updatedData);
+      const adminWithClinic = await storage.getUserWithClinic(updatedAdmin.id);
+      res.json(adminWithClinic);
+    } catch (error) {
+      console.error('Error updating clinic admin:', error);
+      res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid update data' });
+    }
+  });
+
+  app.delete("/api/clinic-admins/:id", async (req, res) => {
+    if (!req.user || req.user.role !== "super_admin") return res.sendStatus(403);
+    try {
+      const adminId = parseInt(req.params.id);
+      const admin = await storage.getUser(adminId);
+      
+      if (!admin || admin.role !== 'clinic_admin') {
+        return res.status(404).json({ message: 'Clinic admin not found' });
+      }
+      
+      await storage.deleteUser(adminId);
+      res.status(200).json({ message: 'Clinic admin deleted successfully' });
+    } catch (error) {
+      console.error('Error deleting clinic admin:', error);
+      res.status(500).json({ message: 'Failed to delete clinic admin' });
     }
   });
 

@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { DashboardHeader } from "@/components/dashboard-header";
-import { PlusCircle, Hospital, User } from "lucide-react";
+import { PlusCircle, Hospital, User, UserCog } from "lucide-react";
 import React from "react";
 
 export default function SuperAdminDashboard() {
@@ -20,7 +20,7 @@ export default function SuperAdminDashboard() {
       <main className="container mx-auto py-6 px-4">
         <h1 className="text-2xl font-bold mb-6">Welcome, {user.name}</h1>
         
-        <div className="grid md:grid-cols-2 gap-6">
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           <Card className="shadow-md hover:shadow-lg transition-shadow">
             <CardHeader>
               <CardTitle className="flex items-center">
@@ -65,6 +65,30 @@ export default function SuperAdminDashboard() {
               >
                 <PlusCircle className="mr-2 h-4 w-4" />
                 Create Clinic
+              </Button>
+            </CardFooter>
+          </Card>
+
+          <Card className="shadow-md hover:shadow-lg transition-shadow">
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <UserCog className="mr-2 h-6 w-6" />
+                Clinic Admin Management
+              </CardTitle>
+              <CardDescription>
+                Create and manage clinic administrator accounts
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p>Add administrators for clinics who can manage doctors and schedules.</p>
+            </CardContent>
+            <CardFooter>
+              <Button 
+                className="w-full" 
+                onClick={() => navigate("/clinic-admin-creation")}
+              >
+                <PlusCircle className="mr-2 h-4 w-4" />
+                Create Clinic Admin
               </Button>
             </CardFooter>
           </Card>

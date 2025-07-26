@@ -9,6 +9,7 @@ import {
   doctorClinics,
   patientFavorites,
   notifications,
+  otpVerifications,
   type User,
   type AttenderDoctor,
   type InsertUser,
@@ -19,6 +20,8 @@ import {
   type InsertDoctorSchedule,
   type PatientFavorite,
   type InsertPatientFavorite,
+  type OtpVerification,
+  type InsertOtpVerification,
 } from "@shared/schema";
 import { eq, or, and, sql, inArray, lte, gte, count, not, gt, lt, getTableColumns } from "drizzle-orm";
 import { db } from "./db";
@@ -89,13 +92,25 @@ export interface IStorage {
 
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByPhone(phone: string): Promise<User | undefined>;
+  getUserWithClinic(id: number): Promise<(User & { clinic?: Clinic }) | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: number, userData: Partial<InsertUser>): Promise<User>;
   deleteUser(id: number): Promise<void>;
+  
+  // OTP related methods
+  createOtpVerification(data: InsertOtpVerification): Promise<OtpVerification>;
+  getValidOtp(phone: string, otpCode: string): Promise<OtpVerification | undefined>;
+  markOtpAsVerified(id: number): Promise<void>;
+  incrementOtpAttempts(id: number): Promise<void>;
+  cleanupExpiredOtps(): Promise<void>;
+  canSendOtp(phone: string): Promise<boolean>;
+  updateLastOtpSentAt(phone: string): Promise<void>;
   getDoctors(): Promise<User[]>;
   getDoctorsBySpecialty(specialty: string): Promise<User[]>;
   getDoctorWithClinic(id: number): Promise<(User & { clinic?: Clinic }) | undefined>;
   getDoctorsNearLocation(lat: number, lng: number, radiusInMiles?: number): Promise<User[]>;
+  getClinicAdmins(): Promise<(User & { clinic?: Clinic })[]>;
   getClinics(): Promise<Clinic[]>;
   getClinic(id: number): Promise<Clinic | undefined>;
   createClinic(clinic: typeof clinics.$inferInsert): Promise<Clinic>;
@@ -337,6 +352,47 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+  async getUserByPhone(phone: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.phone, phone));
+    return user;
+  }
+
+  async getUserWithClinic(id: number): Promise<(User & { clinic?: Clinic }) | undefined> {
+    const [result] = await db
+      .select({
+        id: users.id,
+        username: users.username,
+        password: users.password,
+        name: users.name,
+        role: users.role,
+        phone: users.phone,
+        email: users.email,
+        specialty: users.specialty,
+        bio: users.bio,
+        imageUrl: users.imageUrl,
+        address: users.address,
+        city: users.city,
+        state: users.state,
+        zipCode: users.zipCode,
+        latitude: users.latitude,
+        longitude: users.longitude,
+        clinicId: users.clinicId,
+        createdAt: users.createdAt,
+        clinic: clinics,
+      })
+      .from(users)
+      .leftJoin(clinics, eq(users.clinicId, clinics.id))
+      .where(eq(users.id, id));
+
+    if (!result) return undefined;
+
+    const { clinic, ...user } = result;
+    return {
+      ...user,
+      clinic: clinic || undefined,
+    };
+  }
+
   async createUser(insertUser: InsertUser): Promise<User> {
     const [user] = await db.insert(users).values(insertUser).returning();
     return user;
@@ -411,6 +467,42 @@ export class DatabaseStorage implements IStorage {
 
   async getDoctorsBySpecialty(specialty: string): Promise<User[]> {
     return await db.select().from(users).where(eq(users.specialty, specialty));
+  }
+
+  async getClinicAdmins(): Promise<(User & { clinic?: Clinic })[]> {
+    const results = await db
+      .select({
+        id: users.id,
+        username: users.username,
+        password: users.password,
+        name: users.name,
+        role: users.role,
+        phone: users.phone,
+        email: users.email,
+        specialty: users.specialty,
+        bio: users.bio,
+        imageUrl: users.imageUrl,
+        address: users.address,
+        city: users.city,
+        state: users.state,
+        zipCode: users.zipCode,
+        latitude: users.latitude,
+        longitude: users.longitude,
+        clinicId: users.clinicId,
+        createdAt: users.createdAt,
+        clinic: clinics,
+      })
+      .from(users)
+      .leftJoin(clinics, eq(users.clinicId, clinics.id))
+      .where(eq(users.role, 'clinic_admin'));
+
+    return results.map(result => {
+      const { clinic, ...user } = result;
+      return {
+        ...user,
+        clinic: clinic || undefined,
+      };
+    });
   }
 
   async getDoctorWithClinic(id: number): Promise<(User & { clinic?: Clinic }) | undefined> {
@@ -3250,6 +3342,72 @@ export class DatabaseStorage implements IStorage {
       console.error("Error fetching appointments for schedule export:", error);
       throw error;
     }
+  }
+
+  // OTP related methods
+  async createOtpVerification(data: InsertOtpVerification): Promise<OtpVerification> {
+    const [otp] = await db.insert(otpVerifications).values(data).returning();
+    return otp;
+  }
+
+  async getValidOtp(phone: string, otpCode: string): Promise<OtpVerification | undefined> {
+    const [otp] = await db
+      .select()
+      .from(otpVerifications)
+      .where(
+        and(
+          eq(otpVerifications.phone, phone),
+          eq(otpVerifications.otpCode, otpCode),
+          eq(otpVerifications.verified, false),
+          gte(otpVerifications.expiresAt, new Date())
+        )
+      );
+    return otp;
+  }
+
+  async markOtpAsVerified(id: number): Promise<void> {
+    await db
+      .update(otpVerifications)
+      .set({ verified: true })
+      .where(eq(otpVerifications.id, id));
+  }
+
+  async incrementOtpAttempts(id: number): Promise<void> {
+    await db
+      .update(otpVerifications)
+      .set({ 
+        verificationAttempts: sql`${otpVerifications.verificationAttempts} + 1`
+      })
+      .where(eq(otpVerifications.id, id));
+  }
+
+  async cleanupExpiredOtps(): Promise<void> {
+    await db
+      .delete(otpVerifications)
+      .where(lt(otpVerifications.expiresAt, new Date()));
+  }
+
+  async canSendOtp(phone: string): Promise<boolean> {
+    // Check if user has sent OTP in last hour
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.phone, phone));
+
+    if (!user) return true; // Allow if user doesn't exist (for registration)
+
+    if (!user.lastOtpSentAt) return true;
+
+    // Check if at least 1 minute has passed since last OTP
+    const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
+    return user.lastOtpSentAt < oneMinuteAgo;
+  }
+
+  async updateLastOtpSentAt(phone: string): Promise<void> {
+    await db
+      .update(users)
+      .set({ lastOtpSentAt: new Date() })
+      .where(eq(users.phone, phone));
   }
 }
 
