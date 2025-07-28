@@ -612,7 +612,24 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteClinic(id: number): Promise<void> {
-    await db.delete(clinics).where(eq(clinics.id, id));
+    try {
+      // Delete in the correct order to avoid foreign key constraint violations
+      
+      // 1. First, delete all appointments for this clinic
+      await db.delete(appointments).where(eq(appointments.clinicId, id));
+      
+      // 2. Delete all doctor schedules for this clinic
+      await db.delete(doctorSchedules).where(eq(doctorSchedules.clinicId, id));
+      
+      // 3. Delete all users associated with this clinic (including admins, doctors, etc.)
+      await db.delete(users).where(eq(users.clinicId, id));
+      
+      // 4. Finally, delete the clinic itself
+      await db.delete(clinics).where(eq(clinics.id, id));
+    } catch (error) {
+      console.error('Error deleting clinic:', error);
+      throw error;
+    }
   }
 
   async getAppointments(userId: number): Promise<(Appointment & { doctor: User; patient?: User })[]> {

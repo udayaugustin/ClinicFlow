@@ -121,7 +121,10 @@ export function setupAuth(app: Express) {
 
       req.login(user, (err) => {
         if (err) return next(err);
-        res.json(user);
+        res.json({
+          user,
+          mustChangePassword: user.mustChangePassword || false
+        });
       });
     })(req, res, next);
   });
@@ -131,6 +134,45 @@ export function setupAuth(app: Express) {
       if (err) return next(err);
       res.sendStatus(200);
     });
+  });
+
+  // Force password reset endpoint for clinic admins
+  app.post("/api/force-reset-password", async (req, res) => {
+    if (!req.user) return res.sendStatus(401);
+
+    try {
+      const { currentPassword, newPassword } = req.body;
+      
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({ message: "Current password and new password are required" });
+      }
+
+      // Verify current password
+      const user = await storage.getUserByUsername(req.user.username);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Check current password
+      const isCurrentPasswordValid = await comparePasswords(currentPassword, user.password);
+      if (!isCurrentPasswordValid) {
+        return res.status(400).json({ message: "Current password is incorrect" });
+      }
+
+      // Hash new password
+      const newHashedPassword = await hashPassword(newPassword);
+      
+      // Update password and clear the mustChangePassword flag
+      await storage.updateUser(user.id, {
+        password: newHashedPassword,
+        mustChangePassword: false
+      });
+
+      res.json({ message: "Password updated successfully" });
+    } catch (error) {
+      console.error("Error resetting password:", error);
+      res.status(500).json({ message: "Failed to reset password" });
+    }
   });
 
   app.get("/api/user", (req, res) => {

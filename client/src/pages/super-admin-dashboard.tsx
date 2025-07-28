@@ -20,31 +20,8 @@ export default function SuperAdminDashboard() {
       <main className="container mx-auto py-6 px-4">
         <h1 className="text-2xl font-bold mb-6">Welcome, {user.name}</h1>
         
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <Card className="shadow-md hover:shadow-lg transition-shadow">
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <User className="mr-2 h-6 w-6" />
-                Doctor Management
-              </CardTitle>
-              <CardDescription>
-                Create and manage doctor accounts in the system
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p>Add new doctors to the clinic system with their specialties and details.</p>
-            </CardContent>
-            <CardFooter>
-              <Button 
-                className="w-full" 
-                onClick={() => navigate("/doctor-creation")}
-              >
-                <PlusCircle className="mr-2 h-4 w-4" />
-                Create Doctor
-              </Button>
-            </CardFooter>
-          </Card>
-
+        <div className="grid md:grid-cols-1 lg:grid-cols-1 gap-6 max-w-md">
+         
           <Card className="shadow-md hover:shadow-lg transition-shadow">
             <CardHeader>
               <CardTitle className="flex items-center">
@@ -52,11 +29,11 @@ export default function SuperAdminDashboard() {
                 Clinic Management
               </CardTitle>
               <CardDescription>
-                Create and manage clinic locations
+                Create and manage clinic locations with their administrators
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <p>Add new clinic locations with their address, contact details, and operating hours.</p>
+              <p>Add new clinic locations with their address, contact details, operating hours, and create clinic admin accounts.</p>
             </CardContent>
             <CardFooter>
               <Button 
@@ -64,31 +41,7 @@ export default function SuperAdminDashboard() {
                 onClick={() => navigate("/clinic-creation")}
               >
                 <PlusCircle className="mr-2 h-4 w-4" />
-                Create Clinic
-              </Button>
-            </CardFooter>
-          </Card>
-
-          <Card className="shadow-md hover:shadow-lg transition-shadow">
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <UserCog className="mr-2 h-6 w-6" />
-                Clinic Admin Management
-              </CardTitle>
-              <CardDescription>
-                Create and manage clinic administrator accounts
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p>Add administrators for clinics who can manage doctors and schedules.</p>
-            </CardContent>
-            <CardFooter>
-              <Button 
-                className="w-full" 
-                onClick={() => navigate("/clinic-admin-creation")}
-              >
-                <PlusCircle className="mr-2 h-4 w-4" />
-                Create Clinic Admin
+                Create Clinic & Admin
               </Button>
             </CardFooter>
           </Card>

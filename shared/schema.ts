@@ -37,6 +37,7 @@ export const users = pgTable("users", {
   clinicId: integer("clinic_id").references(() => clinics.id),
   lastOtpSentAt: timestamp("last_otp_sent_at"),
   phoneVerified: boolean("phone_verified").default(false),
+  mustChangePassword: boolean("must_change_password").default(false),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 

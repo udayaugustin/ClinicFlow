@@ -25,6 +25,7 @@ import ClinicAdminDashboard from "@/pages/clinic-admin-dashboard";
 import PatientDashboard from "@/pages/patient-dashboard";
 import PatientClinicDetails from "@/pages/patient-clinic-details";
 import PatientFavorites from "@/pages/patient-favorites";
+import { ForcePasswordReset } from "@/components/ForcePasswordReset";
 
 // Wrap DoctorManagementPage with ProtectedRoute
 const ProtectedDoctorManagement = () => (
@@ -52,12 +53,17 @@ const ProtectedClinicAdminDashboard = () => (
 );
 
 function Router() {
-  const { user } = useAuth();
+  const { user, mustChangePassword, clearPasswordReset } = useAuth();
 
   // Debug user role
   if (user) {
     console.log('Current user role:', user.role);
     console.log('User details:', user);
+  }
+
+  // Show password reset screen if required
+  if (mustChangePassword) {
+    return <ForcePasswordReset onSuccess={clearPasswordReset} />;
   }
   
   // No redirects needed - all users go to the home page

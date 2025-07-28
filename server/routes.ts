@@ -777,6 +777,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Create clinic with admin user
+  app.post("/api/clinics/with-admin", async (req, res) => {
+    if (!req.user || req.user.role !== "super_admin") return res.sendStatus(403);
+    try {
+      // Validate the combined data
+      const { 
+        name, address, city, state, zipCode, phone, email, openingHours, description, imageUrl,
+        adminUsername, adminPassword, adminName, adminPhone, adminEmail 
+      } = req.body;
+
+      // Validate required fields
+      if (!name || !address || !city || !state || !zipCode || !phone || !email || !openingHours) {
+        return res.status(400).json({ message: 'Missing required clinic fields' });
+      }
+      
+      if (!adminUsername || !adminPassword || !adminName || !adminPhone || !adminEmail) {
+        return res.status(400).json({ message: 'Missing required admin fields' });
+      }
+
+      // Create clinic first
+      const clinicData = {
+        name, address, city, state, zipCode, phone, email, openingHours, description, imageUrl
+      };
+      
+      const clinic = await storage.createClinic(clinicData);
+
+      // Hash the admin password before creating the user
+      const hashedPassword = await hashPassword(adminPassword);
+
+      // Create admin user for this clinic
+      const adminData = {
+        username: adminUsername,
+        password: hashedPassword,
+        name: adminName,
+        phone: adminPhone,
+        email: adminEmail,
+        role: "clinic_admin" as const,
+        clinicId: clinic.id,
+        mustChangePassword: true
+      };
+
+      const admin = await storage.createUser(adminData);
+
+      res.status(201).json({ 
+        clinic, 
+        admin: { 
+          id: admin.id, 
+          username: admin.username, 
+          name: admin.name, 
+          email: admin.email, 
+          phone: admin.phone 
+        }
+      });
+    } catch (error) {
+      console.error('Error creating clinic with admin:', error);
+      res.status(400).json({ message: error instanceof Error ? error.message : 'Failed to create clinic and admin' });
+    }
+  });
+
   // Clinic Admin management routes
   app.get("/api/clinic-admins", async (req, res) => {
     if (!req.user || req.user.role !== "super_admin") return res.sendStatus(403);

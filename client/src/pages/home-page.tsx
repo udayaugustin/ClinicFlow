@@ -25,15 +25,22 @@ export default function HomePage() {
     doctor.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // Show search filters only for patients or non-logged-in users
+  const shouldShowSearchFilters = !user || user.role === "patient";
+
   return (
     <div className="min-h-screen bg-gray-50">
       <NavHeader />
-      <SearchFilters
-        searchTerm={searchTerm}
-        onSearchChange={setSearchTerm}
-        specialty={specialty}
-        onSpecialtyChange={setSpecialty}
-      />
+      
+      {/* Show search filters only for patients or when no user is logged in */}
+      {shouldShowSearchFilters && (
+        <SearchFilters
+          searchTerm={searchTerm}
+          onSearchChange={setSearchTerm}
+          specialty={specialty}
+          onSpecialtyChange={setSpecialty}
+        />
+      )}
       
       {!user ? (
         // No user logged in - show the doctor list for everyone

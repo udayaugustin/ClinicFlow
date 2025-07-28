@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useContext } from "react";
+import { createContext, ReactNode, useContext, useState } from "react";
 import {
   useQuery,
   useMutation,
@@ -12,6 +12,8 @@ type AuthContextType = {
   user: SelectUser | null;
   isLoading: boolean;
   error: Error | null;
+  mustChangePassword: boolean;
+  clearPasswordReset: () => void;
   loginMutation: UseMutationResult<SelectUser, Error, LoginData>;
   logoutMutation: UseMutationResult<void, Error, void>;
   registerMutation: UseMutationResult<SelectUser, Error, InsertUser>;
@@ -22,6 +24,8 @@ type LoginData = Pick<InsertUser, "username" | "password">;
 export const AuthContext = createContext<AuthContextType | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
+  const [mustChangePassword, setMustChangePassword] = useState(false);
+  
   const {
     data: user,
     error,
@@ -31,20 +35,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryFn: getQueryFn({ on401: "returnNull" }),
   });
 
+  const clearPasswordReset = () => {
+    setMustChangePassword(false);
+  };
+
   const loginMutation = useMutation({
     mutationFn: async (credentials: LoginData) => {
       const res = await apiRequest("POST", "/api/login", credentials);
       return await res.json();
     },
-    onSuccess: (user: SelectUser) => {
-      // Clear all queries first to remove any stale data
-      queryClient.clear();
-      // Then set the new user data
-      queryClient.setQueryData(["/api/user"], user);
-      toast({
-        title: "Login successful",
-        description: `Welcome back, ${user.name}!`,
-      });
+    onSuccess: (data: any) => {
+      if (data.mustChangePassword) {
+        setMustChangePassword(true);
+        // Set user data but don't show success toast yet
+        queryClient.setQueryData(["/api/user"], data.user);
+      } else {
+        setMustChangePassword(false);
+        // Clear all queries first to remove any stale data
+        queryClient.clear();
+        // Then set the new user data
+        queryClient.setQueryData(["/api/user"], data.user || data);
+        toast({
+          title: "Login successful",
+          description: `Welcome back, ${(data.user || data).name}!`,
+        });
+      }
     },
     onError: (error: Error) => {
       toast({
@@ -108,6 +123,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user: user ?? null,
         isLoading,
         error,
+        mustChangePassword,
+        clearPasswordReset,
         loginMutation,
         logoutMutation,
         registerMutation,
