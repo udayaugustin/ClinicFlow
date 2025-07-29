@@ -2711,6 +2711,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Super Admin Export Reports Route
+  app.get("/api/super-admin/export-reports/:clinicId", async (req, res) => {
+    if (!req.user || req.user.role !== 'super_admin') {
+      return res.sendStatus(403);
+    }
+
+    try {
+      const { clinicId } = req.params;
+      const { startDate, endDate } = req.query;
+
+      if (!clinicId || !startDate || !endDate) {
+        return res.status(400).json({ 
+          message: "clinicId, startDate, and endDate are required" 
+        });
+      }
+
+      // Validate date range (max 6 months)
+      const start = new Date(startDate as string);
+      const end = new Date(endDate as string);
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+      if (start < sixMonthsAgo) {
+        return res.status(400).json({ 
+          message: "Date range cannot exceed 6 months from current date" 
+        });
+      }
+
+      if (start > end) {
+        return res.status(400).json({ 
+          message: "Start date must be before end date" 
+        });
+      }
+
+      // Get clinic details
+      const clinic = await storage.getClinic(Number(clinicId));
+      if (!clinic) {
+        return res.status(404).json({ message: "Clinic not found" });
+      }
+
+      // Get export data for the clinic
+      const exportData = await storage.getSuperAdminExportData(
+        Number(clinicId),
+        start,
+        end
+      );
+
+      res.json(exportData);
+    } catch (error) {
+      console.error("Super admin export error:", error);
+      res.status(500).json({ message: "Failed to fetch export data" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

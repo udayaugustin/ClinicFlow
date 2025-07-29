@@ -621,13 +621,105 @@ export class DatabaseStorage implements IStorage {
       // 2. Delete all doctor schedules for this clinic
       await db.delete(doctorSchedules).where(eq(doctorSchedules.clinicId, id));
       
-      // 3. Delete all users associated with this clinic (including admins, doctors, etc.)
+      // 3. Delete all doctor-clinic relationships for this clinic
+      await db.delete(doctorClinics).where(eq(doctorClinics.clinicId, id));
+      
+      // 4. Delete all users associated with this clinic (including admins, doctors, etc.)
       await db.delete(users).where(eq(users.clinicId, id));
       
-      // 4. Finally, delete the clinic itself
+      // 5. Finally, delete the clinic itself
       await db.delete(clinics).where(eq(clinics.id, id));
     } catch (error) {
       console.error('Error deleting clinic:', error);
+      throw error;
+    }
+  }
+
+  async getSuperAdminExportData(clinicId: number, startDate: Date, endDate: Date): Promise<any[]> {
+    try {
+      console.log(`Fetching export data for clinic ${clinicId} from ${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]} (excluding cancelled schedules)`);
+      
+      // Use exact same pattern as getAppointmentsForExport - this works!
+      // Excludes cancelled schedules as they need separate refund handling
+      const result = await db
+        .select({
+          id: appointments.id,
+          date: appointments.date,
+          tokenNumber: appointments.tokenNumber,
+          status: appointments.status,
+          statusNotes: appointments.statusNotes,
+          actualStartTime: appointments.actualStartTime,
+          actualEndTime: appointments.actualEndTime,
+          isWalkIn: appointments.isWalkIn,
+          guestName: appointments.guestName,
+          guestPhone: appointments.guestPhone,
+          doctorName: users.name,
+          patientName: sql<string>`CASE 
+            WHEN ${appointments.isWalkIn} = true THEN ${appointments.guestName}
+            ELSE patient.name 
+          END`,
+          hospitalName: clinics.name,
+          scheduleDate: sql<string>`schedule.date`,
+          scheduleTime: sql<string>`CONCAT(schedule.start_time, ' - ', schedule.end_time)`,
+        })
+        .from(appointments)
+        .leftJoin(users, eq(users.id, appointments.doctorId))
+        .leftJoin(clinics, eq(clinics.id, appointments.clinicId))
+        .leftJoin(
+          sql`${users} as patient`,
+          sql`patient.id = ${appointments.patientId}`
+        )
+        .leftJoin(
+          sql`${doctorSchedules} as schedule`,
+          sql`schedule.id = ${appointments.scheduleId}`
+        )
+        .where(
+          and(
+            eq(appointments.clinicId, clinicId),
+            gte(appointments.date, startDate),
+            lte(appointments.date, endDate),
+            // Exclude cancelled schedules - these need separate refund handling
+            sql`schedule.cancel_reason IS NULL`,
+            // Exclude all appointments with cancelled/canceled status (any variation)
+            sql`${appointments.status} NOT ILIKE '%cancel%'`
+          )
+        )
+        .orderBy(appointments.date, appointments.tokenNumber);
+
+      console.log(`Found ${result.length} appointment records`);
+
+      if (result.length === 0) {
+        console.log('No appointment data found for the specified criteria');
+        return [];
+      }
+
+      // Transform the data to match super admin export format
+      const formattedData = result.map((appointment, index) => ({
+        serialNumber: index + 1,
+        hospitalName: appointment.hospitalName || 'Unknown Hospital',
+        doctorName: appointment.doctorName || 'Unknown Doctor',
+        scheduleDate: appointment.scheduleDate ? new Date(appointment.scheduleDate).toLocaleDateString() : new Date(appointment.date).toLocaleDateString(),
+        scheduleTime: appointment.scheduleTime || 'N/A',
+        patientName: appointment.patientName || 'Unknown Patient',
+        inTime: appointment.actualStartTime ? 
+          new Date(appointment.actualStartTime).toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+          }) : 'Not checked in',
+        outTime: appointment.actualEndTime ? 
+          new Date(appointment.actualEndTime).toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+          }) : 'Not checked out',
+        tokenStatus: appointment.status ? appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1) : 'Unknown',
+      }));
+
+      console.log('Successfully formatted export data');
+      return formattedData;
+    } catch (error) {
+      console.error('Error fetching super admin export data:', error);
       throw error;
     }
   }
