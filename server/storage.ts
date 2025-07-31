@@ -23,7 +23,7 @@ import {
   type OtpVerification,
   type InsertOtpVerification,
 } from "@shared/schema";
-import { eq, or, and, sql, inArray, lte, gte, count, not, gt, lt, getTableColumns } from "drizzle-orm";
+import { eq, or, and, sql, inArray, lte, gte, count, not, gt, lt, getTableColumns, isNotNull } from "drizzle-orm";
 import { db } from "./db";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
@@ -720,6 +720,135 @@ export class DatabaseStorage implements IStorage {
       return formattedData;
     } catch (error) {
       console.error('Error fetching super admin export data:', error);
+      throw error;
+    }
+  }
+
+  async getCancelledSchedulesForSelection(clinicId: number, dateFilter: string): Promise<any[]> {
+    try {
+      console.log(`Fetching cancelled schedules for selection - clinic ${clinicId} with filter ${dateFilter}`);
+      
+      // Parse date filter
+      let startDate: string, endDate: string;
+      const today = new Date();
+      const todayStr = today.toISOString().split('T')[0];
+      
+      if (dateFilter === 'today') {
+        startDate = endDate = todayStr;
+      } else if (dateFilter === 'yesterday') {
+        const yesterday = new Date(today);
+        yesterday.setDate(today.getDate() - 1);
+        startDate = endDate = yesterday.toISOString().split('T')[0];
+      } else if (dateFilter === 'last7days') {
+        const sevenDaysAgo = new Date(today);
+        sevenDaysAgo.setDate(today.getDate() - 7);
+        startDate = sevenDaysAgo.toISOString().split('T')[0];
+        endDate = todayStr;
+      } else {
+        throw new Error('Invalid date filter');
+      }
+
+      // Query cancelled schedules for selection
+      const result = await db
+        .select({
+          id: doctorSchedules.id,
+          doctorName: users.name,
+          date: doctorSchedules.date,
+          startTime: doctorSchedules.startTime,
+          endTime: doctorSchedules.endTime,
+          cancelReason: doctorSchedules.cancelReason,
+          appointmentCount: sql<number>`COUNT(${appointments.id})`,
+        })
+        .from(doctorSchedules)
+        .leftJoin(users, eq(users.id, doctorSchedules.doctorId))
+        .leftJoin(appointments, eq(appointments.scheduleId, doctorSchedules.id))
+        .where(
+          and(
+            eq(doctorSchedules.clinicId, clinicId),
+            gte(doctorSchedules.date, startDate),
+            lte(doctorSchedules.date, endDate),
+            // Only cancelled schedules
+            isNotNull(doctorSchedules.cancelReason)
+          )
+        )
+        .groupBy(
+          doctorSchedules.id,
+          users.name,
+          doctorSchedules.date,
+          doctorSchedules.startTime,
+          doctorSchedules.endTime,
+          doctorSchedules.cancelReason
+        )
+        .orderBy(doctorSchedules.date, doctorSchedules.startTime);
+
+      console.log(`Found ${result.length} cancelled schedules for selection`);
+
+      return result.map(schedule => ({
+        id: schedule.id,
+        doctorName: schedule.doctorName || 'Unknown Doctor',
+        date: schedule.date,
+        startTime: schedule.startTime,
+        endTime: schedule.endTime,
+        cancelReason: schedule.cancelReason || 'No reason provided',
+        appointmentCount: Number(schedule.appointmentCount) || 0,
+      }));
+    } catch (error) {
+      console.error('Error fetching cancelled schedules for selection:', error);
+      throw error;
+    }
+  }
+
+  async getAppointmentsForCancelledSchedule(scheduleId: number): Promise<any[]> {
+    try {
+      console.log(`Fetching appointments for cancelled schedule ${scheduleId}`);
+      
+      // Query appointments for the specific cancelled schedule
+      const result = await db
+        .select({
+          appointmentId: appointments.id,
+          tokenStatus: appointments.status,
+          // Patient info - handle both walk-in and registered patients
+          patientName: sql<string>`CASE 
+            WHEN ${appointments.isWalkIn} = true THEN ${appointments.guestName}
+            ELSE patient.name 
+          END`,
+          mobileNumber: sql<string>`CASE 
+            WHEN ${appointments.isWalkIn} = true THEN ${appointments.guestPhone}
+            ELSE patient.phone 
+          END`,
+          hospitalName: clinics.name,
+          doctorName: users.name,
+          scheduleDate: doctorSchedules.date,
+          cancelReason: doctorSchedules.cancelReason,
+        })
+        .from(appointments)
+        .leftJoin(users, eq(users.id, appointments.doctorId))
+        .leftJoin(clinics, eq(clinics.id, appointments.clinicId))
+        .leftJoin(doctorSchedules, eq(doctorSchedules.id, appointments.scheduleId))
+        .leftJoin(
+          sql`${users} as patient`,
+          sql`patient.id = ${appointments.patientId}`
+        )
+        .where(
+          eq(appointments.scheduleId, scheduleId)
+        )
+        .orderBy(appointments.tokenNumber);
+
+      console.log(`Found ${result.length} appointments for cancelled schedule`);
+
+      return result.map((appointment, index) => ({
+        id: appointment.appointmentId,
+        serialNumber: index + 1,
+        patientName: appointment.patientName || 'Unknown Patient',
+        mobileNumber: appointment.mobileNumber || 'Not available',
+        hospitalName: appointment.hospitalName || 'Unknown Hospital',
+        doctorName: appointment.doctorName || 'Unknown Doctor',
+        scheduleDate: appointment.scheduleDate,
+        cancelReason: appointment.cancelReason || 'Schedule cancelled',
+        tokenStatus: appointment.tokenStatus || 'scheduled',
+      }));
+    } catch (error) {
+      console.error('Error fetching appointments for cancelled schedule:', error);
       throw error;
     }
   }

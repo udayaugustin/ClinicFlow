@@ -2765,6 +2765,68 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Super Admin Cancelled Schedules Route (Step 1: Get schedules to choose from)
+  app.get("/api/super-admin/cancelled-schedules/:clinicId", async (req, res) => {
+    if (!req.user || req.user.role !== 'super_admin') {
+      return res.sendStatus(403);
+    }
+
+    try {
+      const { clinicId } = req.params;
+      const { dateFilter } = req.query;
+
+      if (!clinicId || !dateFilter) {
+        return res.status(400).json({ 
+          message: "clinicId and dateFilter are required" 
+        });
+      }
+
+      // Get clinic details
+      const clinic = await storage.getClinic(Number(clinicId));
+      if (!clinic) {
+        return res.status(404).json({ message: "Clinic not found" });
+      }
+
+      // Get cancelled schedules list for selection
+      const cancelledSchedules = await storage.getCancelledSchedulesForSelection(
+        Number(clinicId),
+        dateFilter as string
+      );
+
+      res.json(cancelledSchedules);
+    } catch (error) {
+      console.error("Super admin cancelled schedules error:", error);
+      res.status(500).json({ message: "Failed to fetch cancelled schedules" });
+    }
+  });
+
+  // Super Admin Cancelled Schedule Appointments Route (Step 2: Get appointments for selected schedule)
+  app.get("/api/super-admin/cancelled-schedule-appointments/:scheduleId", async (req, res) => {
+    if (!req.user || req.user.role !== 'super_admin') {
+      return res.sendStatus(403);
+    }
+
+    try {
+      const { scheduleId } = req.params;
+
+      if (!scheduleId) {
+        return res.status(400).json({ 
+          message: "scheduleId is required" 
+        });
+      }
+
+      // Get appointments for the specific cancelled schedule
+      const cancelledAppointments = await storage.getAppointmentsForCancelledSchedule(
+        Number(scheduleId)
+      );
+
+      res.json(cancelledAppointments);
+    } catch (error) {
+      console.error("Super admin cancelled schedule appointments error:", error);
+      res.status(500).json({ message: "Failed to fetch cancelled schedule appointments" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

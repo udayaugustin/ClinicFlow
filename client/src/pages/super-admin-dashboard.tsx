@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { DashboardHeader } from "@/components/dashboard-header";
-import { PlusCircle, Hospital, User, UserCog, Building2, Activity, Edit, Eye, Trash2, MapPin, Phone, Mail, Clock, Loader2, FileSpreadsheet } from "lucide-react";
+import { PlusCircle, Hospital, User, UserCog, Building2, Activity, Edit, Eye, Trash2, MapPin, Phone, Mail, Clock, Loader2, FileSpreadsheet, CreditCard } from "lucide-react";
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -17,6 +17,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import SuperAdminExportReports from "@/components/SuperAdminExportReports";
+import RefundManagement from "@/components/RefundManagement";
 
 // Clinic schema with admin user fields
 const clinicSchema = z.object({
@@ -573,6 +574,10 @@ export default function SuperAdminDashboard() {
       return <SuperAdminExportReports />;
     }
 
+    if (selectedMenuItem === "refund") {
+      return <RefundManagement />;
+    }
+
     // Default dashboard view
     return (
       <div className="p-6">
@@ -679,6 +684,28 @@ export default function SuperAdminDashboard() {
                 </p>
                 <p className={`text-xs ${selectedMenuItem === "export-reports" ? "text-blue-600" : "text-gray-500"}`}>
                   Hospital reports
+                </p>
+              </div>
+            </button>
+
+            {/* Refund Option */}
+            <button
+              onClick={() => setSelectedMenuItem("refund")}
+              className={`w-full text-left px-3 py-3 rounded-lg mb-2 transition-all duration-200 flex items-center group ${
+                selectedMenuItem === "refund"
+                  ? "bg-blue-50 text-blue-700 border-l-4 border-blue-600"
+                  : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
+              }`}
+            >
+              <span className={`mr-3 ${selectedMenuItem === "refund" ? "text-blue-600" : "text-gray-500 group-hover:text-gray-700"}`}>
+                <CreditCard className="h-5 w-5" />
+              </span>
+              <div className="flex-1">
+                <p className={`font-medium text-sm ${selectedMenuItem === "refund" ? "text-blue-700" : ""}`}>
+                  Refund Management
+                </p>
+                <p className={`text-xs ${selectedMenuItem === "refund" ? "text-blue-600" : "text-gray-500"}`}>
+                  Process refunds
                 </p>
               </div>
             </button>
