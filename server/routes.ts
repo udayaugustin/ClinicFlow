@@ -2276,6 +2276,85 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     });
 
+    // Super Admin: Search patient by phone number
+    app.get("/api/patients/search", async (req, res) => {
+      if (!req.user || req.user.role !== 'super_admin') return res.sendStatus(403);
+      
+      try {
+        const { phone } = req.query;
+        
+        if (!phone) {
+          return res.status(400).json({ error: 'Phone number is required' });
+        }
+        
+        console.log(`Super admin searching for patient with phone: ${phone}`);
+        
+        // Search for patient by phone number
+        const patientResult = await db.execute(sql`
+          SELECT id, name, username, phone, email, phone_verified, created_at
+          FROM users 
+          WHERE role = 'patient' AND phone = ${phone as string}
+          LIMIT 1
+        `);
+        
+        if (patientResult.rows.length === 0) {
+          return res.json({ patient: null, appointments: [] });
+        }
+        
+        const patient = patientResult.rows[0];
+        console.log(`Found patient: ${patient.name} (ID: ${patient.id})`);
+        
+        // Get appointment history for this patient
+        const appointmentsResult = await db.execute(sql`
+          SELECT 
+            a.id,
+            a.date,
+            a.token_number,
+            a.status,
+            a.status_notes,
+            a.created_at,
+            d.name as doctor_name,
+            c.name as clinic_name
+          FROM appointments a
+          LEFT JOIN users d ON a.doctor_id = d.id
+          LEFT JOIN clinics c ON a.clinic_id = c.id
+          WHERE a.patient_id = ${patient.id}
+          ORDER BY a.date DESC, a.created_at DESC
+          LIMIT 50
+        `);
+        
+        const appointments = appointmentsResult.rows.map(apt => ({
+          id: apt.id,
+          date: apt.date,
+          tokenNumber: apt.token_number,
+          status: apt.status,
+          statusNotes: apt.status_notes,
+          doctorName: apt.doctor_name,
+          clinicName: apt.clinic_name,
+          createdAt: apt.created_at
+        }));
+        
+        console.log(`Found ${appointments.length} appointments for patient`);
+        
+        res.json({
+          patient: {
+            id: patient.id,
+            name: patient.name,
+            username: patient.username,
+            phone: patient.phone,
+            email: patient.email,
+            phoneVerified: patient.phone_verified,
+            createdAt: patient.created_at
+          },
+          appointments
+        });
+        
+      } catch (error) {
+        console.error('Error searching patient:', error);
+        res.status(500).json({ error: 'Failed to search patient' });
+      }
+    });
+
     // Remove a doctor assignment
     app.delete("/api/attender-doctors", async (req, res) => {
       try {

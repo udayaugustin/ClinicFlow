@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { DashboardHeader } from "@/components/dashboard-header";
-import { PlusCircle, Hospital, User, UserCog, Building2, Activity, Edit, Eye, Trash2, MapPin, Phone, Mail, Clock, Loader2, FileSpreadsheet, CreditCard } from "lucide-react";
+import { PlusCircle, Hospital, User, UserCog, Building2, Activity, Edit, Eye, Trash2, MapPin, Phone, Mail, Clock, Loader2, FileSpreadsheet, CreditCard, Search, Calendar, Stethoscope } from "lucide-react";
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -16,6 +16,7 @@ import { z } from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import SuperAdminExportReports from "@/components/SuperAdminExportReports";
 import RefundManagement from "@/components/RefundManagement";
 
@@ -42,6 +43,249 @@ const clinicSchema = z.object({
 });
 
 type ClinicData = z.infer<typeof clinicSchema>;
+
+// Patient Details Search Component
+function PatientDetailsSearch() {
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [searchResults, setSearchResults] = useState<any>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const { toast } = useToast();
+
+  const searchPatient = async () => {
+    if (!phoneNumber.trim()) {
+      toast({
+        title: "Phone number required",
+        description: "Please enter a phone number to search",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      const response = await apiRequest('GET', `/api/patients/search?phone=${encodeURIComponent(phoneNumber.trim())}`);
+      const data = await response.json();
+      setSearchResults(data);
+      
+      if (!data?.patient) {
+        toast({
+          title: "No patient found",
+          description: "No patient found with this phone number",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('Error searching patient:', error);
+      toast({
+        title: "Search failed",
+        description: "Failed to search for patient. Please try again.",
+        variant: "destructive"
+      });
+      setSearchResults(null);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      searchPatient();
+    }
+  };
+
+  return (
+    <div className="p-6">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">Patient Details</h1>
+        <p className="text-gray-600 mt-1">Search for patient information by phone number</p>
+      </div>
+
+      {/* Search Section */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Search className="h-5 w-5" />
+            Search Patient
+          </CardTitle>
+          <CardDescription>
+            Enter the patient's phone number to view their complete profile and appointment history
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-4 items-end">
+            <div className="flex-1">
+              <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-2">
+                Phone Number
+              </label>
+              <Input
+                id="phone"
+                type="tel"
+                placeholder="Enter phone number (e.g., +1234567890)"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+                onKeyPress={handleKeyPress}
+                className="w-full"
+              />
+            </div>
+            <Button 
+              onClick={searchPatient}
+              disabled={isSearching}
+              className="px-6"
+            >
+              {isSearching ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Searching...
+                </>
+              ) : (
+                <>
+                  <Search className="h-4 w-4 mr-2" />
+                  Search
+                </>
+              )}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Results Section */}
+      {searchResults?.patient && (
+        <div className="space-y-6">
+          {/* Patient Basic Info */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <User className="h-5 w-5" />
+                Patient Information
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Full Name</label>
+                  <p className="text-lg font-semibold text-gray-900">{searchResults.patient.name}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Phone Number</label>
+                  <p className="text-lg text-gray-900 flex items-center gap-2">
+                    <Phone className="h-4 w-4" />
+                    {searchResults.patient.phone}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Email</label>
+                  <p className="text-lg text-gray-900 flex items-center gap-2">
+                    <Mail className="h-4 w-4" />
+                    {searchResults.patient.email || 'N/A'}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Phone Verified</label>
+                  <Badge variant={searchResults.patient.phoneVerified ? "default" : "secondary"}>
+                    {searchResults.patient.phoneVerified ? "Verified" : "Not Verified"}
+                  </Badge>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Account Created</label>
+                  <p className="text-lg text-gray-900 flex items-center gap-2">
+                    <Calendar className="h-4 w-4" />
+                    {new Date(searchResults.patient.createdAt).toLocaleDateString()}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-500">User ID</label>
+                  <p className="text-lg text-gray-900">#{searchResults.patient.id}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Appointment History */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Stethoscope className="h-5 w-5" />
+                Appointment History
+              </CardTitle>
+              <CardDescription>
+                Total appointments: {searchResults.appointments?.length || 0}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {searchResults.appointments && searchResults.appointments.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Doctor</TableHead>
+                        <TableHead>Clinic</TableHead>
+                        <TableHead>Token #</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Notes</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {searchResults.appointments.map((appointment: any) => (
+                        <TableRow key={appointment.id}>
+                          <TableCell>
+                            {new Date(appointment.date).toLocaleDateString()}
+                          </TableCell>
+                          <TableCell className="font-medium">
+                            {appointment.doctorName}
+                          </TableCell>
+                          <TableCell>
+                            {appointment.clinicName}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">#{appointment.tokenNumber}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge 
+                              variant={
+                                appointment.status === 'completed' ? 'default' :
+                                appointment.status === 'no_show' ? 'destructive' :
+                                appointment.status === 'cancel' ? 'secondary' :
+                                'outline'
+                              }
+                            >
+                              {appointment.status === 'no_show' ? 'No Show' :
+                               appointment.status === 'token_started' ? 'Started' :
+                               appointment.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {appointment.statusNotes || '-'}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <Stethoscope className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                  <p className="text-gray-500">No appointment history found</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* No Results Message */}
+      {searchResults && !searchResults.patient && (
+        <Card>
+          <CardContent className="text-center py-8">
+            <User className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No Patient Found</h3>
+            <p className="text-gray-500">No patient found with phone number: {phoneNumber}</p>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
 
 export default function SuperAdminDashboard() {
   const { user } = useAuth();
@@ -570,6 +814,10 @@ export default function SuperAdminDashboard() {
       );
     }
 
+    if (selectedMenuItem === "patient-details") {
+      return <PatientDetailsSearch />;
+    }
+
     if (selectedMenuItem === "export-reports") {
       return <SuperAdminExportReports />;
     }
@@ -662,6 +910,28 @@ export default function SuperAdminDashboard() {
                 </p>
                 <p className={`text-xs ${selectedMenuItem === "clinic-management" ? "text-blue-600" : "text-gray-500"}`}>
                   Manage clinics
+                </p>
+              </div>
+            </button>
+
+            {/* Patient Details Option */}
+            <button
+              onClick={() => setSelectedMenuItem("patient-details")}
+              className={`w-full text-left px-3 py-3 rounded-lg mb-2 transition-all duration-200 flex items-center group ${
+                selectedMenuItem === "patient-details"
+                  ? "bg-blue-50 text-blue-700 border-l-4 border-blue-600"
+                  : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
+              }`}
+            >
+              <span className={`mr-3 ${selectedMenuItem === "patient-details" ? "text-blue-600" : "text-gray-500 group-hover:text-gray-700"}`}>
+                <User className="h-5 w-5" />
+              </span>
+              <div className="flex-1">
+                <p className={`font-medium text-sm ${selectedMenuItem === "patient-details" ? "text-blue-700" : ""}`}>
+                  Patient Details
+                </p>
+                <p className={`text-xs ${selectedMenuItem === "patient-details" ? "text-blue-600" : "text-gray-500"}`}>
+                  Search patients
                 </p>
               </div>
             </button>
