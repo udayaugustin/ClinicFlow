@@ -80,6 +80,7 @@ export const appointmentStatuses = [
   "hold",          // Patient not arrived at right time
   "pause",         // Temporarily paused appointment (was in progress)
   "cancel",        // Appointment cancelled
+  "no_show",       // Patient didn't show up (not eligible for refund)
   "completed"      // Appointment completed
 ] as const;
 

@@ -112,9 +112,10 @@ export function RefundManagement() {
   // Handle select all - only select appointments that are eligible for refund
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      // Only select appointments that are not completed (eligible for refund)
+      // Only appointments with "cancel" status are eligible for refund
+      // Exclude "completed" (service delivered) and "no_show" (patient fault)
       const eligibleAppointments = cancelledAppointments
-        .filter(appointment => appointment.tokenStatus !== 'completed')
+        .filter(appointment => appointment.tokenStatus === 'cancel')
         .map(a => a.id);
       setSelectedAppointments(new Set(eligibleAppointments));
     } else {
@@ -381,17 +382,17 @@ export function RefundManagement() {
                         id="select-all"
                         checked={
                           cancelledAppointments.length > 0 && 
-                          cancelledAppointments.filter(a => a.tokenStatus !== 'completed').length > 0 &&
-                          selectedAppointments.size === cancelledAppointments.filter(a => a.tokenStatus !== 'completed').length
+                          cancelledAppointments.filter(a => a.tokenStatus === 'cancel').length > 0 &&
+                          selectedAppointments.size === cancelledAppointments.filter(a => a.tokenStatus === 'cancel').length
                         }
                         onCheckedChange={handleSelectAll}
                       />
                       <Label htmlFor="select-all" className="text-sm font-medium">
-                        Select All Eligible ({cancelledAppointments.filter(a => a.tokenStatus !== 'completed').length})
+                        Select All Eligible ({cancelledAppointments.filter(a => a.tokenStatus === 'cancel').length})
                       </Label>
-                      {cancelledAppointments.some(a => a.tokenStatus === 'completed') && (
+                      {(cancelledAppointments.some(a => a.tokenStatus === 'completed') || cancelledAppointments.some(a => a.tokenStatus === 'no_show')) && (
                         <span className="text-xs text-gray-500">
-                          • {cancelledAppointments.filter(a => a.tokenStatus === 'completed').length} completed (no refund needed)
+                          • {cancelledAppointments.filter(a => a.tokenStatus === 'completed').length} completed, {cancelledAppointments.filter(a => a.tokenStatus === 'no_show').length} no-show (not eligible)
                         </span>
                       )}
                     </div>
@@ -422,13 +423,13 @@ export function RefundManagement() {
                         {cancelledAppointments.map((appointment) => (
                           <TableRow 
                             key={appointment.id} 
-                            className={`hover:bg-gray-50 ${appointment.tokenStatus === 'completed' ? 'bg-gray-50 opacity-60' : ''}`}
+                            className={`hover:bg-gray-50 ${appointment.tokenStatus !== 'cancel' ? 'bg-gray-50 opacity-60' : ''}`}
                           >
                             <TableCell>
                               <Checkbox
                                 checked={selectedAppointments.has(appointment.id)}
                                 onCheckedChange={(checked) => handleAppointmentSelect(appointment.id, checked as boolean)}
-                                disabled={appointment.tokenStatus === 'completed'}
+                                disabled={appointment.tokenStatus !== 'cancel'}
                               />
                             </TableCell>
                             <TableCell className="font-medium text-center">{appointment.serialNumber}</TableCell>
@@ -447,15 +448,28 @@ export function RefundManagement() {
                                 <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
                                   appointment.tokenStatus === 'scheduled' ? 'bg-blue-100 text-blue-800' :
                                   appointment.tokenStatus === 'completed' ? 'bg-green-100 text-green-800' :
-                                  appointment.tokenStatus === 'cancelled' ? 'bg-red-100 text-red-800' :
+                                  appointment.tokenStatus === 'cancel' ? 'bg-red-100 text-red-800' :
+                                  appointment.tokenStatus === 'no_show' ? 'bg-orange-100 text-orange-800' :
                                   appointment.tokenStatus === 'in_progress' ? 'bg-yellow-100 text-yellow-800' :
                                   'bg-gray-100 text-gray-800'
                                 }`}>
-                                  {appointment.tokenStatus ? appointment.tokenStatus.charAt(0).toUpperCase() + appointment.tokenStatus.slice(1) : 'Unknown'}
+                                  {appointment.tokenStatus === 'cancel' ? 'Cancelled' :
+                                   appointment.tokenStatus === 'no_show' ? 'No Show' :
+                                   appointment.tokenStatus ? appointment.tokenStatus.charAt(0).toUpperCase() + appointment.tokenStatus.slice(1) : 'Unknown'}
                                 </span>
                                 {appointment.tokenStatus === 'completed' && (
                                   <span className="text-xs text-gray-500">
                                     (No refund needed)
+                                  </span>
+                                )}
+                                {appointment.tokenStatus === 'no_show' && (
+                                  <span className="text-xs text-gray-500">
+                                    (Patient fault - not eligible)
+                                  </span>
+                                )}
+                                {appointment.tokenStatus === 'cancel' && (
+                                  <span className="text-xs text-green-600">
+                                    (Eligible for refund)
                                   </span>
                                 )}
                               </div>

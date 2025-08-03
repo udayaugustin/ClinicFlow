@@ -134,7 +134,7 @@ export interface IStorage {
   getAttendersByRole(): Promise<User[]>;
   updateAppointmentStatus(
     appointmentId: number, 
-    status: "scheduled" | "in_progress" | "hold" | "pause" | "cancel" | "completed", 
+    status: "scheduled" | "in_progress" | "hold" | "pause" | "cancel" | "no_show" | "completed", 
     statusNotes?: string
   ): Promise<Appointment>;
   updateDoctorAvailability(
@@ -1236,7 +1236,7 @@ export class DatabaseStorage implements IStorage {
 
   async updateAppointmentStatus(
     appointmentId: number, 
-    status: "scheduled" | "in_progress" | "hold" | "pause" | "cancel" | "completed", 
+    status: "scheduled" | "in_progress" | "hold" | "pause" | "cancel" | "no_show" | "completed", 
     statusNotes?: string
   ): Promise<Appointment> {
     try {

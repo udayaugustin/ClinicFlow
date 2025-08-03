@@ -28,6 +28,8 @@ export function AppointmentStatusBadge({ status, statusNotes }: AppointmentStatu
         return "warning";
       case "cancel":
         return "destructive";
+      case "no_show":
+        return "destructive";
       default:
         return "default";
     }
@@ -41,6 +43,7 @@ export function AppointmentStatusBadge({ status, statusNotes }: AppointmentStatu
         status === "hold" ? "Hold" :
         status === "pause" ? "Pause" :
         status === "cancel" ? "Cancel" :
+        status === "no_show" ? "No Show" :
         status === "completed" ? "Completed" :
           status.charAt(0).toUpperCase() + status.slice(1)}
       </Badge>

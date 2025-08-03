@@ -360,7 +360,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const appointmentId = parseInt(req.params.id);
       const { status, statusNotes } = req.body;
 
-      const allowedStatuses = ["token_started", "in_progress", "hold", "pause", "cancel", "completed"];
+      const allowedStatuses = ["token_started", "in_progress", "hold", "pause", "cancel", "no_show", "completed"];
       
       if (!allowedStatuses.includes(status)) {
         return res.status(400).json({ 
@@ -377,11 +377,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Validate status transitions
       const currentStatus = currentAppointment.status;
       const validTransitions: Record<string, string[]> = {
-        "token_started": ["in_progress", "hold", "cancel"], // Doctor not arrived yet
-        "scheduled": ["in_progress", "hold", "cancel"], // Alternative initial status
+        "token_started": ["in_progress", "hold", "cancel", "no_show"], // Doctor not arrived yet
+        "scheduled": ["in_progress", "hold", "cancel", "no_show"], // Alternative initial status
         "in_progress": ["completed", "cancel"], // Appointment is happening
-        "hold": ["in_progress", "cancel"], // Patient not arrived, can start or cancel
+        "hold": ["in_progress", "cancel", "no_show"], // Patient not arrived, can start or cancel
         "cancel": [], // Terminal state
+        "no_show": [], // Terminal state
         "completed": [] // Terminal state
       };
 
@@ -2253,9 +2254,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           cancelReason: cancelReason || 'Schedule cancelled by attender'
         });
 
-        // THIRD: Cancel each appointment 
+        // THIRD: Cancel each appointment (but preserve completed and no_show statuses)
         for (const appointment of appointments) {
-          if (appointment.status !== 'completed' && appointment.status !== 'cancel') {
+          if (appointment.status !== 'completed' && appointment.status !== 'cancel' && appointment.status !== 'no_show') {
             // Update appointment status to cancelled
             await storage.updateAppointmentStatus(
               appointment.id, 
