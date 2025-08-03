@@ -9,6 +9,7 @@ import {
   doctorClinics,
   patientFavorites,
   notifications,
+  otpVerifications,
   type User,
   type AttenderDoctor,
   type InsertUser,
@@ -19,8 +20,10 @@ import {
   type InsertDoctorSchedule,
   type PatientFavorite,
   type InsertPatientFavorite,
+  type OtpVerification,
+  type InsertOtpVerification,
 } from "@shared/schema";
-import { eq, or, and, sql, inArray, lte, gte, count, not, gt, lt, getTableColumns } from "drizzle-orm";
+import { eq, or, and, sql, inArray, lte, gte, count, not, gt, lt, getTableColumns, isNotNull } from "drizzle-orm";
 import { db } from "./db";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
@@ -89,13 +92,25 @@ export interface IStorage {
 
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByPhone(phone: string): Promise<User | undefined>;
+  getUserWithClinic(id: number): Promise<(User & { clinic?: Clinic }) | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: number, userData: Partial<InsertUser>): Promise<User>;
   deleteUser(id: number): Promise<void>;
+  
+  // OTP related methods
+  createOtpVerification(data: InsertOtpVerification): Promise<OtpVerification>;
+  getValidOtp(phone: string, otpCode: string): Promise<OtpVerification | undefined>;
+  markOtpAsVerified(id: number): Promise<void>;
+  incrementOtpAttempts(id: number): Promise<void>;
+  cleanupExpiredOtps(): Promise<void>;
+  canSendOtp(phone: string): Promise<boolean>;
+  updateLastOtpSentAt(phone: string): Promise<void>;
   getDoctors(): Promise<User[]>;
   getDoctorsBySpecialty(specialty: string): Promise<User[]>;
   getDoctorWithClinic(id: number): Promise<(User & { clinic?: Clinic }) | undefined>;
   getDoctorsNearLocation(lat: number, lng: number, radiusInMiles?: number): Promise<User[]>;
+  getClinicAdmins(): Promise<(User & { clinic?: Clinic })[]>;
   getClinics(): Promise<Clinic[]>;
   getClinic(id: number): Promise<Clinic | undefined>;
   createClinic(clinic: typeof clinics.$inferInsert): Promise<Clinic>;
@@ -119,7 +134,7 @@ export interface IStorage {
   getAttendersByRole(): Promise<User[]>;
   updateAppointmentStatus(
     appointmentId: number, 
-    status: "scheduled" | "in_progress" | "hold" | "pause" | "cancel" | "completed", 
+    status: "scheduled" | "in_progress" | "hold" | "pause" | "cancel" | "no_show" | "completed", 
     statusNotes?: string
   ): Promise<Appointment>;
   updateDoctorAvailability(
@@ -337,6 +352,47 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+  async getUserByPhone(phone: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.phone, phone));
+    return user;
+  }
+
+  async getUserWithClinic(id: number): Promise<(User & { clinic?: Clinic }) | undefined> {
+    const [result] = await db
+      .select({
+        id: users.id,
+        username: users.username,
+        password: users.password,
+        name: users.name,
+        role: users.role,
+        phone: users.phone,
+        email: users.email,
+        specialty: users.specialty,
+        bio: users.bio,
+        imageUrl: users.imageUrl,
+        address: users.address,
+        city: users.city,
+        state: users.state,
+        zipCode: users.zipCode,
+        latitude: users.latitude,
+        longitude: users.longitude,
+        clinicId: users.clinicId,
+        createdAt: users.createdAt,
+        clinic: clinics,
+      })
+      .from(users)
+      .leftJoin(clinics, eq(users.clinicId, clinics.id))
+      .where(eq(users.id, id));
+
+    if (!result) return undefined;
+
+    const { clinic, ...user } = result;
+    return {
+      ...user,
+      clinic: clinic || undefined,
+    };
+  }
+
   async createUser(insertUser: InsertUser): Promise<User> {
     const [user] = await db.insert(users).values(insertUser).returning();
     return user;
@@ -411,6 +467,42 @@ export class DatabaseStorage implements IStorage {
 
   async getDoctorsBySpecialty(specialty: string): Promise<User[]> {
     return await db.select().from(users).where(eq(users.specialty, specialty));
+  }
+
+  async getClinicAdmins(): Promise<(User & { clinic?: Clinic })[]> {
+    const results = await db
+      .select({
+        id: users.id,
+        username: users.username,
+        password: users.password,
+        name: users.name,
+        role: users.role,
+        phone: users.phone,
+        email: users.email,
+        specialty: users.specialty,
+        bio: users.bio,
+        imageUrl: users.imageUrl,
+        address: users.address,
+        city: users.city,
+        state: users.state,
+        zipCode: users.zipCode,
+        latitude: users.latitude,
+        longitude: users.longitude,
+        clinicId: users.clinicId,
+        createdAt: users.createdAt,
+        clinic: clinics,
+      })
+      .from(users)
+      .leftJoin(clinics, eq(users.clinicId, clinics.id))
+      .where(eq(users.role, 'clinic_admin'));
+
+    return results.map(result => {
+      const { clinic, ...user } = result;
+      return {
+        ...user,
+        clinic: clinic || undefined,
+      };
+    });
   }
 
   async getDoctorWithClinic(id: number): Promise<(User & { clinic?: Clinic }) | undefined> {
@@ -520,7 +612,245 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteClinic(id: number): Promise<void> {
-    await db.delete(clinics).where(eq(clinics.id, id));
+    try {
+      // Delete in the correct order to avoid foreign key constraint violations
+      
+      // 1. First, delete all appointments for this clinic
+      await db.delete(appointments).where(eq(appointments.clinicId, id));
+      
+      // 2. Delete all doctor schedules for this clinic
+      await db.delete(doctorSchedules).where(eq(doctorSchedules.clinicId, id));
+      
+      // 3. Delete all doctor-clinic relationships for this clinic
+      await db.delete(doctorClinics).where(eq(doctorClinics.clinicId, id));
+      
+      // 4. Delete all users associated with this clinic (including admins, doctors, etc.)
+      await db.delete(users).where(eq(users.clinicId, id));
+      
+      // 5. Finally, delete the clinic itself
+      await db.delete(clinics).where(eq(clinics.id, id));
+    } catch (error) {
+      console.error('Error deleting clinic:', error);
+      throw error;
+    }
+  }
+
+  async getSuperAdminExportData(clinicId: number, startDate: Date, endDate: Date): Promise<any[]> {
+    try {
+      console.log(`Fetching export data for clinic ${clinicId} from ${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]} (excluding cancelled schedules)`);
+      
+      // Use exact same pattern as getAppointmentsForExport - this works!
+      // Excludes cancelled schedules as they need separate refund handling
+      const result = await db
+        .select({
+          id: appointments.id,
+          date: appointments.date,
+          tokenNumber: appointments.tokenNumber,
+          status: appointments.status,
+          statusNotes: appointments.statusNotes,
+          actualStartTime: appointments.actualStartTime,
+          actualEndTime: appointments.actualEndTime,
+          isWalkIn: appointments.isWalkIn,
+          guestName: appointments.guestName,
+          guestPhone: appointments.guestPhone,
+          doctorName: users.name,
+          patientName: sql<string>`CASE 
+            WHEN ${appointments.isWalkIn} = true THEN ${appointments.guestName}
+            ELSE patient.name 
+          END`,
+          hospitalName: clinics.name,
+          scheduleDate: sql<string>`schedule.date`,
+          scheduleTime: sql<string>`CONCAT(schedule.start_time, ' - ', schedule.end_time)`,
+        })
+        .from(appointments)
+        .leftJoin(users, eq(users.id, appointments.doctorId))
+        .leftJoin(clinics, eq(clinics.id, appointments.clinicId))
+        .leftJoin(
+          sql`${users} as patient`,
+          sql`patient.id = ${appointments.patientId}`
+        )
+        .leftJoin(
+          sql`${doctorSchedules} as schedule`,
+          sql`schedule.id = ${appointments.scheduleId}`
+        )
+        .where(
+          and(
+            eq(appointments.clinicId, clinicId),
+            gte(appointments.date, startDate),
+            lte(appointments.date, endDate),
+            // Exclude cancelled schedules - these need separate refund handling
+            sql`schedule.cancel_reason IS NULL`,
+            // Exclude all appointments with cancelled/canceled status (any variation)
+            sql`${appointments.status} NOT ILIKE '%cancel%'`
+          )
+        )
+        .orderBy(appointments.date, appointments.tokenNumber);
+
+      console.log(`Found ${result.length} appointment records`);
+
+      if (result.length === 0) {
+        console.log('No appointment data found for the specified criteria');
+        return [];
+      }
+
+      // Transform the data to match super admin export format
+      const formattedData = result.map((appointment, index) => ({
+        serialNumber: index + 1,
+        hospitalName: appointment.hospitalName || 'Unknown Hospital',
+        doctorName: appointment.doctorName || 'Unknown Doctor',
+        scheduleDate: appointment.scheduleDate ? new Date(appointment.scheduleDate).toLocaleDateString() : new Date(appointment.date).toLocaleDateString(),
+        scheduleTime: appointment.scheduleTime || 'N/A',
+        patientName: appointment.patientName || 'Unknown Patient',
+        inTime: appointment.actualStartTime ? 
+          new Date(appointment.actualStartTime).toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+          }) : 'Not checked in',
+        outTime: appointment.actualEndTime ? 
+          new Date(appointment.actualEndTime).toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+          }) : 'Not checked out',
+        tokenStatus: appointment.status ? appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1) : 'Unknown',
+      }));
+
+      console.log('Successfully formatted export data');
+      return formattedData;
+    } catch (error) {
+      console.error('Error fetching super admin export data:', error);
+      throw error;
+    }
+  }
+
+  async getCancelledSchedulesForSelection(clinicId: number, dateFilter: string): Promise<any[]> {
+    try {
+      console.log(`Fetching cancelled schedules for selection - clinic ${clinicId} with filter ${dateFilter}`);
+      
+      // Parse date filter
+      let startDate: string, endDate: string;
+      const today = new Date();
+      const todayStr = today.toISOString().split('T')[0];
+      
+      if (dateFilter === 'today') {
+        startDate = endDate = todayStr;
+      } else if (dateFilter === 'yesterday') {
+        const yesterday = new Date(today);
+        yesterday.setDate(today.getDate() - 1);
+        startDate = endDate = yesterday.toISOString().split('T')[0];
+      } else if (dateFilter === 'last7days') {
+        const sevenDaysAgo = new Date(today);
+        sevenDaysAgo.setDate(today.getDate() - 7);
+        startDate = sevenDaysAgo.toISOString().split('T')[0];
+        endDate = todayStr;
+      } else {
+        throw new Error('Invalid date filter');
+      }
+
+      // Query cancelled schedules for selection
+      const result = await db
+        .select({
+          id: doctorSchedules.id,
+          doctorName: users.name,
+          date: doctorSchedules.date,
+          startTime: doctorSchedules.startTime,
+          endTime: doctorSchedules.endTime,
+          cancelReason: doctorSchedules.cancelReason,
+          appointmentCount: sql<number>`COUNT(${appointments.id})`,
+        })
+        .from(doctorSchedules)
+        .leftJoin(users, eq(users.id, doctorSchedules.doctorId))
+        .leftJoin(appointments, eq(appointments.scheduleId, doctorSchedules.id))
+        .where(
+          and(
+            eq(doctorSchedules.clinicId, clinicId),
+            gte(doctorSchedules.date, startDate),
+            lte(doctorSchedules.date, endDate),
+            // Only cancelled schedules
+            isNotNull(doctorSchedules.cancelReason)
+          )
+        )
+        .groupBy(
+          doctorSchedules.id,
+          users.name,
+          doctorSchedules.date,
+          doctorSchedules.startTime,
+          doctorSchedules.endTime,
+          doctorSchedules.cancelReason
+        )
+        .orderBy(doctorSchedules.date, doctorSchedules.startTime);
+
+      console.log(`Found ${result.length} cancelled schedules for selection`);
+
+      return result.map(schedule => ({
+        id: schedule.id,
+        doctorName: schedule.doctorName || 'Unknown Doctor',
+        date: schedule.date,
+        startTime: schedule.startTime,
+        endTime: schedule.endTime,
+        cancelReason: schedule.cancelReason || 'No reason provided',
+        appointmentCount: Number(schedule.appointmentCount) || 0,
+      }));
+    } catch (error) {
+      console.error('Error fetching cancelled schedules for selection:', error);
+      throw error;
+    }
+  }
+
+  async getAppointmentsForCancelledSchedule(scheduleId: number): Promise<any[]> {
+    try {
+      console.log(`Fetching appointments for cancelled schedule ${scheduleId}`);
+      
+      // Query appointments for the specific cancelled schedule
+      const result = await db
+        .select({
+          appointmentId: appointments.id,
+          tokenStatus: appointments.status,
+          // Patient info - handle both walk-in and registered patients
+          patientName: sql<string>`CASE 
+            WHEN ${appointments.isWalkIn} = true THEN ${appointments.guestName}
+            ELSE patient.name 
+          END`,
+          mobileNumber: sql<string>`CASE 
+            WHEN ${appointments.isWalkIn} = true THEN ${appointments.guestPhone}
+            ELSE patient.phone 
+          END`,
+          hospitalName: clinics.name,
+          doctorName: users.name,
+          scheduleDate: doctorSchedules.date,
+          cancelReason: doctorSchedules.cancelReason,
+        })
+        .from(appointments)
+        .leftJoin(users, eq(users.id, appointments.doctorId))
+        .leftJoin(clinics, eq(clinics.id, appointments.clinicId))
+        .leftJoin(doctorSchedules, eq(doctorSchedules.id, appointments.scheduleId))
+        .leftJoin(
+          sql`${users} as patient`,
+          sql`patient.id = ${appointments.patientId}`
+        )
+        .where(
+          eq(appointments.scheduleId, scheduleId)
+        )
+        .orderBy(appointments.tokenNumber);
+
+      console.log(`Found ${result.length} appointments for cancelled schedule`);
+
+      return result.map((appointment, index) => ({
+        id: appointment.appointmentId,
+        serialNumber: index + 1,
+        patientName: appointment.patientName || 'Unknown Patient',
+        mobileNumber: appointment.mobileNumber || 'Not available',
+        hospitalName: appointment.hospitalName || 'Unknown Hospital',
+        doctorName: appointment.doctorName || 'Unknown Doctor',
+        scheduleDate: appointment.scheduleDate,
+        cancelReason: appointment.cancelReason || 'Schedule cancelled',
+        tokenStatus: appointment.tokenStatus || 'scheduled',
+      }));
+    } catch (error) {
+      console.error('Error fetching appointments for cancelled schedule:', error);
+      throw error;
+    }
   }
 
   async getAppointments(userId: number): Promise<(Appointment & { doctor: User; patient?: User })[]> {
@@ -906,7 +1236,7 @@ export class DatabaseStorage implements IStorage {
 
   async updateAppointmentStatus(
     appointmentId: number, 
-    status: "scheduled" | "in_progress" | "hold" | "pause" | "cancel" | "completed", 
+    status: "scheduled" | "in_progress" | "hold" | "pause" | "cancel" | "no_show" | "completed", 
     statusNotes?: string
   ): Promise<Appointment> {
     try {
@@ -3250,6 +3580,72 @@ export class DatabaseStorage implements IStorage {
       console.error("Error fetching appointments for schedule export:", error);
       throw error;
     }
+  }
+
+  // OTP related methods
+  async createOtpVerification(data: InsertOtpVerification): Promise<OtpVerification> {
+    const [otp] = await db.insert(otpVerifications).values(data).returning();
+    return otp;
+  }
+
+  async getValidOtp(phone: string, otpCode: string): Promise<OtpVerification | undefined> {
+    const [otp] = await db
+      .select()
+      .from(otpVerifications)
+      .where(
+        and(
+          eq(otpVerifications.phone, phone),
+          eq(otpVerifications.otpCode, otpCode),
+          eq(otpVerifications.verified, false),
+          gte(otpVerifications.expiresAt, new Date())
+        )
+      );
+    return otp;
+  }
+
+  async markOtpAsVerified(id: number): Promise<void> {
+    await db
+      .update(otpVerifications)
+      .set({ verified: true })
+      .where(eq(otpVerifications.id, id));
+  }
+
+  async incrementOtpAttempts(id: number): Promise<void> {
+    await db
+      .update(otpVerifications)
+      .set({ 
+        verificationAttempts: sql`${otpVerifications.verificationAttempts} + 1`
+      })
+      .where(eq(otpVerifications.id, id));
+  }
+
+  async cleanupExpiredOtps(): Promise<void> {
+    await db
+      .delete(otpVerifications)
+      .where(lt(otpVerifications.expiresAt, new Date()));
+  }
+
+  async canSendOtp(phone: string): Promise<boolean> {
+    // Check if user has sent OTP in last hour
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.phone, phone));
+
+    if (!user) return true; // Allow if user doesn't exist (for registration)
+
+    if (!user.lastOtpSentAt) return true;
+
+    // Check if at least 1 minute has passed since last OTP
+    const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
+    return user.lastOtpSentAt < oneMinuteAgo;
+  }
+
+  async updateLastOtpSentAt(phone: string): Promise<void> {
+    await db
+      .update(users)
+      .set({ lastOtpSentAt: new Date() })
+      .where(eq(users.phone, phone));
   }
 }
 

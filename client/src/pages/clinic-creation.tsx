@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { DashboardHeader } from "@/components/dashboard-header";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Save, Clock, Edit, Trash2, Plus, Search, X, Check, Loader2, MapPin, Phone, Mail, Building, Eye } from "lucide-react";
+import { ArrowLeft, Save, Clock, Edit, Trash2, Plus, Search, X, Check, Loader2, MapPin, Phone, Mail, Building, Eye, UserCog } from "lucide-react";
 import { useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -20,8 +20,9 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import React from "react";
 
-// Clinic schema
+// Clinic schema with admin user fields
 const clinicSchema = z.object({
+  // Clinic fields
   name: z.string().min(1, "Clinic name is required"),
   address: z.string().min(1, "Address is required"),
   city: z.string().min(1, "City is required"),
@@ -32,6 +33,13 @@ const clinicSchema = z.object({
   openingHours: z.string().min(1, "Opening hours are required"),
   description: z.string().optional(),
   imageUrl: z.string().optional(),
+  
+  // Clinic admin user fields
+  adminUsername: z.string().min(1, "Admin username is required"),
+  adminPassword: z.string().min(6, "Admin password must be at least 6 characters"),
+  adminName: z.string().min(1, "Admin full name is required"),
+  adminPhone: z.string().min(1, "Admin phone number is required"),
+  adminEmail: z.string().email("Invalid admin email address"),
 });
 
 // Update schema (all fields optional for partial updates)
@@ -78,7 +86,7 @@ export default function ClinicCreation() {
     return null;
   }
 
-  // Form for creating clinics
+  // Form for creating clinics with admin
   const form = useForm<ClinicData>({
     resolver: zodResolver(clinicSchema),
     defaultValues: {
@@ -91,6 +99,12 @@ export default function ClinicCreation() {
       email: "",
       openingHours: "",
       description: "",
+      imageUrl: "",
+      adminUsername: "",
+      adminPassword: "",
+      adminName: "",
+      adminPhone: "",
+      adminEmail: "",
     },
   });
   
@@ -110,16 +124,16 @@ export default function ClinicCreation() {
     },
   });
 
-  // Create clinic mutation
+  // Create clinic with admin mutation
   const createClinicMutation = useMutation({
     mutationFn: async (data: ClinicData) => {
-      const res = await apiRequest("POST", "/api/clinics", data);
+      const res = await apiRequest("POST", "/api/clinics/with-admin", data);
       return await res.json();
     },
     onSuccess: () => {
       toast({
         title: "Success",
-        description: "Clinic created successfully",
+        description: "Clinic and admin created successfully",
       });
       form.reset();
       setIsCreateDialogOpen(false);
@@ -250,7 +264,7 @@ export default function ClinicCreation() {
             }}
           >
             <Plus className="mr-2 h-4 w-4" />
-            Add New Clinic
+            Add New Clinic & Admin
           </Button>
         </div>
         
@@ -291,7 +305,7 @@ export default function ClinicCreation() {
                       setIsCreateDialogOpen(true);
                     }}
                   >
-                    Add Your First Clinic
+                    Add Your First Clinic & Admin
                   </Button>
                 </div>
               ) : (
@@ -368,36 +382,28 @@ export default function ClinicCreation() {
         
         {/* Create Clinic Dialog */}
         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-          <DialogContent className="sm:max-w-[600px]">
+          <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Create New Clinic</DialogTitle>
+              <DialogTitle>Create New Clinic & Admin</DialogTitle>
               <DialogDescription>
-                Fill in the details to create a new clinic.  
+                Fill in the clinic details and create the clinic administrator account.  
               </DialogDescription>
             </DialogHeader>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onCreateSubmit)} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Clinic Name</FormLabel>
-                      <FormControl>
-                        <Input {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Clinic Information Section */}
+                <div className="space-y-4">
+                  <div className="flex items-center mb-4">
+                    <Building className="h-5 w-5 mr-2" />
+                    <h3 className="text-lg font-semibold">Clinic Information</h3>
+                  </div>
+                  
                   <FormField
                     control={form.control}
-                    name="address"
+                    name="name"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Address</FormLabel>
+                        <FormLabel>Clinic Name</FormLabel>
                         <FormControl>
                           <Input {...field} />
                         </FormControl>
@@ -406,136 +412,303 @@ export default function ClinicCreation() {
                     )}
                   />
                   
-                  <FormField
-                    control={form.control}
-                    name="city"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>City</FormLabel>
-                        <FormControl>
-                          <Input {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="state"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>State</FormLabel>
-                        <FormControl>
-                          <Input {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="address"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Address</FormLabel>
+                          <FormControl>
+                            <Input {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    
+                    <FormField
+                      control={form.control}
+                      name="city"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>City</FormLabel>
+                          <FormControl>
+                            <Input {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="state"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>State</FormLabel>
+                          <FormControl>
+                            <Input {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    
+                    <FormField
+                      control={form.control}
+                      name="zipCode"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Zip Code</FormLabel>
+                          <FormControl>
+                            <Input {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    
+                    <FormField
+                      control={form.control}
+                      name="phone"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Phone</FormLabel>
+                          <FormControl>
+                            <Input {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="email"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Email</FormLabel>
+                          <FormControl>
+                            <Input type="email" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    
+                    <FormField
+                      control={form.control}
+                      name="openingHours"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="flex items-center">
+                            <Clock className="h-4 w-4 mr-1" />
+                            Opening Hours
+                          </FormLabel>
+                          <FormControl>
+                            <Input 
+                              placeholder="Mon-Fri: 9am-5pm, Sat: 10am-2pm" 
+                              {...field} 
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
                   
                   <FormField
                     control={form.control}
-                    name="zipCode"
+                    name="description"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Zip Code</FormLabel>
+                        <FormLabel>Description</FormLabel>
                         <FormControl>
-                          <Input {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  
-                  <FormField
-                    control={form.control}
-                    name="phone"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Phone</FormLabel>
-                        <FormControl>
-                          <Input {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Email</FormLabel>
-                        <FormControl>
-                          <Input type="email" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  
-                  <FormField
-                    control={form.control}
-                    name="openingHours"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="flex items-center">
-                          <Clock className="h-4 w-4 mr-1" />
-                          Opening Hours
-                        </FormLabel>
-                        <FormControl>
-                          <Input 
-                            placeholder="Mon-Fri: 9am-5pm, Sat: 10am-2pm" 
-                            {...field} 
+                          <Textarea 
+                            placeholder="Enter clinic description and facilities"
+                            className="resize-none"
+                            rows={3}
+                            {...field}
                           />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
+                  
+                  <FormField
+                    control={form.control}
+                    name="imageUrl"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Clinic Image</FormLabel>
+                        <FormControl>
+                          <div className="space-y-4">
+                            <div className="flex items-center gap-4">
+                              <Input
+                                type="file"
+                                accept="image/*"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) {
+                                    // Create a preview URL for the selected image
+                                    const reader = new FileReader();
+                                    reader.onload = (e) => {
+                                      const result = e.target?.result as string;
+                                      field.onChange(result);
+                                    };
+                                    reader.readAsDataURL(file);
+                                  }
+                                }}
+                                className="cursor-pointer"
+                              />
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => {
+                                  field.onChange("");
+                                }}
+                              >
+                                Clear
+                              </Button>
+                            </div>
+                            
+                            {/* Image Preview */}
+                            {field.value && (
+                              <div className="mt-4">
+                                <p className="text-sm text-muted-foreground mb-2">Preview:</p>
+                                <div className="border rounded-lg p-2 bg-muted/50">
+                                  <img
+                                    src={field.value}
+                                    alt="Clinic preview"
+                                    className="max-w-full h-32 object-cover rounded"
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </FormControl>
+                        <FormMessage />
+                        <p className="text-xs text-muted-foreground">
+                          Select an image file (JPG, PNG, GIF) for your clinic
+                        </p>
+                      </FormItem>
+                    )}
+                  />
                 </div>
-                
-                <FormField
-                  control={form.control}
-                  name="description"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Description</FormLabel>
-                      <FormControl>
-                        <Textarea 
-                          placeholder="Enter clinic description and facilities"
-                          className="resize-none"
-                          rows={4}
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
-                <FormField
-                  control={form.control}
-                  name="imageUrl"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Clinic Image URL</FormLabel>
-                      <FormControl>
-                        <Input 
-                          placeholder="https://example.com/clinic-image.jpg" 
-                          {...field} 
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+
+                {/* Clinic Admin Section */}
+                <div className="border-t pt-6 mt-6 space-y-4">
+                  <div className="flex items-center mb-4">
+                    <UserCog className="h-5 w-5 mr-2" />
+                    <h3 className="text-lg font-semibold">Clinic Administrator</h3>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="adminUsername"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Username</FormLabel>
+                          <FormControl>
+                            <Input placeholder="admin.username" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    
+                    <FormField
+                      control={form.control}
+                      name="adminPassword"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Password</FormLabel>
+                          <FormControl>
+                            <div className="relative">
+                              <Input 
+                                type="password" 
+                                placeholder="•••••••••" 
+                                {...field} 
+                              />
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="absolute right-2 top-1/2 transform -translate-y-1/2 h-8 px-3"
+                                onClick={() => {
+                                  const generatePassword = () => {
+                                    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
+                                    let password = '';
+                                    for (let i = 0; i < 12; i++) {
+                                      password += chars.charAt(Math.floor(Math.random() * chars.length));
+                                    }
+                                    return password;
+                                  };
+                                  const newPassword = generatePassword();
+                                  form.setValue('adminPassword', newPassword);
+                                }}
+                              >
+                                Generate
+                              </Button>
+                            </div>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  
+                  <FormField
+                    control={form.control}
+                    name="adminName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Full Name</FormLabel>
+                        <FormControl>
+                          <Input placeholder="John Doe" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="adminPhone"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Phone Number</FormLabel>
+                          <FormControl>
+                            <Input placeholder="1234567890" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    
+                    <FormField
+                      control={form.control}
+                      name="adminEmail"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Email</FormLabel>
+                          <FormControl>
+                            <Input type="email" placeholder="admin@clinic.com" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </div>
                 
                 <DialogFooter>
                   <Button 
@@ -557,7 +730,7 @@ export default function ClinicCreation() {
                     ) : (
                       <>
                         <Save className="mr-2 h-4 w-4" />
-                        Create Clinic
+                        Create Clinic & Admin
                       </>
                     )}
                   </Button>
@@ -726,14 +899,57 @@ export default function ClinicCreation() {
                   name="imageUrl"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Clinic Image URL</FormLabel>
+                      <FormLabel>Clinic Image</FormLabel>
                       <FormControl>
-                        <Input 
-                          placeholder="https://example.com/clinic-image.jpg" 
-                          {...field} 
-                        />
+                        <div className="space-y-4">
+                          <div className="flex items-center gap-4">
+                            <Input
+                              type="file"
+                              accept="image/*"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  // Create a preview URL for the selected image
+                                  const reader = new FileReader();
+                                  reader.onload = (e) => {
+                                    const result = e.target?.result as string;
+                                    field.onChange(result);
+                                  };
+                                  reader.readAsDataURL(file);
+                                }
+                              }}
+                              className="cursor-pointer"
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => {
+                                field.onChange("");
+                              }}
+                            >
+                              Clear
+                            </Button>
+                          </div>
+                          
+                          {/* Image Preview */}
+                          {field.value && (
+                            <div className="mt-4">
+                              <p className="text-sm text-muted-foreground mb-2">Preview:</p>
+                              <div className="border rounded-lg p-2 bg-muted/50">
+                                <img
+                                  src={field.value}
+                                  alt="Clinic preview"
+                                  className="max-w-full h-32 object-cover rounded"
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </FormControl>
                       <FormMessage />
+                      <p className="text-xs text-muted-foreground">
+                        Select an image file (JPG, PNG, GIF) for your clinic
+                      </p>
                     </FormItem>
                   )}
                 />
@@ -774,10 +990,10 @@ export default function ClinicCreation() {
             <DialogHeader>
               <DialogTitle>Delete Clinic</DialogTitle>
               <DialogDescription>
-                Are you sure you want to delete this clinic? This action cannot be undone.
+                Are you sure you want to delete this clinic? This will permanently delete:
               </DialogDescription>
             </DialogHeader>
-            <div className="py-4">
+            <div className="py-4 space-y-4">
               {selectedClinic && (
                 <div className="rounded-md bg-muted p-4">
                   <p><strong>Name:</strong> {selectedClinic.name}</p>
@@ -785,6 +1001,17 @@ export default function ClinicCreation() {
                   <p><strong>Contact:</strong> {selectedClinic.phone}</p>
                 </div>
               )}
+              
+              <div className="bg-red-50 border border-red-200 rounded-md p-4">
+                <h4 className="text-sm font-semibold text-red-800 mb-2">⚠️ This will also delete:</h4>
+                <ul className="text-sm text-red-700 space-y-1">
+                  <li>• All clinic administrators and staff users</li>
+                  <li>• All doctor schedules for this clinic</li>
+                  <li>• All appointments associated with this clinic</li>
+                  <li>• All clinic-related data</li>
+                </ul>
+                <p className="text-xs text-red-600 mt-2 font-medium">This action cannot be undone!</p>
+              </div>
             </div>
             <DialogFooter>
               <Button 

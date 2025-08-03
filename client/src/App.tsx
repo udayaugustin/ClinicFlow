@@ -16,6 +16,7 @@ import { useAuth } from "./hooks/use-auth";
 import SuperAdminDashboard from "@/pages/super-admin-dashboard";
 import DoctorCreation from "@/pages/doctor-creation";
 import ClinicCreation from "@/pages/clinic-creation";
+import ClinicAdminCreation from "@/pages/clinic-admin-creation";
 import ClinicView from "@/pages/clinic-view";
 import DoctorManagementPage from "./pages/doctor-management";
 import { ProtectedRoute } from "./components/ProtectedRoute";
@@ -24,6 +25,7 @@ import ClinicAdminDashboard from "@/pages/clinic-admin-dashboard";
 import PatientDashboard from "@/pages/patient-dashboard";
 import PatientClinicDetails from "@/pages/patient-clinic-details";
 import PatientFavorites from "@/pages/patient-favorites";
+import { ForcePasswordReset } from "@/components/ForcePasswordReset";
 
 // Wrap DoctorManagementPage with ProtectedRoute
 const ProtectedDoctorManagement = () => (
@@ -51,12 +53,17 @@ const ProtectedClinicAdminDashboard = () => (
 );
 
 function Router() {
-  const { user } = useAuth();
+  const { user, mustChangePassword, clearPasswordReset } = useAuth();
 
   // Debug user role
   if (user) {
     console.log('Current user role:', user.role);
     console.log('User details:', user);
+  }
+
+  // Show password reset screen if required
+  if (mustChangePassword) {
+    return <ForcePasswordReset onSuccess={clearPasswordReset} />;
   }
   
   // No redirects needed - all users go to the home page
@@ -74,6 +81,7 @@ function Router() {
       {/* <Route path="/super-admin-dashboard" component={SuperAdminDashboard} /> */}
       <Route path="/doctor-creation" component={DoctorCreation} />
       <Route path="/clinic-creation" component={ClinicCreation} />
+      <Route path="/clinic-admin-creation" component={ClinicAdminCreation} />
       <Route path="/clinic/:id" component={ClinicView} />
       <Route path="/doctor-management" component={ProtectedDoctorManagement} />
       <Route path="/schedules" component={ProtectedDoctorSchedules} />

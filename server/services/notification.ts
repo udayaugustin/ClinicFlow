@@ -139,6 +139,10 @@ class NotificationService {
         title = "Your appointment has been cancelled";
         message = `Your appointment with Dr. ${doctor.name} has been cancelled${notes ? `: ${notes}` : '.'}`;
         break;
+      case "no_show":
+        title = "Appointment Status Update";
+        message = `You were marked as not present for your appointment with Dr. ${doctor.name} today. Please book a new appointment if you'd like to reschedule your consultation.`;
+        break;
       case "completed":
         title = "Your appointment is complete";
         message = `Your consultation with Dr. ${doctor.name} has been completed.`;
@@ -303,13 +307,14 @@ class NotificationService {
       const schedule = scheduleResult.rows[0];
       console.log(`Found schedule: Dr. ${schedule.doctor_name} at ${schedule.clinic_name}`);
       
-      // Get all patients who have appointments for this schedule (including recently cancelled ones)
+      // Get patients who should be notified (exclude completed and no_show)
       const appointmentsResult = await db.execute(sql`
         SELECT a.*, u.name as patient_name
         FROM appointments a
         JOIN users u ON a.patient_id = u.id
         WHERE a.schedule_id = ${scheduleId}
         AND a.patient_id IS NOT NULL
+        AND a.status NOT IN ('completed', 'no_show')
         ORDER BY a.created_at ASC
       `);
       

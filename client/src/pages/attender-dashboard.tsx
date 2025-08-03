@@ -299,6 +299,12 @@ export default function AttenderDashboard() {
     }
   };
 
+  const handleNoShowAppointment = (appointmentId: number) => {
+    if (confirm("Mark this patient as No Show? This patient will NOT be eligible for refund.")) {
+      handleUpdateStatus(appointmentId, "no_show", "Patient did not show up");
+    }
+  };
+
   // Handler for doctor arrival toggle
   const handleToggleDoctorArrival = (
     doctorId: number, 
@@ -941,6 +947,7 @@ export default function AttenderDashboard() {
                                                         appointment.status === "hold" ? "secondary" :
                                                         appointment.status === "pause" ? "destructive" :
                                                         appointment.status === "cancel" ? "destructive" :
+                                                        appointment.status === "no_show" ? "destructive" :
                                                         appointment.status === "token_started" ? "outline" :
                                                         "outline"
                                                       }
@@ -951,6 +958,7 @@ export default function AttenderDashboard() {
                                                       appointment.status === "hold" ? "On Hold" :
                                                       appointment.status === "pause" ? "Paused" :
                                                       appointment.status === "cancel" ? "Cancelled" :
+                                                      appointment.status === "no_show" ? "No Show" :
                                                       appointment.status === "completed" ? "Completed" :
                                                       "Unknown"}
                                                     </Badge>
@@ -971,7 +979,7 @@ export default function AttenderDashboard() {
                                                       onMarkAsStarted={() => handleMarkInProgress(appointment.id)}
                                                       onMarkAsCompleted={() => handleMarkAsCompleted(appointment.id)}
                                                       onHold={() => handleHoldAppointment(appointment.id)}
-                                                      onCancel={() => handleCancelAppointment(appointment.id)}
+                                                      onNoShow={() => handleNoShowAppointment(appointment.id)}
                                                     />
                                                   </td>
                                                 </tr>
