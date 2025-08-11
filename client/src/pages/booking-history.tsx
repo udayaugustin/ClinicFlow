@@ -21,6 +21,7 @@ const appointmentStatusBadgeVariant = (status: string) => {
     case "hold": return "secondary";
     case "pause": return "destructive";
     case "cancel": return "destructive";
+    case "no_show": return "destructive";
     default: return "outline";
   }
 };
@@ -317,6 +318,26 @@ export default function BookingHistoryPage() {
                                 {appointment.status === "cancel" ? (
                                   <div className="text-sm text-center text-red-600 font-medium mt-1">
                                     Appointment cancelled
+                                  </div>
+                                ) : appointment.status === "no_show" ? (
+                                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 mt-3 text-center">
+                                    <span className="text-red-700 font-semibold block mb-2">❌ Appointment Missed</span>
+                                    <span className="text-red-600 text-sm block mb-2">
+                                      You didn't arrive at the clinic on time for your appointment.
+                                    </span>
+                                    <span className="text-red-600 text-sm font-medium">
+                                      Please book a new appointment to schedule your consultation.
+                                    </span>
+                                  </div>
+                                ) : appointment.status === "cancel" ? (
+                                  <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mt-3 text-center">
+                                    <span className="text-orange-700 font-semibold block mb-2">🚫 Appointment Cancelled</span>
+                                    <span className="text-orange-600 text-sm block mb-2">
+                                      This appointment was cancelled by the clinic.
+                                    </span>
+                                    <span className="text-orange-600 text-sm font-medium">
+                                      Please contact the clinic or book a new appointment.
+                                    </span>
                                   </div>
                                 ) : appointment.status === "completed" ? (
                                   <div>

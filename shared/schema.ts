@@ -35,6 +35,9 @@ export const users = pgTable("users", {
   latitude: varchar("latitude", { length: 50 }),
   longitude: varchar("longitude", { length: 50 }),
   clinicId: integer("clinic_id").references(() => clinics.id),
+  lastOtpSentAt: timestamp("last_otp_sent_at"),
+  phoneVerified: boolean("phone_verified").default(false),
+  mustChangePassword: boolean("must_change_password").default(false),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
@@ -77,6 +80,7 @@ export const appointmentStatuses = [
   "hold",          // Patient not arrived at right time
   "pause",         // Temporarily paused appointment (was in progress)
   "cancel",        // Appointment cancelled
+  "no_show",       // Patient didn't show up (not eligible for refund)
   "completed"      // Appointment completed
 ] as const;
 
@@ -156,6 +160,16 @@ export const notifications = pgTable("notifications", {
   message: text("message").notNull(),
   type: varchar("type", { length: 50 }).notNull(),
   isRead: boolean("is_read").default(false),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const otpVerifications = pgTable("otp_verifications", {
+  id: serial("id").primaryKey(),
+  phone: varchar("phone", { length: 20 }).notNull(),
+  otpCode: varchar("otp_code", { length: 6 }).notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  verified: boolean("verified").default(false),
+  verificationAttempts: integer("verification_attempts").default(0),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
@@ -325,6 +339,7 @@ export const insertDoctorScheduleSchema = createInsertSchema(doctorSchedules, {
 
 export const insertPatientFavoriteSchema = createInsertSchema(patientFavorites);
 export const insertNotificationSchema = createInsertSchema(notifications);
+export const insertOtpVerificationSchema = createInsertSchema(otpVerifications);
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
@@ -339,6 +354,8 @@ export type PatientFavorite = typeof patientFavorites.$inferSelect;
 export type InsertPatientFavorite = z.infer<typeof insertPatientFavoriteSchema>;
 export type Notification = typeof notifications.$inferSelect;
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
+export type OtpVerification = typeof otpVerifications.$inferSelect;
+export type InsertOtpVerification = z.infer<typeof insertOtpVerificationSchema>;
 
 export const specialties = [
   "Cardiologist",

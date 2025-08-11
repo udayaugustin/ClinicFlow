@@ -10,6 +10,17 @@ import { notificationService } from './services/notification';
 import { ETAService } from './services/eta';
 import { db } from './db';
 import { eq, and, sql } from 'drizzle-orm';
+import { scrypt, randomBytes } from "crypto";
+import { promisify } from "util";
+
+const scryptAsync = promisify(scrypt);
+
+async function hashPassword(password: string) {
+  const salt = randomBytes(16).toString("hex");
+  const buf = (await scryptAsync(password, salt, 64)) as Buffer;
+  return `${buf.toString("hex")}.${salt}`;
+}
+
 
 // Simple in-memory notification store as fallback
 const memoryNotifications: any[] = [];
@@ -349,7 +360,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const appointmentId = parseInt(req.params.id);
       const { status, statusNotes } = req.body;
 
-      const allowedStatuses = ["token_started", "in_progress", "hold", "pause", "cancel", "completed"];
+      const allowedStatuses = ["token_started", "in_progress", "hold", "pause", "cancel", "no_show", "completed"];
       
       if (!allowedStatuses.includes(status)) {
         return res.status(400).json({ 
@@ -366,11 +377,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Validate status transitions
       const currentStatus = currentAppointment.status;
       const validTransitions: Record<string, string[]> = {
-        "token_started": ["in_progress", "hold", "cancel"], // Doctor not arrived yet
-        "scheduled": ["in_progress", "hold", "cancel"], // Alternative initial status
+        "token_started": ["in_progress", "hold", "cancel", "no_show"], // Doctor not arrived yet
+        "scheduled": ["in_progress", "hold", "cancel", "no_show"], // Alternative initial status
         "in_progress": ["completed", "cancel"], // Appointment is happening
-        "hold": ["in_progress", "cancel"], // Patient not arrived, can start or cancel
+        "hold": ["in_progress", "cancel", "no_show"], // Patient not arrived, can start or cancel
         "cancel": [], // Terminal state
+        "no_show": [], // Terminal state
         "completed": [] // Terminal state
       };
 
@@ -763,6 +775,170 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error deleting clinic:', error);
       res.status(500).json({ message: 'Failed to delete clinic' });
+    }
+  });
+
+  // Create clinic with admin user
+  app.post("/api/clinics/with-admin", async (req, res) => {
+    if (!req.user || req.user.role !== "super_admin") return res.sendStatus(403);
+    try {
+      // Validate the combined data
+      const { 
+        name, address, city, state, zipCode, phone, email, openingHours, description, imageUrl,
+        adminUsername, adminPassword, adminName, adminPhone, adminEmail 
+      } = req.body;
+
+      // Validate required fields
+      if (!name || !address || !city || !state || !zipCode || !phone || !email || !openingHours) {
+        return res.status(400).json({ message: 'Missing required clinic fields' });
+      }
+      
+      if (!adminUsername || !adminPassword || !adminName || !adminPhone || !adminEmail) {
+        return res.status(400).json({ message: 'Missing required admin fields' });
+      }
+
+      // Create clinic first
+      const clinicData = {
+        name, address, city, state, zipCode, phone, email, openingHours, description, imageUrl
+      };
+      
+      const clinic = await storage.createClinic(clinicData);
+
+      // Hash the admin password before creating the user
+      const hashedPassword = await hashPassword(adminPassword);
+
+      // Create admin user for this clinic
+      const adminData = {
+        username: adminUsername,
+        password: hashedPassword,
+        name: adminName,
+        phone: adminPhone,
+        email: adminEmail,
+        role: "clinic_admin" as const,
+        clinicId: clinic.id,
+        mustChangePassword: true
+      };
+
+      const admin = await storage.createUser(adminData);
+
+      res.status(201).json({ 
+        clinic, 
+        admin: { 
+          id: admin.id, 
+          username: admin.username, 
+          name: admin.name, 
+          email: admin.email, 
+          phone: admin.phone 
+        }
+      });
+    } catch (error) {
+      console.error('Error creating clinic with admin:', error);
+      res.status(400).json({ message: error instanceof Error ? error.message : 'Failed to create clinic and admin' });
+    }
+  });
+
+  // Clinic Admin management routes
+  app.get("/api/clinic-admins", async (req, res) => {
+    if (!req.user || req.user.role !== "super_admin") return res.sendStatus(403);
+    try {
+      const clinicAdmins = await storage.getClinicAdmins();
+      res.json(clinicAdmins);
+    } catch (error) {
+      console.error('Error fetching clinic admins:', error);
+      res.status(500).json({ message: 'Failed to fetch clinic admins' });
+    }
+  });
+
+  app.post("/api/clinic-admins", async (req, res) => {
+    if (!req.user || req.user.role !== "super_admin") return res.sendStatus(403);
+    try {
+      const { clinicId, password, ...userData } = req.body;
+      
+      // Validate clinic exists
+      const clinic = await storage.getClinic(clinicId);
+      if (!clinic) {
+        return res.status(400).json({ message: 'Invalid clinic' });
+      }
+      
+      // Check if username already exists
+      const existingUser = await storage.getUserByUsername(userData.username);
+      if (existingUser) {
+        return res.status(400).json({ message: 'Username already exists' });
+      }
+      
+      // Hash the password
+      const hashedPassword = await hashPassword(password);
+      
+      // Add default values and set role
+      const clinicAdminData = {
+        ...userData,
+        password: hashedPassword,
+        role: "clinic_admin",
+        clinicId: clinicId,
+        email: userData.email || `${userData.username}@clinicflow.com`
+      };
+      
+      const adminData = insertUserSchema.parse(clinicAdminData);
+      const clinicAdmin = await storage.createUser(adminData);
+      
+      // Fetch the admin with clinic info
+      const adminWithClinic = await storage.getUserWithClinic(clinicAdmin.id);
+      res.status(201).json(adminWithClinic);
+    } catch (error) {
+      console.error('Error creating clinic admin:', error);
+      res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid clinic admin data' });
+    }
+  });
+
+  app.put("/api/clinic-admins/:id", async (req, res) => {
+    if (!req.user || req.user.role !== "super_admin") return res.sendStatus(403);
+    try {
+      const adminId = parseInt(req.params.id);
+      const admin = await storage.getUser(adminId);
+      
+      if (!admin || admin.role !== 'clinic_admin') {
+        return res.status(404).json({ message: 'Clinic admin not found' });
+      }
+      
+      const { clinicId, ...updateData } = req.body;
+      
+      // If clinic is being changed, validate it exists
+      if (clinicId !== undefined) {
+        const clinic = await storage.getClinic(clinicId);
+        if (!clinic) {
+          return res.status(400).json({ message: 'Invalid clinic' });
+        }
+      }
+      
+      const updatedData = {
+        ...updateData,
+        clinicId: clinicId !== undefined ? clinicId : admin.clinicId
+      };
+      
+      const updatedAdmin = await storage.updateUser(adminId, updatedData);
+      const adminWithClinic = await storage.getUserWithClinic(updatedAdmin.id);
+      res.json(adminWithClinic);
+    } catch (error) {
+      console.error('Error updating clinic admin:', error);
+      res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid update data' });
+    }
+  });
+
+  app.delete("/api/clinic-admins/:id", async (req, res) => {
+    if (!req.user || req.user.role !== "super_admin") return res.sendStatus(403);
+    try {
+      const adminId = parseInt(req.params.id);
+      const admin = await storage.getUser(adminId);
+      
+      if (!admin || admin.role !== 'clinic_admin') {
+        return res.status(404).json({ message: 'Clinic admin not found' });
+      }
+      
+      await storage.deleteUser(adminId);
+      res.status(200).json({ message: 'Clinic admin deleted successfully' });
+    } catch (error) {
+      console.error('Error deleting clinic admin:', error);
+      res.status(500).json({ message: 'Failed to delete clinic admin' });
     }
   });
 
@@ -2078,9 +2254,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           cancelReason: cancelReason || 'Schedule cancelled by attender'
         });
 
-        // THIRD: Cancel each appointment 
+        // THIRD: Cancel each appointment (but preserve completed and no_show statuses)
         for (const appointment of appointments) {
-          if (appointment.status !== 'completed' && appointment.status !== 'cancel') {
+          if (appointment.status !== 'completed' && appointment.status !== 'cancel' && appointment.status !== 'no_show') {
             // Update appointment status to cancelled
             await storage.updateAppointmentStatus(
               appointment.id, 
@@ -2097,6 +2273,85 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         console.error('Error canceling schedule:', error);
         res.status(500).json({ message: 'Failed to cancel schedule' });
+      }
+    });
+
+    // Super Admin: Search patient by phone number
+    app.get("/api/patients/search", async (req, res) => {
+      if (!req.user || req.user.role !== 'super_admin') return res.sendStatus(403);
+      
+      try {
+        const { phone } = req.query;
+        
+        if (!phone) {
+          return res.status(400).json({ error: 'Phone number is required' });
+        }
+        
+        console.log(`Super admin searching for patient with phone: ${phone}`);
+        
+        // Search for patient by phone number
+        const patientResult = await db.execute(sql`
+          SELECT id, name, username, phone, email, phone_verified, created_at
+          FROM users 
+          WHERE role = 'patient' AND phone = ${phone as string}
+          LIMIT 1
+        `);
+        
+        if (patientResult.rows.length === 0) {
+          return res.json({ patient: null, appointments: [] });
+        }
+        
+        const patient = patientResult.rows[0];
+        console.log(`Found patient: ${patient.name} (ID: ${patient.id})`);
+        
+        // Get appointment history for this patient
+        const appointmentsResult = await db.execute(sql`
+          SELECT 
+            a.id,
+            a.date,
+            a.token_number,
+            a.status,
+            a.status_notes,
+            a.created_at,
+            d.name as doctor_name,
+            c.name as clinic_name
+          FROM appointments a
+          LEFT JOIN users d ON a.doctor_id = d.id
+          LEFT JOIN clinics c ON a.clinic_id = c.id
+          WHERE a.patient_id = ${patient.id}
+          ORDER BY a.date DESC, a.created_at DESC
+          LIMIT 50
+        `);
+        
+        const appointments = appointmentsResult.rows.map(apt => ({
+          id: apt.id,
+          date: apt.date,
+          tokenNumber: apt.token_number,
+          status: apt.status,
+          statusNotes: apt.status_notes,
+          doctorName: apt.doctor_name,
+          clinicName: apt.clinic_name,
+          createdAt: apt.created_at
+        }));
+        
+        console.log(`Found ${appointments.length} appointments for patient`);
+        
+        res.json({
+          patient: {
+            id: patient.id,
+            name: patient.name,
+            username: patient.username,
+            phone: patient.phone,
+            email: patient.email,
+            phoneVerified: patient.phone_verified,
+            createdAt: patient.created_at
+          },
+          appointments
+        });
+        
+      } catch (error) {
+        console.error('Error searching patient:', error);
+        res.status(500).json({ error: 'Failed to search patient' });
       }
     });
 
@@ -2533,6 +2788,122 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Schedule export error:", error);
       res.status(500).json({ message: "Failed to fetch schedule appointment data" });
+    }
+  });
+
+  // Super Admin Export Reports Route
+  app.get("/api/super-admin/export-reports/:clinicId", async (req, res) => {
+    if (!req.user || req.user.role !== 'super_admin') {
+      return res.sendStatus(403);
+    }
+
+    try {
+      const { clinicId } = req.params;
+      const { startDate, endDate } = req.query;
+
+      if (!clinicId || !startDate || !endDate) {
+        return res.status(400).json({ 
+          message: "clinicId, startDate, and endDate are required" 
+        });
+      }
+
+      // Validate date range (max 6 months)
+      const start = new Date(startDate as string);
+      const end = new Date(endDate as string);
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+      if (start < sixMonthsAgo) {
+        return res.status(400).json({ 
+          message: "Date range cannot exceed 6 months from current date" 
+        });
+      }
+
+      if (start > end) {
+        return res.status(400).json({ 
+          message: "Start date must be before end date" 
+        });
+      }
+
+      // Get clinic details
+      const clinic = await storage.getClinic(Number(clinicId));
+      if (!clinic) {
+        return res.status(404).json({ message: "Clinic not found" });
+      }
+
+      // Get export data for the clinic
+      const exportData = await storage.getSuperAdminExportData(
+        Number(clinicId),
+        start,
+        end
+      );
+
+      res.json(exportData);
+    } catch (error) {
+      console.error("Super admin export error:", error);
+      res.status(500).json({ message: "Failed to fetch export data" });
+    }
+  });
+
+  // Super Admin Cancelled Schedules Route (Step 1: Get schedules to choose from)
+  app.get("/api/super-admin/cancelled-schedules/:clinicId", async (req, res) => {
+    if (!req.user || req.user.role !== 'super_admin') {
+      return res.sendStatus(403);
+    }
+
+    try {
+      const { clinicId } = req.params;
+      const { dateFilter } = req.query;
+
+      if (!clinicId || !dateFilter) {
+        return res.status(400).json({ 
+          message: "clinicId and dateFilter are required" 
+        });
+      }
+
+      // Get clinic details
+      const clinic = await storage.getClinic(Number(clinicId));
+      if (!clinic) {
+        return res.status(404).json({ message: "Clinic not found" });
+      }
+
+      // Get cancelled schedules list for selection
+      const cancelledSchedules = await storage.getCancelledSchedulesForSelection(
+        Number(clinicId),
+        dateFilter as string
+      );
+
+      res.json(cancelledSchedules);
+    } catch (error) {
+      console.error("Super admin cancelled schedules error:", error);
+      res.status(500).json({ message: "Failed to fetch cancelled schedules" });
+    }
+  });
+
+  // Super Admin Cancelled Schedule Appointments Route (Step 2: Get appointments for selected schedule)
+  app.get("/api/super-admin/cancelled-schedule-appointments/:scheduleId", async (req, res) => {
+    if (!req.user || req.user.role !== 'super_admin') {
+      return res.sendStatus(403);
+    }
+
+    try {
+      const { scheduleId } = req.params;
+
+      if (!scheduleId) {
+        return res.status(400).json({ 
+          message: "scheduleId is required" 
+        });
+      }
+
+      // Get appointments for the specific cancelled schedule
+      const cancelledAppointments = await storage.getAppointmentsForCancelledSchedule(
+        Number(scheduleId)
+      );
+
+      res.json(cancelledAppointments);
+    } catch (error) {
+      console.error("Super admin cancelled schedule appointments error:", error);
+      res.status(500).json({ message: "Failed to fetch cancelled schedule appointments" });
     }
   });
 
