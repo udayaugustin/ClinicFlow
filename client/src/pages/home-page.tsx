@@ -25,8 +25,8 @@ export default function HomePage() {
     doctor.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Show search filters only for patients or non-logged-in users
-  const shouldShowSearchFilters = !user || user.role === "patient";
+  // Show search filters only for non-logged-in users, not for patients
+  const shouldShowSearchFilters = !user;
 
   return (
     <div className="min-h-screen bg-gray-50">
