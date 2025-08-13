@@ -29,6 +29,7 @@ import { ForcePasswordReset } from "@/components/ForcePasswordReset";
 // New auth portal imports
 import PortalSelection from "@/pages/auth/portal-selection";
 import PatientLogin from "@/pages/auth/patient-login";
+import PatientRegister from "@/pages/auth/patient-register";
 import StaffLogin from "@/pages/auth/staff-login";
 import AdminLogin from "@/pages/auth/admin-login";
 
@@ -86,6 +87,7 @@ function Router() {
       {/* New Authentication Portal Routes */}
       <Route path="/" component={getLandingPage} />
       <Route path="/patient-login" component={PatientLogin} />
+      <Route path="/patient-register" component={PatientRegister} />
       <Route path="/staff-login" component={StaffLogin} />
       <Route path="/admin-login" component={AdminLogin} />
       

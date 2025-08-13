@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { ArrowLeft, User, Lock, Shield } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 const adminLoginSchema = z.object({
   username: z.string().min(1, "Username is required"),
@@ -62,10 +62,12 @@ export default function AdminLogin() {
       // Check if password reset is required
       if (result.mustChangePassword) {
         // Handle password reset flow
-        navigate("/force-password-reset");
+        window.location.href = "/force-password-reset";
       } else {
-        // Redirect to home page (will auto-redirect based on role)
-        setTimeout(() => navigate("/home"), 500);
+        // Force page reload to ensure auth state is updated from server session
+        setTimeout(() => {
+          window.location.href = "/home";
+        }, 500);
       }
     } catch (error) {
       toast({

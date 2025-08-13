@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { ArrowLeft, User, Lock, Stethoscope } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 const staffLoginSchema = z.object({
   username: z.string().min(1, "Username is required"),
@@ -59,8 +59,10 @@ export default function StaffLogin() {
         description: "Welcome to the staff portal!",
       });
 
-      // Redirect to attender dashboard
-      setTimeout(() => navigate("/attender-dashboard"), 500);
+      // Force page reload to ensure auth state is updated from server session
+      setTimeout(() => {
+        window.location.href = "/attender-dashboard";
+      }, 500);
     } catch (error) {
       toast({
         title: "Error",

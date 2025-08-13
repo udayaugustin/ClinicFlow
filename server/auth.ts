@@ -636,6 +636,68 @@ export function setupAuth(app: Express) {
     }
   });
 
+  // Patient Self-Registration with MPIN
+  app.post("/api/auth/patient/register", async (req, res) => {
+    try {
+      const { name, mobileNumber, mpin } = req.body;
+
+      // Validate input
+      if (!name || !mobileNumber || !mpin) {
+        return res.status(400).json({ message: "Name, mobile number, and MPIN are required" });
+      }
+
+      // Validate mobile number format
+      if (!/^\d{10}$/.test(mobileNumber)) {
+        return res.status(400).json({ message: "Mobile number must be 10 digits" });
+      }
+
+      // Validate MPIN format
+      if (!/^\d{4}$/.test(mpin)) {
+        return res.status(400).json({ message: "MPIN must be exactly 4 digits" });
+      }
+
+      // Check if mobile number already exists
+      const existingUser = await storage.getUserByPhone(mobileNumber);
+      if (existingUser) {
+        return res.status(400).json({ message: "Mobile number already registered" });
+      }
+
+      // Generate username from name and random digits
+      const username = name.toLowerCase().replace(/\s+/g, '') + Math.floor(Math.random() * 1000);
+      
+      // Hash MPIN (using same function as password)
+      const hashedMpin = await hashMpin(mpin);
+      
+      // Also create a dummy password (required by schema)
+      const dummyPassword = await hashPassword(randomBytes(16).toString('hex'));
+
+      // Create user with patient role
+      const user = await storage.createUser({
+        name,
+        username,
+        password: dummyPassword, // Required but not used for patient login
+        role: 'patient',
+        phone: mobileNumber,
+        email: null,
+        specialty: null,
+        bio: null,
+        imageUrl: null,
+        phoneVerified: true, // Self-registered users are considered verified
+      });
+
+      // Set MPIN for the user
+      await storage.updateMpin(user.id, hashedMpin);
+
+      res.status(201).json({ 
+        message: "Registration successful! You can now login with your mobile number and MPIN.",
+        userId: user.id 
+      });
+    } catch (error) {
+      console.error("Patient registration error:", error);
+      res.status(500).json({ message: "Failed to create account. Please try again." });
+    }
+  });
+
   // MPIN Management Endpoints
   app.post("/api/auth/patient/set-mpin", async (req, res) => {
     if (!req.user || !['clinic_admin', 'super_admin', 'hospital_admin'].includes(req.user.role)) {

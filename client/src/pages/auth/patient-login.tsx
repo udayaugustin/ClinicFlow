@@ -10,7 +10,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ArrowLeft, Phone, Lock, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 const patientLoginSchema = z.object({
   mobileNumber: z.string()
@@ -73,8 +73,10 @@ export default function PatientLogin() {
         description: "Welcome back!",
       });
 
-      // Redirect to home page (will show patient dashboard)
-      setTimeout(() => navigate("/home"), 500);
+      // Force page reload to ensure auth state is updated from server session
+      setTimeout(() => {
+        window.location.href = "/home";
+      }, 500);
     } catch (error) {
       toast({
         title: "Error",
@@ -165,7 +167,7 @@ export default function PatientLogin() {
                             {...field}
                             type={showMpin ? "text" : "password"}
                             placeholder="4-digit MPIN"
-                            className="pl-10 text-center text-2xl tracking-widest"
+                            className="pl-10 text-center text-xl tracking-widest placeholder:text-sm"
                             maxLength={4}
                             readOnly
                           />
@@ -180,14 +182,15 @@ export default function PatientLogin() {
                           </Button>
                         </div>
                         
-                        {/* Number pad for MPIN input */}
-                        <div className="grid grid-cols-3 gap-2">
+                        {/* Compact number pad for MPIN input */}
+                        <div className="grid grid-cols-3 gap-1">
                           {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => (
                             <Button
                               key={digit}
                               type="button"
                               variant="outline"
-                              className="h-12 text-lg font-semibold"
+                              size="sm"
+                              className="h-8 text-sm"
                               onClick={() => handleMpinInput(digit.toString())}
                               disabled={field.value.length >= 4}
                             >
@@ -197,7 +200,8 @@ export default function PatientLogin() {
                           <Button
                             type="button"
                             variant="outline"
-                            className="h-12 text-sm"
+                            size="sm"
+                            className="h-8 text-xs"
                             onClick={handleMpinClear}
                           >
                             Clear
@@ -205,7 +209,8 @@ export default function PatientLogin() {
                           <Button
                             type="button"
                             variant="outline"
-                            className="h-12 text-lg font-semibold"
+                            size="sm"
+                            className="h-8 text-sm"
                             onClick={() => handleMpinInput("0")}
                             disabled={field.value.length >= 4}
                           >
@@ -214,7 +219,8 @@ export default function PatientLogin() {
                           <Button
                             type="button"
                             variant="outline"
-                            className="h-12 text-sm"
+                            size="sm"
+                            className="h-8 text-xs"
                             onClick={handleMpinBackspace}
                           >
                             ←
@@ -237,6 +243,15 @@ export default function PatientLogin() {
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? "Logging in..." : "Login"}
               </Button>
+
+              <div className="text-center text-sm mt-4">
+                <span className="text-gray-600">Don't have an account? </span>
+                <Link href="/patient-register">
+                  <Button variant="link" className="p-0 h-auto font-semibold">
+                    Register here
+                  </Button>
+                </Link>
+              </div>
             </form>
           </Form>
         </CardContent>
