@@ -22,6 +22,16 @@ async function hashPassword(password: string) {
   return `${buf.toString("hex")}.${salt}`;
 }
 
+async function hashMpin(mpin: string) {
+  // Use same hashing as passwords for consistency
+  return hashPassword(mpin);
+}
+
+async function compareMpin(supplied: string, stored: string) {
+  // Use same comparison as passwords
+  return comparePasswords(supplied, stored);
+}
+
 async function comparePasswords(supplied: string, stored: string) {
   try {
     const [hashed, salt] = stored.split(".");
@@ -422,6 +432,331 @@ export function setupAuth(app: Express) {
     } catch (error) {
       console.error("Firebase verification error:", error);
       res.status(500).json({ message: "Failed to verify Firebase authentication" });
+    }
+  });
+
+  // ========== SEPARATED AUTHENTICATION ENDPOINTS ==========
+  
+  // Helper function to get client IP
+  function getClientIp(req: any): string {
+    return req.ip || req.connection.remoteAddress || '0.0.0.0';
+  }
+
+  // Patient Portal - Mobile + MPIN Authentication
+  app.post("/api/auth/patient/login", async (req, res) => {
+    const ipAddress = getClientIp(req);
+    const userAgent = req.headers['user-agent'];
+
+    try {
+      const { mobileNumber, mpin } = req.body;
+
+      // Validate input
+      if (!mobileNumber || !mpin) {
+        await storage.logLoginAttempt(null, 'patient', ipAddress, userAgent, false, 'Missing credentials');
+        return res.status(400).json({ message: "Mobile number and MPIN are required" });
+      }
+
+      // Validate MPIN format (4 digits)
+      if (!/^\d{4}$/.test(mpin)) {
+        await storage.logLoginAttempt(null, 'patient', ipAddress, userAgent, false, 'Invalid MPIN format');
+        return res.status(400).json({ message: "MPIN must be 4 digits" });
+      }
+
+      // Check rate limiting by IP
+      const recentAttempts = await storage.getRecentLoginAttempts(ipAddress, 5);
+      if (recentAttempts >= 5) {
+        await storage.logLoginAttempt(null, 'patient', ipAddress, userAgent, false, 'Rate limited');
+        return res.status(429).json({ message: "Too many login attempts. Please try again later." });
+      }
+
+      // Find user by phone
+      const user = await storage.getUserByPhoneForMpin(mobileNumber);
+      if (!user) {
+        await storage.logLoginAttempt(null, 'patient', ipAddress, userAgent, false, 'User not found');
+        return res.status(401).json({ message: "Invalid credentials" });
+      }
+
+      // Check if account is locked
+      const isLocked = await storage.isMpinLocked(user.id);
+      if (isLocked) {
+        await storage.logLoginAttempt(user.id, 'patient', ipAddress, userAgent, false, 'Account locked');
+        return res.status(423).json({ message: "Account is temporarily locked. Please try again later." });
+      }
+
+      // Check MPIN
+      if (!user.mpin) {
+        await storage.logLoginAttempt(user.id, 'patient', ipAddress, userAgent, false, 'MPIN not set');
+        return res.status(401).json({ message: "MPIN not configured. Please contact clinic admin." });
+      }
+
+      const validMpin = await compareMpin(mpin, user.mpin);
+      if (!validMpin) {
+        await storage.incrementMpinAttempts(user.id);
+        
+        // Check if we need to lock the account
+        if (user.mpinAttempts && user.mpinAttempts >= 2) { // Will be 3 after increment
+          await storage.lockMpinAccount(user.id, 15);
+          await storage.logLoginAttempt(user.id, 'patient', ipAddress, userAgent, false, 'Invalid MPIN - account locked');
+          return res.status(423).json({ message: "Too many failed attempts. Account locked for 15 minutes." });
+        }
+        
+        await storage.logLoginAttempt(user.id, 'patient', ipAddress, userAgent, false, 'Invalid MPIN');
+        return res.status(401).json({ message: "Invalid credentials" });
+      }
+
+      // Successful login - reset attempts
+      await storage.resetMpinAttempts(user.id);
+      await storage.logLoginAttempt(user.id, 'patient', ipAddress, userAgent, true, null);
+
+      // Set session with 30-minute timeout for patients
+      req.session.cookie.maxAge = 30 * 60 * 1000; // 30 minutes
+      
+      req.login(user, (err) => {
+        if (err) {
+          console.error("Session creation error:", err);
+          return res.status(500).json({ message: "Failed to create session" });
+        }
+        res.json({ success: true, user });
+      });
+    } catch (error) {
+      console.error("Patient login error:", error);
+      res.status(500).json({ message: "Login failed" });
+    }
+  });
+
+  // Staff Portal - Username + Password Authentication
+  app.post("/api/auth/staff/login", async (req, res) => {
+    const ipAddress = getClientIp(req);
+    const userAgent = req.headers['user-agent'];
+
+    try {
+      const { username, password } = req.body;
+
+      // Validate input
+      if (!username || !password) {
+        await storage.logLoginAttempt(null, 'staff', ipAddress, userAgent, false, 'Missing credentials');
+        return res.status(400).json({ message: "Username and password are required" });
+      }
+
+      // Check rate limiting
+      const recentAttempts = await storage.getRecentLoginAttempts(ipAddress, 5);
+      if (recentAttempts >= 10) {
+        await storage.logLoginAttempt(null, 'staff', ipAddress, userAgent, false, 'Rate limited');
+        return res.status(429).json({ message: "Too many login attempts. Please try again later." });
+      }
+
+      // Find user
+      const user = await storage.getUserByUsername(username);
+      if (!user || user.role !== 'attender') {
+        await storage.logLoginAttempt(null, 'staff', ipAddress, userAgent, false, 'Invalid user or role');
+        return res.status(401).json({ message: "Invalid credentials" });
+      }
+
+      // Check password
+      const validPassword = await comparePasswords(password, user.password);
+      if (!validPassword) {
+        await storage.logLoginAttempt(user.id, 'staff', ipAddress, userAgent, false, 'Invalid password');
+        return res.status(401).json({ message: "Invalid credentials" });
+      }
+
+      // Successful login
+      await storage.logLoginAttempt(user.id, 'staff', ipAddress, userAgent, true, null);
+
+      // Set session with 2-hour timeout for staff
+      req.session.cookie.maxAge = 2 * 60 * 60 * 1000; // 2 hours
+      
+      req.login(user, (err) => {
+        if (err) {
+          console.error("Session creation error:", err);
+          return res.status(500).json({ message: "Failed to create session" });
+        }
+        res.json({ success: true, user });
+      });
+    } catch (error) {
+      console.error("Staff login error:", error);
+      res.status(500).json({ message: "Login failed" });
+    }
+  });
+
+  // Admin Portal - Username + Password Authentication (enhanced existing)
+  app.post("/api/auth/admin/login", async (req, res) => {
+    const ipAddress = getClientIp(req);
+    const userAgent = req.headers['user-agent'];
+
+    try {
+      const { username, password } = req.body;
+
+      // Validate input
+      if (!username || !password) {
+        await storage.logLoginAttempt(null, 'admin', ipAddress, userAgent, false, 'Missing credentials');
+        return res.status(400).json({ message: "Username and password are required" });
+      }
+
+      // Check rate limiting
+      const recentAttempts = await storage.getRecentLoginAttempts(ipAddress, 5);
+      if (recentAttempts >= 10) {
+        await storage.logLoginAttempt(null, 'admin', ipAddress, userAgent, false, 'Rate limited');
+        return res.status(429).json({ message: "Too many login attempts. Please try again later." });
+      }
+
+      // Find user
+      const user = await storage.getUserByUsername(username);
+      if (!user || !['super_admin', 'clinic_admin', 'hospital_admin'].includes(user.role)) {
+        await storage.logLoginAttempt(null, 'admin', ipAddress, userAgent, false, 'Invalid user or role');
+        return res.status(401).json({ message: "Invalid credentials" });
+      }
+
+      // Check password
+      const validPassword = await comparePasswords(password, user.password);
+      if (!validPassword) {
+        await storage.logLoginAttempt(user.id, 'admin', ipAddress, userAgent, false, 'Invalid password');
+        return res.status(401).json({ message: "Invalid credentials" });
+      }
+
+      // Successful login
+      await storage.logLoginAttempt(user.id, 'admin', ipAddress, userAgent, true, null);
+
+      // Set session with 4-hour timeout for admins
+      req.session.cookie.maxAge = 4 * 60 * 60 * 1000; // 4 hours
+      
+      req.login(user, (err) => {
+        if (err) {
+          console.error("Session creation error:", err);
+          return res.status(500).json({ message: "Failed to create session" });
+        }
+        res.json({ 
+          success: true, 
+          user,
+          mustChangePassword: user.mustChangePassword || false
+        });
+      });
+    } catch (error) {
+      console.error("Admin login error:", error);
+      res.status(500).json({ message: "Login failed" });
+    }
+  });
+
+  // MPIN Management Endpoints
+  app.post("/api/auth/patient/set-mpin", async (req, res) => {
+    if (!req.user || !['clinic_admin', 'super_admin', 'hospital_admin'].includes(req.user.role)) {
+      return res.status(403).json({ message: "Only admins can set MPIN" });
+    }
+
+    try {
+      const { patientId, newMpin, adminPassword } = req.body;
+
+      // Validate input
+      if (!patientId || !newMpin || !adminPassword) {
+        return res.status(400).json({ message: "Patient ID, new MPIN, and admin password are required" });
+      }
+
+      // Validate MPIN format
+      if (!/^\d{4}$/.test(newMpin)) {
+        return res.status(400).json({ message: "MPIN must be exactly 4 digits" });
+      }
+
+      // Verify admin password
+      const admin = await storage.getUserByUsername(req.user.username);
+      if (!admin || !(await comparePasswords(adminPassword, admin.password))) {
+        return res.status(401).json({ message: "Invalid admin password" });
+      }
+
+      // Get patient
+      const patient = await storage.getUser(patientId);
+      if (!patient || patient.role !== 'patient') {
+        return res.status(404).json({ message: "Patient not found" });
+      }
+
+      // Hash and update MPIN
+      const hashedMpin = await hashMpin(newMpin);
+      await storage.updateMpin(patientId, hashedMpin);
+
+      res.json({ message: "MPIN set successfully" });
+    } catch (error) {
+      console.error("Set MPIN error:", error);
+      res.status(500).json({ message: "Failed to set MPIN" });
+    }
+  });
+
+  app.post("/api/auth/patient/reset-mpin", async (req, res) => {
+    if (!req.user || !['clinic_admin', 'super_admin', 'hospital_admin'].includes(req.user.role)) {
+      return res.status(403).json({ message: "Only admins can reset MPIN" });
+    }
+
+    try {
+      const { mobileNumber, adminPassword, newMpin } = req.body;
+
+      // Validate input
+      if (!mobileNumber || !newMpin || !adminPassword) {
+        return res.status(400).json({ message: "Mobile number, new MPIN, and admin password are required" });
+      }
+
+      // Validate MPIN format
+      if (!/^\d{4}$/.test(newMpin)) {
+        return res.status(400).json({ message: "MPIN must be exactly 4 digits" });
+      }
+
+      // Verify admin password
+      const admin = await storage.getUserByUsername(req.user.username);
+      if (!admin || !(await comparePasswords(adminPassword, admin.password))) {
+        return res.status(401).json({ message: "Invalid admin password" });
+      }
+
+      // Get patient by phone
+      const patient = await storage.getUserByPhoneForMpin(mobileNumber);
+      if (!patient) {
+        return res.status(404).json({ message: "Patient not found with this mobile number" });
+      }
+
+      // Hash and update MPIN
+      const hashedMpin = await hashMpin(newMpin);
+      await storage.updateMpin(patient.id, hashedMpin);
+
+      res.json({ message: "MPIN reset successfully", patientName: patient.name });
+    } catch (error) {
+      console.error("Reset MPIN error:", error);
+      res.status(500).json({ message: "Failed to reset MPIN" });
+    }
+  });
+
+  app.post("/api/auth/patient/change-mpin", async (req, res) => {
+    if (!req.user || req.user.role !== 'patient') {
+      return res.status(403).json({ message: "Only patients can change their own MPIN" });
+    }
+
+    try {
+      const { currentMpin, newMpin } = req.body;
+
+      // Validate input
+      if (!currentMpin || !newMpin) {
+        return res.status(400).json({ message: "Current MPIN and new MPIN are required" });
+      }
+
+      // Validate MPIN format
+      if (!/^\d{4}$/.test(newMpin)) {
+        return res.status(400).json({ message: "MPIN must be exactly 4 digits" });
+      }
+
+      // Get user
+      const user = await storage.getUser(req.user.id);
+      if (!user || !user.mpin) {
+        return res.status(400).json({ message: "MPIN not configured" });
+      }
+
+      // Verify current MPIN
+      const validMpin = await compareMpin(currentMpin, user.mpin);
+      if (!validMpin) {
+        return res.status(401).json({ message: "Current MPIN is incorrect" });
+      }
+
+      // Hash and update MPIN
+      const hashedMpin = await hashMpin(newMpin);
+      await storage.updateMpin(req.user.id, hashedMpin);
+
+      res.json({ message: "MPIN changed successfully" });
+    } catch (error) {
+      console.error("Change MPIN error:", error);
+      res.status(500).json({ message: "Failed to change MPIN" });
     }
   });
 }

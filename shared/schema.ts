@@ -38,7 +38,22 @@ export const users = pgTable("users", {
   lastOtpSentAt: timestamp("last_otp_sent_at"),
   phoneVerified: boolean("phone_verified").default(false),
   mustChangePassword: boolean("must_change_password").default(false),
+  mpin: varchar("mpin", { length: 255 }),
+  mpinAttempts: integer("mpin_attempts").default(0),
+  mpinLockedUntil: timestamp("mpin_locked_until"),
+  lastMpinChange: timestamp("last_mpin_change"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const loginAttempts = pgTable("login_attempts", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id),
+  loginType: varchar("login_type", { length: 20 }),
+  ipAddress: varchar("ip_address", { length: 45 }),
+  userAgent: text("user_agent"),
+  success: boolean("success").notNull(),
+  attemptedAt: timestamp("attempted_at").default(sql`CURRENT_TIMESTAMP`),
+  failureReason: varchar("failure_reason", { length: 255 }),
 });
 
 export const doctorDetails = pgTable("doctor_details", {
