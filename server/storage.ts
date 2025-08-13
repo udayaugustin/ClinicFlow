@@ -10,6 +10,7 @@ import {
   patientFavorites,
   notifications,
   otpVerifications,
+  loginAttempts,
   type User,
   type AttenderDoctor,
   type InsertUser,
@@ -3646,6 +3647,115 @@ export class DatabaseStorage implements IStorage {
       .update(users)
       .set({ lastOtpSentAt: new Date() })
       .where(eq(users.phone, phone));
+  }
+
+  // MPIN Authentication Methods
+  async getUserByPhoneForMpin(phone: string): Promise<User | undefined> {
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(and(eq(users.phone, phone), eq(users.role, 'patient')));
+    return user;
+  }
+
+  async updateMpin(userId: number, hashedMpin: string): Promise<void> {
+    await db
+      .update(users)
+      .set({ 
+        mpin: hashedMpin,
+        mpinAttempts: 0,
+        mpinLockedUntil: null,
+        lastMpinChange: new Date()
+      })
+      .where(eq(users.id, userId));
+  }
+
+  async incrementMpinAttempts(userId: number): Promise<void> {
+    await db
+      .update(users)
+      .set({ 
+        mpinAttempts: sql`${users.mpinAttempts} + 1`
+      })
+      .where(eq(users.id, userId));
+  }
+
+  async lockMpinAccount(userId: number, minutes: number = 15): Promise<void> {
+    const lockedUntil = new Date(Date.now() + minutes * 60 * 1000);
+    await db
+      .update(users)
+      .set({ 
+        mpinLockedUntil: lockedUntil
+      })
+      .where(eq(users.id, userId));
+  }
+
+  async resetMpinAttempts(userId: number): Promise<void> {
+    await db
+      .update(users)
+      .set({ 
+        mpinAttempts: 0,
+        mpinLockedUntil: null
+      })
+      .where(eq(users.id, userId));
+  }
+
+  async isMpinLocked(userId: number): Promise<boolean> {
+    const [user] = await db
+      .select({ mpinLockedUntil: users.mpinLockedUntil })
+      .from(users)
+      .where(eq(users.id, userId));
+    
+    if (!user || !user.mpinLockedUntil) return false;
+    return new Date() < new Date(user.mpinLockedUntil);
+  }
+
+  // Login Attempt Tracking
+  async logLoginAttempt(
+    userId: number | null,
+    loginType: 'patient' | 'staff' | 'admin',
+    ipAddress: string,
+    userAgent: string | undefined,
+    success: boolean,
+    failureReason?: string
+  ): Promise<void> {
+    await db.insert(loginAttempts).values({
+      userId,
+      loginType,
+      ipAddress,
+      userAgent: userAgent || null,
+      success,
+      failureReason
+    });
+  }
+
+  async getRecentLoginAttempts(ipAddress: string, minutes: number = 5): Promise<number> {
+    const since = new Date(Date.now() - minutes * 60 * 1000);
+    const [result] = await db
+      .select({ count: count() })
+      .from(loginAttempts)
+      .where(
+        and(
+          eq(loginAttempts.ipAddress, ipAddress),
+          gte(loginAttempts.attemptedAt, since),
+          eq(loginAttempts.success, false)
+        )
+      );
+    return result?.count || 0;
+  }
+
+  async getUserLoginAttempts(userId: number, minutes: number = 15): Promise<number> {
+    const since = new Date(Date.now() - minutes * 60 * 1000);
+    const [result] = await db
+      .select({ count: count() })
+      .from(loginAttempts)
+      .where(
+        and(
+          eq(loginAttempts.userId, userId),
+          gte(loginAttempts.attemptedAt, since),
+          eq(loginAttempts.success, false)
+        )
+      );
+    return result?.count || 0;
   }
 }
 

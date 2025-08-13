@@ -1,17 +1,32 @@
 {
   "version": "0.2.0",
+  "compounds": [
+    {
+      "name": "Debug Full Stack",
+      "configurations": ["Debug Backend", "Debug Frontend"]
+    }
+  ],
   "configurations": [
     {
       "type": "node",
       "request": "launch",
-      "name": "Debug Server",
+      "name": "Debug Backend",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "skipFiles": ["<node_internals>/**"],
       "env": {
+        "PORT": "5001",
         "NODE_ENV": "development"
       },
       "console": "integratedTerminal"
+    },
+    {
+      "type": "chrome",
+      "request": "launch",
+      "name": "Debug Frontend",
+      "url": "http://localhost:5001",          // Replace with your frontend dev URL
+      "webRoot": "${workspaceFolder}/client",   // Replace with your actual frontend root folder
+      "sourceMaps": true
     }
   ]
-} 
+}

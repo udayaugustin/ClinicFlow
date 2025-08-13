@@ -1,5 +1,5 @@
 import React from 'react';
-import { Switch, Route } from "wouter";
+import { Switch, Route, Redirect, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -26,6 +26,12 @@ import PatientDashboard from "@/pages/patient-dashboard";
 import PatientClinicDetails from "@/pages/patient-clinic-details";
 import PatientFavorites from "@/pages/patient-favorites";
 import { ForcePasswordReset } from "@/components/ForcePasswordReset";
+// New auth portal imports
+import PortalSelection from "@/pages/auth/portal-selection";
+import PatientLogin from "@/pages/auth/patient-login";
+import PatientRegister from "@/pages/auth/patient-register";
+import StaffLogin from "@/pages/auth/staff-login";
+import AdminLogin from "@/pages/auth/admin-login";
 
 // Wrap DoctorManagementPage with ProtectedRoute
 const ProtectedDoctorManagement = () => (
@@ -54,6 +60,7 @@ const ProtectedClinicAdminDashboard = () => (
 
 function Router() {
   const { user, mustChangePassword, clearPasswordReset } = useAuth();
+  const [, navigate] = useLocation();
 
   // Debug user role
   if (user) {
@@ -66,13 +73,36 @@ function Router() {
     return <ForcePasswordReset onSuccess={clearPasswordReset} />;
   }
   
-  // No redirects needed - all users go to the home page
-  // The home page will conditionally render the appropriate dashboard based on user role
+  // Determine the appropriate landing page based on authentication status
+  const getLandingPage = () => {
+    if (!user) {
+      return <PortalSelection />;
+    }
+    // For logged-in users, show HomePage which renders role-specific dashboard
+    return <HomePage />;
+  };
 
   return (
     <Switch>
+      {/* New Authentication Portal Routes */}
+      <Route path="/" component={getLandingPage} />
+      <Route path="/patient-login" component={PatientLogin} />
+      <Route path="/patient-register" component={PatientRegister} />
+      <Route path="/staff-login" component={StaffLogin} />
+      <Route path="/admin-login" component={AdminLogin} />
+      
+      {/* Legacy auth route - redirect to admin login */}
+      <Route path="/login">
+        {() => <Redirect to="/admin-login" />}
+      </Route>
+      
+      {/* Keep existing auth page for backward compatibility */}
       <Route path="/auth" component={AuthPage} />
-      <Route path="/" component={HomePage} />
+      
+      {/* Home page for authenticated users */}
+      <Route path="/home" component={HomePage} />
+      
+      {/* Existing application routes */}
       <Route path="/doctors/:id" component={DoctorPage} />
       <Route path="/book/:doctorId" component={PatientBookingPage} />
       <Route path="/doctor/bookings" component={DoctorBookingPage} />

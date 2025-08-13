@@ -107,6 +107,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         title: "Logged out",
         description: "You have been successfully logged out.",
       });
+      // Redirect to portal selection page
+      setTimeout(() => {
+        window.location.href = "/";
+      }, 500);
     },
     onError: (error: Error) => {
       toast({
