@@ -15,6 +15,10 @@ import { Progress } from "@/components/ui/progress";
 
 const patientRegisterSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
+  username: z.string()
+    .min(3, "Username must be at least 3 characters")
+    .max(20, "Username must be at most 20 characters")
+    .regex(/^[a-zA-Z0-9_]+$/, "Username can only contain letters, numbers, and underscores"),
   mobileNumber: z.string()
     .min(10, "Mobile number must be 10 digits")
     .max(10, "Mobile number must be 10 digits")
@@ -43,6 +47,7 @@ export default function PatientRegister() {
     resolver: zodResolver(patientRegisterSchema),
     defaultValues: {
       name: "",
+      username: "",
       mobileNumber: "",
       mpin: "",
       confirmMpin: "",
@@ -108,8 +113,8 @@ export default function PatientRegister() {
     let isValid = false;
     
     if (currentStep === 1) {
-      // Validate name and mobile number
-      isValid = await form.trigger(["name", "mobileNumber"]);
+      // Validate name, username and mobile number
+      isValid = await form.trigger(["name", "username", "mobileNumber"]);
     } else if (currentStep === 2) {
       // Validate MPIN
       isValid = await form.trigger("mpin");
@@ -196,6 +201,31 @@ export default function PatientRegister() {
                             />
                           </div>
                         </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="username"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Username</FormLabel>
+                        <FormControl>
+                          <div className="relative">
+                            <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" />
+                            <Input
+                              {...field}
+                              type="text"
+                              placeholder="Choose a username"
+                              className="pl-10"
+                            />
+                          </div>
+                        </FormControl>
+                        <FormDescription>
+                          This will be your unique login ID
+                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}

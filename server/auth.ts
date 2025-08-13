@@ -639,11 +639,16 @@ export function setupAuth(app: Express) {
   // Patient Self-Registration with MPIN
   app.post("/api/auth/patient/register", async (req, res) => {
     try {
-      const { name, mobileNumber, mpin } = req.body;
+      const { name, username, mobileNumber, mpin } = req.body;
 
       // Validate input
-      if (!name || !mobileNumber || !mpin) {
-        return res.status(400).json({ message: "Name, mobile number, and MPIN are required" });
+      if (!name || !username || !mobileNumber || !mpin) {
+        return res.status(400).json({ message: "Name, username, mobile number, and MPIN are required" });
+      }
+
+      // Validate username format
+      if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
+        return res.status(400).json({ message: "Username must be 3-20 characters and contain only letters, numbers, and underscores" });
       }
 
       // Validate mobile number format
@@ -656,14 +661,17 @@ export function setupAuth(app: Express) {
         return res.status(400).json({ message: "MPIN must be exactly 4 digits" });
       }
 
+      // Check if username already exists
+      const existingUsername = await storage.getUserByUsername(username);
+      if (existingUsername) {
+        return res.status(400).json({ message: "Username already taken. Please choose another one." });
+      }
+
       // Check if mobile number already exists
       const existingUser = await storage.getUserByPhone(mobileNumber);
       if (existingUser) {
         return res.status(400).json({ message: "Mobile number already registered" });
       }
-
-      // Generate username from name and random digits
-      const username = name.toLowerCase().replace(/\s+/g, '') + Math.floor(Math.random() * 1000);
       
       // Hash MPIN (using same function as password)
       const hashedMpin = await hashMpin(mpin);
