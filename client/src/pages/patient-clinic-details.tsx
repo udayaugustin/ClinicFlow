@@ -64,6 +64,18 @@ export default function PatientClinicDetails() {
     refetchIntervalInBackground: true, // Continue refetching even when window is not focused
   });
   
+  // Fetch user's existing appointments with the selected doctor
+  const { data: existingAppointments = [] } = useQuery({
+    queryKey: ["user-appointments", selectedDoctor],
+    queryFn: async () => {
+      if (!selectedDoctor || !user) return [];
+      const response = await fetch(`/api/patient/appointments?doctorId=${selectedDoctor}`);
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: !!selectedDoctor && !!user,
+  });
+  
   // Booking mutation for appointment creation
   const bookingMutation = useMutation({
     mutationFn: async (appointmentData: { doctorId: number; clinicId: number; scheduleId: number; date: string; time: string }) => {
@@ -133,9 +145,11 @@ export default function PatientClinicDetails() {
       // Also invalidate the schedules data for attenders
       queryClient.invalidateQueries({ queryKey: ["schedulesToday"] });
       queryClient.invalidateQueries({ queryKey: ["attender"] });
+      // Invalidate user appointments to refresh the duplicate check
+      queryClient.invalidateQueries({ queryKey: ["user-appointments", selectedDoctor] });
       toast({
-        title: "Success",
-        description: "Your appointment has been booked successfully.",
+        title: "Appointment Booked Successfully! ✅",
+        description: "Your appointment has been confirmed. You cannot book another appointment for the same schedule.",
       });
       navigate("/appointments");
     },
@@ -223,8 +237,26 @@ export default function PatientClinicDetails() {
     });
   };
 
+  // Check if user already has an appointment for this schedule
+  const hasExistingAppointment = (scheduleId: string) => {
+    return existingAppointments.some((appointment: any) => 
+      appointment.scheduleId === parseInt(scheduleId) && 
+      appointment.status !== 'cancelled'
+    );
+  };
+
   // Handler for booking appointment
   const handleBookAppointment = (schedule: any) => {
+    // Check for duplicate booking first
+    if (hasExistingAppointment(schedule.id)) {
+      toast({
+        title: "Appointment Already Exists",
+        description: "You already have an appointment booked for this schedule. Please check your existing appointments.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (!selectedSlot) {
       toast({
         title: "Error",
@@ -668,10 +700,18 @@ export default function PatientClinicDetails() {
                                 {schedule.isAvailable && schedule.isFavorite && (
                                   <span className="ml-2 text-green-600 font-medium"> ⭐ Available & Favorited</span>
                                 )}
+                                {hasExistingAppointment(schedule.id) && (
+                                  <span className="ml-2 text-amber-600 font-medium"> ✓ Already Booked</span>
+                                )}
                               </p>
 
                               {/* Status Badge */}
                               <div className="flex items-center gap-2">
+                                {hasExistingAppointment(schedule.id) && (
+                                  <Badge variant="outline" className="border-amber-500 text-amber-700">
+                                    Already Booked
+                                  </Badge>
+                                )}
                                 {schedule.scheduleStatus === 'completed' && (
                                   <Badge variant="secondary">Schedule Completed</Badge>
                                 )}
@@ -681,7 +721,7 @@ export default function PatientClinicDetails() {
                                 {!schedule.isActive && schedule.scheduleStatus !== 'completed' && schedule.bookingStatus !== 'closed' && (
                                   <Badge variant="destructive">Inactive</Badge>
                                 )}
-                                {schedule.isAvailable && (
+                                {schedule.isAvailable && !hasExistingAppointment(schedule.id) && (
                                   <Badge variant="default">Available</Badge>
                                 )}
                               </div>
@@ -712,29 +752,49 @@ export default function PatientClinicDetails() {
                               <Button
                                 key={time}
                                 variant={selectedSlot?.day === schedule.day && selectedSlot?.time === time ? "default" : "outline"}
-                                className="flex items-center justify-center px-8 py-6 text-lg"
-                                onClick={() => schedule.isAvailable ? setSelectedSlot({ day: schedule.day, time }) : undefined}
-                                disabled={!schedule.isAvailable}
+                                className={`flex items-center justify-center px-8 py-6 text-lg ${
+                                  hasExistingAppointment(schedule.id) ? 'opacity-60' : ''
+                                }`}
+                                onClick={() => (schedule.isAvailable && !hasExistingAppointment(schedule.id)) ? setSelectedSlot({ day: schedule.day, time }) : undefined}
+                                disabled={!schedule.isAvailable || hasExistingAppointment(schedule.id)}
+                                title={hasExistingAppointment(schedule.id) ? "You already have an appointment for this schedule" : ""}
                               >
                                 <Clock className="mr-2 h-5 w-5" />
                                 {time}
+                                {hasExistingAppointment(schedule.id) && (
+                                  <span className="ml-2 text-xs">✓</span>
+                                )}
                               </Button>
                             ))}
                           </div>
                           
                           {selectedSlot?.day === schedule.day && (
                             <div className="mt-6 flex justify-end">
-                              <Button 
-                                disabled={!schedule.isAvailable || bookingMutation.isPending}
-                                onClick={() => handleBookAppointment(schedule)}
-                              >
-                                {bookingMutation.isPending ? (
-                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                ) : (
-                                  <Calendar className="mr-2 h-4 w-4" />
-                                )}
-                                Book Appointment
-                              </Button>
+                              {hasExistingAppointment(schedule.id) ? (
+                                <div className="text-center">
+                                  <p className="text-amber-600 font-medium mb-2">
+                                    ⚠️ You already have an appointment booked for this schedule
+                                  </p>
+                                  <Button 
+                                    variant="outline"
+                                    onClick={() => navigate("/appointments")}
+                                  >
+                                    View My Appointments
+                                  </Button>
+                                </div>
+                              ) : (
+                                <Button 
+                                  disabled={!schedule.isAvailable || bookingMutation.isPending}
+                                  onClick={() => handleBookAppointment(schedule)}
+                                >
+                                  {bookingMutation.isPending ? (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Calendar className="mr-2 h-4 w-4" />
+                                  )}
+                                  Book Appointment
+                                </Button>
+                              )}
                             </div>
                           )}
                         </TabsContent>

@@ -23,7 +23,7 @@ import {
   type OtpVerification,
   type InsertOtpVerification,
 } from "@shared/schema";
-import { eq, or, and, sql, inArray, lte, gte, count, not, gt, lt, getTableColumns, isNotNull } from "drizzle-orm";
+import { eq, or, and, sql, inArray, lte, gte, count, not, gt, lt, getTableColumns, isNotNull ,ne } from "drizzle-orm";
 import { db } from "./db";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
@@ -1395,6 +1395,25 @@ export class DatabaseStorage implements IStorage {
       throw new Error("No active schedule found for this doctor on the selected day");
     }
     
+    // Check for duplicate booking - same patient, doctor, and schedule
+    const existingAppointment = await db
+      .select()
+      .from(appointments)
+      .where(
+        and(
+          eq(appointments.patientId, appointment.patientId),
+          eq(appointments.doctorId, appointment.doctorId),
+          eq(appointments.scheduleId, schedule.id),
+          // Only check for non-cancelled appointments
+          ne(appointments.status, "cancelled")
+        )
+      )
+      .limit(1);
+    
+    if (existingAppointment.length > 0) {
+      throw new Error("You already have an appointment booked with this doctor for this schedule. Please check your existing appointments.");
+    }
+    
     // Get current token count
     const [tokenCount] = await db
       .select({
@@ -1846,15 +1865,21 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  async getPatientAppointments(patientId: number): Promise<(Appointment & { doctor: User })[]> {
+  async getPatientAppointments(patientId: number, doctorId?: number): Promise<(Appointment & { doctor: User })[]> {
     try {
-      console.log('Getting appointments for patient:', patientId);
+      console.log('Getting appointments for patient:', patientId, 'doctorId:', doctorId);
+
+      // Build the where condition
+      const whereConditions = [eq(appointments.patientId, patientId)];
+      if (doctorId) {
+        whereConditions.push(eq(appointments.doctorId, doctorId));
+      }
 
       // Get patient's appointments
       const appointmentsResult = await db
         .select()
         .from(appointments)
-        .where(eq(appointments.patientId, patientId));
+        .where(and(...whereConditions));
 
       console.log('Patient appointments:', JSON.stringify(appointmentsResult, null, 2));
 

@@ -25,12 +25,50 @@ export default function BookingPage() {
   const [selectedDate, setSelectedDate] = useState<Date>();
   const [selectedTime, setSelectedTime] = useState<string>();
 
+  // Get scheduleId and clinicId from URL query parameters
+  const urlParams = new URLSearchParams(window.location.search);
+  const scheduleId = urlParams.get('scheduleId');
+  const clinicId = urlParams.get('clinicId');
+
   const { data: doctor, isLoading } = useQuery<User>({
     queryKey: [`/api/doctors/${doctorId}`],
   });
 
+  // Fetch user's existing appointments with the selected doctor
+  const { data: existingAppointments = [] } = useQuery({
+    queryKey: ["user-appointments", doctorId],
+    queryFn: async () => {
+      if (!doctorId || !user) return [];
+      const response = await fetch(`/api/patient/appointments?doctorId=${doctorId}`);
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: !!doctorId && !!user,
+  });
+
+  // Check if user already has an appointment for this specific schedule
+  const hasExistingAppointment = () => {
+    if (!scheduleId) {
+      // Fallback to doctor-level check if no scheduleId
+      return existingAppointments.some((appointment: any) => 
+        appointment.doctorId === Number(doctorId) && 
+        appointment.status !== 'cancelled'
+      );
+    }
+    
+    return existingAppointments.some((appointment: any) => 
+      appointment.scheduleId === Number(scheduleId) && 
+      appointment.status !== 'cancelled'
+    );
+  };
+
   const bookingMutation = useMutation({
     mutationFn: async () => {
+      // Check for duplicate booking first
+      if (hasExistingAppointment()) {
+        throw new Error("You already have an appointment booked with this doctor. Please check your existing appointments.");
+      }
+
       if (!selectedDate || !selectedTime || !doctorId || !user) {
         throw new Error("Please select a date and time");
       }
@@ -43,17 +81,21 @@ export default function BookingPage() {
       const res = await apiRequest("POST", "/api/appointments", {
         doctorId: Number(doctorId),
         date: appointmentDate.toISOString(),
-        status: "scheduled"
+        status: "scheduled",
+        ...(scheduleId && { scheduleId: Number(scheduleId) }),
+        ...(clinicId && { clinicId: Number(clinicId) })
       });
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
+      // Invalidate user appointments to refresh duplicate checks
+      queryClient.invalidateQueries({ queryKey: ["user-appointments", doctorId] });
       // Invalidate schedules to update appointment counts
       queryClient.invalidateQueries({ queryKey: ["schedulesToday"] });
       toast({
-        title: "Success",
-        description: "Your appointment has been booked successfully.",
+        title: "Appointment Booked Successfully! ✅",
+        description: "Your appointment has been confirmed. You cannot book another appointment with the same doctor.",
       });
       navigate("/");
     },
@@ -147,15 +189,29 @@ export default function BookingPage() {
                 >
                   Cancel
                 </Button>
-                <Button
-                  onClick={() => bookingMutation.mutate()}
-                  disabled={!selectedDate || !selectedTime || bookingMutation.isPending}
-                >
-                  {bookingMutation.isPending && (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  )}
-                  Confirm Booking
-                </Button>
+                {hasExistingAppointment() ? (
+                  <div className="flex flex-col items-end">
+                    <p className="text-amber-600 font-medium mb-2 text-sm">
+                      ⚠️ You already have an appointment with this doctor
+                    </p>
+                    <Button
+                      variant="outline"
+                      onClick={() => navigate("/appointments")}
+                    >
+                      View My Appointments
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    onClick={() => bookingMutation.mutate()}
+                    disabled={!selectedDate || !selectedTime || bookingMutation.isPending}
+                  >
+                    {bookingMutation.isPending && (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    )}
+                    Confirm Booking
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>

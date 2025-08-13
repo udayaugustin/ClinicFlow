@@ -75,6 +75,26 @@ export default function PatientBookingPage() {
     },
   });
 
+  // Fetch user's existing appointments with the selected doctor
+  const { data: existingAppointments = [] } = useQuery({
+    queryKey: ["user-appointments", doctorId],
+    queryFn: async () => {
+      if (!doctorId || !user) return [];
+      const response = await fetch(`/api/patient/appointments?doctorId=${doctorId}`);
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: !!doctorId && !!user,
+  });
+
+  // Check if user already has an appointment for this schedule
+  const hasExistingAppointment = (scheduleId: number) => {
+    return existingAppointments.some((appointment: any) => 
+      appointment.scheduleId === scheduleId && 
+      appointment.status !== 'cancelled'
+    );
+  };
+
   const bookAppointmentMutation = useMutation({
     mutationFn: async (schedule: DoctorSchedule) => {
       if (!schedule) throw new Error("Please select a clinic schedule");
@@ -98,13 +118,15 @@ export default function PatientBookingPage() {
       queryClient.invalidateQueries({ 
         queryKey: [`/api/doctors/${doctorId}/available-slots`]
       });
+      // Invalidate user appointments to refresh duplicate checks
+      queryClient.invalidateQueries({ queryKey: ["user-appointments", doctorId] });
       // Invalidate schedules to update appointment counts
       queryClient.invalidateQueries({ queryKey: ["schedulesToday"] });
       // Force an immediate refetch
       refetchSlots();
       toast({
-        title: "Appointment Booked!",
-        description: "Your appointment has been successfully booked.",
+        title: "Appointment Booked Successfully! ✅",
+        description: "Your appointment has been confirmed. You cannot book another appointment for the same schedule.",
       });
     },
     onError: (error) => {
@@ -119,6 +141,16 @@ export default function PatientBookingPage() {
 
   // Direct booking function
   const bookAppointment = (schedule: DoctorSchedule) => {
+    // Check for duplicate booking first
+    if (hasExistingAppointment(schedule.id)) {
+      toast({
+        title: "Appointment Already Exists",
+        description: "You already have an appointment booked for this schedule. Please check your existing appointments.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     bookAppointmentMutation.mutate(schedule);
   };
 
@@ -260,14 +292,19 @@ export default function PatientBookingPage() {
                       // Check for new status conditions
                       const isScheduleCompleted = schedule.scheduleStatus === 'completed';
                       const isBookingClosed = schedule.bookingStatus === 'closed';
-                      const isUnavailable = isAtCapacity || isScheduleCompleted || isBookingClosed;
+                      const hasExisting = hasExistingAppointment(schedule.id);
+                      const isUnavailable = isAtCapacity || isScheduleCompleted || isBookingClosed || hasExisting;
                       
                       // Determine status message and badge
                       let statusBadge = "Select";
                       let statusMessage = "";
                       let badgeVariant: "outline" | "destructive" | "secondary" = "outline";
                       
-                      if (isScheduleCompleted) {
+                      if (hasExisting) {
+                        statusBadge = "Already Booked";
+                        statusMessage = "You already have an appointment for this schedule";
+                        badgeVariant = "secondary";
+                      } else if (isScheduleCompleted) {
                         statusBadge = "Completed";
                         statusMessage = "Schedule completed - doctor has finished";
                         badgeVariant = "secondary";

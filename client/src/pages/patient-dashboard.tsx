@@ -65,15 +65,15 @@ export default function PatientDashboard() {
   const getSearchPlaceholder = () => {
     switch (searchType) {
       case "city":
-        return "Search by city name...";
+        return "Enter your city (e.g., Chennai, Mumbai, Delhi)...";
       case "hospital":
-        return "Search by hospital name...";
+        return "Search hospital or clinic name...";
       case "doctor":
-        return "Search by doctor name...";
+        return "Find doctors by name...";
       case "specialty":
-        return "Search by specialization...";
+        return "Search by medical specialty (e.g., Cardiology, Dermatology)...";
       default:
-        return "Search clinics by name, address, or specialty...";
+        return "Search doctors, hospitals, specialties, or locations...";
     }
   };
 
@@ -351,7 +351,7 @@ export default function PatientDashboard() {
 
   return (
     <div className="container mx-auto py-8 px-4">
-      <h1 className="text-3xl font-bold mb-6">Find a Clinic</h1>
+      <h1 className="text-3xl font-bold mb-6">Find Healthcare Near You</h1>
       
       {/* Enhanced Search Section */}
       <div className="flex flex-col md:flex-row gap-4 mb-8">

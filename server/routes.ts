@@ -598,7 +598,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (req.user.role !== "patient") return res.sendStatus(403);
 
     try {
-      const appointments = await storage.getPatientAppointments(req.user.id);
+      const doctorId = req.query.doctorId ? Number(req.query.doctorId) : undefined;
+      const appointments = await storage.getPatientAppointments(req.user.id, doctorId);
       res.json(appointments);
     } catch (error) {
       console.error('Error fetching patient appointments:', error);

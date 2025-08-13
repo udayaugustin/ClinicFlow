@@ -42,7 +42,30 @@ const clinicSchema = z.object({
   adminEmail: z.string().email("Invalid admin email address"),
 });
 
+// Edit clinic schema with optional admin fields
+const editClinicSchema = z.object({
+  // Clinic fields (required)
+  name: z.string().min(1, "Clinic name is required"),
+  address: z.string().min(1, "Address is required"),
+  city: z.string().min(1, "City is required"),
+  state: z.string().min(1, "State is required"),
+  zipCode: z.string().min(1, "Zip code is required"),
+  phone: z.string().min(1, "Phone number is required"),
+  email: z.string().email("Invalid email address"),
+  openingHours: z.string().min(1, "Opening hours are required"),
+  description: z.string().optional(),
+  imageUrl: z.string().optional(),
+  
+  // Clinic admin user fields (optional for updates)
+  adminUsername: z.string().optional(),
+  adminPassword: z.string().optional(),
+  adminName: z.string().optional(),
+  adminPhone: z.string().optional(),
+  adminEmail: z.string().optional(),
+});
+
 type ClinicData = z.infer<typeof clinicSchema>;
+type EditClinicData = z.infer<typeof editClinicSchema>;
 
 // Patient Details Search Component
 function PatientDetailsSearch() {
@@ -292,6 +315,8 @@ export default function SuperAdminDashboard() {
   const [_, navigate] = useLocation();
   const [selectedMenuItem, setSelectedMenuItem] = useState("dashboard");
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [showViewDialog, setShowViewDialog] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedClinic, setSelectedClinic] = useState<any>(null);
   const { toast } = useToast();
@@ -352,6 +377,31 @@ export default function SuperAdminDashboard() {
     },
   });
 
+  // Edit clinic mutation
+  const editClinicMutation = useMutation({
+    mutationFn: async (data: ClinicData) => {
+      const res = await apiRequest("PUT", `/api/clinics/${selectedClinic.id}`, data);
+      return await res.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Success",
+        description: "Clinic updated successfully",
+      });
+      form.reset();
+      setShowEditForm(false);
+      setSelectedClinic(null);
+      queryClient.invalidateQueries({ queryKey: ['clinics'] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   // Delete clinic mutation
   const deleteClinicMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -391,6 +441,10 @@ export default function SuperAdminDashboard() {
     createClinicMutation.mutate(data);
   };
 
+  const onEditSubmit = (data: ClinicData) => {
+    editClinicMutation.mutate(data);
+  };
+
   const generatePassword = () => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
     let password = '';
@@ -400,21 +454,63 @@ export default function SuperAdminDashboard() {
     return password;
   };
 
+  // Handler for Edit button
+  const handleEdit = (clinic: any) => {
+    setSelectedClinic(clinic);
+    // Populate form with clinic data for editing
+    form.setValue('name', clinic.name);
+    form.setValue('address', clinic.address);
+    form.setValue('city', clinic.city);
+    form.setValue('state', clinic.state);
+    form.setValue('zipCode', clinic.zipCode);
+    form.setValue('phone', clinic.phone);
+    form.setValue('email', clinic.email);
+    form.setValue('openingHours', clinic.openingHours);
+    form.setValue('description', clinic.description || '');
+    form.setValue('imageUrl', clinic.imageUrl || '');
+    // Reset admin fields for security
+    form.setValue('adminUsername', '');
+    form.setValue('adminPassword', '');
+    form.setValue('adminName', '');
+    form.setValue('adminPhone', '');
+    form.setValue('adminEmail', '');
+    setShowEditForm(true);
+  };
+
+  // Handler for View/Eye button
+  const handleView = (clinic: any) => {
+    setSelectedClinic(clinic);
+    setShowViewDialog(true);
+  };
+
   // Render main content based on selected menu item
   const renderMainContent = () => {
     if (selectedMenuItem === "clinic-management") {
-      if (showCreateForm) {
-        // Show create form
+      if (showCreateForm || showEditForm) {
+        // Show create or edit form
+        const isEditing = showEditForm;
         return (
           <div className="p-6">
             <div className="mb-6 flex items-center justify-between">
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">Create New Clinic</h1>
-                <p className="text-gray-600 mt-1">Fill in the clinic details and administrator information</p>
+                <h1 className="text-2xl font-bold text-gray-900">
+                  {isEditing ? 'Edit Clinic' : 'Create New Clinic'}
+                </h1>
+                <p className="text-gray-600 mt-1">
+                  {isEditing 
+                    ? 'Update clinic details and administrator information' 
+                    : 'Fill in the clinic details and administrator information'
+                  }
+                </p>
               </div>
               <Button 
                 variant="outline" 
-                onClick={() => setShowCreateForm(false)}
+                onClick={() => {
+                  setShowCreateForm(false);
+                  setShowEditForm(false);
+                  setSelectedClinic(null);
+                  form.reset();
+                }}
               >
                 ← Back to Clinic List
               </Button>
@@ -425,15 +521,18 @@ export default function SuperAdminDashboard() {
               <CardHeader>
                 <CardTitle className="flex items-center">
                   <Hospital className="mr-2 h-6 w-6" />
-                  Create New Clinic & Administrator
+                  {showEditForm ? 'Edit Clinic & Administrator' : 'Create New Clinic & Administrator'}
                 </CardTitle>
                 <CardDescription>
-                  Fill in the clinic details and administrator information to create a new clinic
+                  {showEditForm 
+                    ? 'Update the clinic details and administrator information' 
+                    : 'Fill in the clinic details and administrator information to create a new clinic'
+                  }
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <Form {...form}>
-                  <form onSubmit={form.handleSubmit(onCreateSubmit)} className="space-y-6">
+                  <form onSubmit={form.handleSubmit(showEditForm ? onEditSubmit : onCreateSubmit)} className="space-y-6">
                     {/* Clinic Information Section */}
                     <div className="space-y-4">
                       <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Clinic Information</h3>
@@ -576,6 +675,11 @@ export default function SuperAdminDashboard() {
                       <h3 className="text-lg font-semibold text-gray-900 border-b pb-2 flex items-center">
                         <UserCog className="mr-2 h-5 w-5" />
                         Administrator Account
+                        {showEditForm && (
+                          <span className="ml-3 text-sm font-normal text-amber-600 bg-amber-50 px-2 py-1 rounded">
+                            Leave blank to keep existing admin
+                          </span>
+                        )}
                       </h3>
                       
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -584,7 +688,9 @@ export default function SuperAdminDashboard() {
                           name="adminUsername"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Username</FormLabel>
+                              <FormLabel>
+                                Username {showEditForm && <span className="text-gray-500">(optional)</span>}
+                              </FormLabel>
                               <FormControl>
                                 <Input placeholder="admin.username" {...field} />
                               </FormControl>
@@ -597,7 +703,9 @@ export default function SuperAdminDashboard() {
                           name="adminPassword"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Password</FormLabel>
+                              <FormLabel>
+                                Password {showEditForm && <span className="text-gray-500">(optional)</span>}
+                              </FormLabel>
                               <FormControl>
                                 <div className="relative">
                                   <Input 
@@ -678,6 +786,8 @@ export default function SuperAdminDashboard() {
                         onClick={() => {
                           form.reset();
                           setShowCreateForm(false);
+                          setShowEditForm(false);
+                          setSelectedClinic(null);
                         }}
                       >
                         Cancel
@@ -685,17 +795,17 @@ export default function SuperAdminDashboard() {
                       <Button 
                         type="submit" 
                         className="bg-blue-600 hover:bg-blue-700"
-                        disabled={createClinicMutation.isPending}
+                        disabled={createClinicMutation.isPending || editClinicMutation.isPending}
                       >
-                        {createClinicMutation.isPending ? (
+                        {(createClinicMutation.isPending || editClinicMutation.isPending) ? (
                           <>
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Creating...
+                            {showEditForm ? 'Updating...' : 'Creating...'}
                           </>
                         ) : (
                           <>
                             <PlusCircle className="mr-2 h-4 w-4" />
-                            Create Clinic & Admin
+                            {showEditForm ? 'Update Clinic & Admin' : 'Create Clinic & Admin'}
                           </>
                         )}
                       </Button>
@@ -721,6 +831,8 @@ export default function SuperAdminDashboard() {
               onClick={() => {
                 form.reset();
                 setShowCreateForm(true);
+                setShowEditForm(false);
+                setSelectedClinic(null);
               }}
             >
               <PlusCircle className="mr-2 h-4 w-4" />
@@ -744,6 +856,8 @@ export default function SuperAdminDashboard() {
                   <Button onClick={() => {
                     form.reset();
                     setShowCreateForm(true);
+                    setShowEditForm(false);
+                    setSelectedClinic(null);
                   }}>
                     <PlusCircle className="mr-2 h-4 w-4" />
                     Create Your First Clinic
@@ -786,10 +900,19 @@ export default function SuperAdminDashboard() {
                           </TableCell>
                           <TableCell>
                             <div className="flex space-x-2">
-                              <Button variant="ghost" size="icon">
+                              <Button 
+                                variant="ghost" 
+                                size="icon"
+                                onClick={() => handleEdit(clinic)}
+                              >
                                 <Edit className="h-4 w-4" />
                               </Button>
-                              <Button variant="ghost" size="icon" className="text-primary">
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="text-primary"
+                                onClick={() => handleView(clinic)}
+                              >
                                 <Eye className="h-4 w-4" />
                               </Button>
                               <Button 
@@ -995,6 +1118,102 @@ export default function SuperAdminDashboard() {
       <div className="flex-1 bg-gray-50">
         {renderMainContent()}
       </div>
+
+      {/* View Clinic Dialog */}
+      <Dialog open={showViewDialog} onOpenChange={setShowViewDialog}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Eye className="h-5 w-5" />
+              Clinic Details
+            </DialogTitle>
+            <DialogDescription>
+              Complete information about {selectedClinic?.name}
+            </DialogDescription>
+          </DialogHeader>
+          {selectedClinic && (
+            <div className="py-4 space-y-6">
+              {/* Clinic Information */}
+              <div>
+                <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                  <Hospital className="h-4 w-4" />
+                  Clinic Information
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <label className="font-medium text-gray-500">Name</label>
+                    <p className="text-gray-900">{selectedClinic.name}</p>
+                  </div>
+                  <div>
+                    <label className="font-medium text-gray-500">Phone</label>
+                    <p className="text-gray-900 flex items-center gap-1">
+                      <Phone className="h-3 w-3" />
+                      {selectedClinic.phone}
+                    </p>
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="font-medium text-gray-500">Address</label>
+                    <p className="text-gray-900 flex items-center gap-1">
+                      <MapPin className="h-3 w-3" />
+                      {selectedClinic.address}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="font-medium text-gray-500">City</label>
+                    <p className="text-gray-900">{selectedClinic.city}</p>
+                  </div>
+                  <div>
+                    <label className="font-medium text-gray-500">State</label>
+                    <p className="text-gray-900">{selectedClinic.state}</p>
+                  </div>
+                  <div>
+                    <label className="font-medium text-gray-500">Zip Code</label>
+                    <p className="text-gray-900">{selectedClinic.zipCode}</p>
+                  </div>
+                  <div>
+                    <label className="font-medium text-gray-500">Email</label>
+                    <p className="text-gray-900 flex items-center gap-1">
+                      <Mail className="h-3 w-3" />
+                      {selectedClinic.email}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="font-medium text-gray-500">Opening Hours</label>
+                    <p className="text-gray-900 flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      {selectedClinic.openingHours}
+                    </p>
+                  </div>
+                  {selectedClinic.description && (
+                    <div className="md:col-span-2">
+                      <label className="font-medium text-gray-500">Description</label>
+                      <p className="text-gray-900">{selectedClinic.description}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button 
+              variant="outline"
+              onClick={() => setShowViewDialog(false)}
+            >
+              Close
+            </Button>
+            <Button 
+              onClick={() => {
+                setShowViewDialog(false);
+                handleEdit(selectedClinic);
+              }}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              <Edit className="mr-2 h-4 w-4" />
+              Edit Clinic
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Clinic Dialog */}
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
