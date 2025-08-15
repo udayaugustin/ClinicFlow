@@ -114,6 +114,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Enhanced search endpoints for patients
+  app.get("/api/search", async (req, res) => {
+    try {
+      const { q: query, type = 'all' } = req.query;
+      
+      if (!query || typeof query !== 'string') {
+        return res.status(400).json({ message: 'Search query is required' });
+      }
+
+      const validTypes = ['all', 'city', 'hospital', 'doctor', 'specialty'];
+      if (!validTypes.includes(type as string)) {
+        return res.status(400).json({ message: 'Invalid search type' });
+      }
+
+      const results = await storage.performSearch(query, type as string);
+      res.json(results);
+    } catch (error) {
+      console.error('Error performing search:', error);
+      res.status(500).json({ message: 'Search failed' });
+    }
+  });
+
+  // Get doctors by clinic with schedules  
+  app.get("/api/clinics/:id/doctors-with-schedules", async (req, res) => {
+    try {
+      const clinicId = parseInt(req.params.id);
+      const doctors = await storage.getDoctorsWithSchedulesByClinic(clinicId);
+      res.json(doctors);
+    } catch (error) {
+      console.error('Error fetching clinic doctors with schedules:', error);
+      res.status(500).json({ message: 'Failed to fetch doctors with schedules' });
+    }
+  });
+
+  // Get doctor schedules for today
+  app.get("/api/doctors/:id/schedules/today", async (req, res) => {
+    try {
+      const doctorId = parseInt(req.params.id);
+      const { clinicId } = req.query;
+      
+      const schedules = await storage.getDoctorTodaySchedules(
+        doctorId, 
+        clinicId ? parseInt(clinicId as string) : undefined
+      );
+      res.json(schedules);
+    } catch (error) {
+      console.error('Error fetching doctor schedules:', error);
+      res.status(500).json({ message: 'Failed to fetch doctor schedules' });
+    }
+  });
+
   app.post("/api/doctors", async (req, res) => {
     if (!req.user || (req.user.role !== "super_admin" && req.user.role !== "clinic_admin")) {
       return res.sendStatus(403);
@@ -547,7 +598,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (req.user.role !== "patient") return res.sendStatus(403);
 
     try {
-      const appointments = await storage.getPatientAppointments(req.user.id);
+      const doctorId = req.query.doctorId ? Number(req.query.doctorId) : undefined;
+      const appointments = await storage.getPatientAppointments(req.user.id, doctorId);
       res.json(appointments);
     } catch (error) {
       console.error('Error fetching patient appointments:', error);

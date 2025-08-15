@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { format, startOfDay } from "date-fns";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, Clock, UserCheck, UserX, Building } from "lucide-react";
+import { AlertCircle, Clock, UserCheck, UserX, Building, Calendar as CalendarIcon } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { NavigationButtons } from "@/components/navigation-buttons";
@@ -75,20 +75,40 @@ export default function PatientBookingPage() {
     },
   });
 
+  // Fetch user's existing appointments with the selected doctor
+  const { data: existingAppointments = [] } = useQuery({
+    queryKey: ["user-appointments", doctorId],
+    queryFn: async () => {
+      if (!doctorId || !user) return [];
+      const response = await fetch(`/api/patient/appointments?doctorId=${doctorId}`);
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: !!doctorId && !!user,
+  });
+
+  // Check if user already has an appointment for this schedule
+  const hasExistingAppointment = (scheduleId: number) => {
+    return existingAppointments.some((appointment: any) => 
+      appointment.scheduleId === scheduleId && 
+      appointment.status !== 'cancelled'
+    );
+  };
+
   const bookAppointmentMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedSchedule) throw new Error("Please select a clinic schedule");
+    mutationFn: async (schedule: DoctorSchedule) => {
+      if (!schedule) throw new Error("Please select a clinic schedule");
 
       // Create appointment date by combining selected date with schedule start time
-      const [hours, minutes] = selectedSchedule.startTime.split(':').map(Number);
+      const [hours, minutes] = schedule.startTime.split(':').map(Number);
       const appointmentDate = new Date(selectedDate);
       appointmentDate.setHours(hours, minutes, 0, 0);
 
       const res = await apiRequest("POST", "/api/appointments", {
         doctorId: parseInt(doctorId!),
         date: appointmentDate.toISOString(),
-        clinicId: selectedSchedule.clinicId,
-        scheduleId: selectedSchedule.id,
+        clinicId: schedule.clinicId,
+        scheduleId: schedule.id,
       });
       return res.json();
     },
@@ -98,24 +118,41 @@ export default function PatientBookingPage() {
       queryClient.invalidateQueries({ 
         queryKey: [`/api/doctors/${doctorId}/available-slots`]
       });
+      // Invalidate user appointments to refresh duplicate checks
+      queryClient.invalidateQueries({ queryKey: ["user-appointments", doctorId] });
       // Invalidate schedules to update appointment counts
       queryClient.invalidateQueries({ queryKey: ["schedulesToday"] });
       // Force an immediate refetch
       refetchSlots();
       toast({
-        title: "Success",
-        description: "Appointment booked successfully",
+        title: "Appointment Booked Successfully! ✅",
+        description: "Your appointment has been confirmed. You cannot book another appointment for the same schedule.",
       });
-      navigate("/appointments");
     },
-    onError: (error: Error) => {
+    onError: (error) => {
+      console.error('Booking error:', error);
       toast({
-        title: "Error",
-        description: error.message,
+        title: "Booking Failed", 
+        description: error instanceof Error ? error.message : "Failed to book appointment. Please try again.",
         variant: "destructive",
       });
     },
   });
+
+  // Direct booking function
+  const bookAppointment = (schedule: DoctorSchedule) => {
+    // Check for duplicate booking first
+    if (hasExistingAppointment(schedule.id)) {
+      toast({
+        title: "Appointment Already Exists",
+        description: "You already have an appointment booked for this schedule. Please check your existing appointments.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    bookAppointmentMutation.mutate(schedule);
+  };
 
   // Add this useEffect near the top of the component
   useEffect(() => {
@@ -224,12 +261,26 @@ export default function PatientBookingPage() {
                   ))}
                 </div>
               ) : !availableSlotsData?.schedules?.length ? (
-                <Alert className="mb-4">
-                  <AlertCircle className="h-4 w-4 mr-2" />
-                  <AlertDescription>
-                    No schedules available on this date. Please select another date.
-                  </AlertDescription>
-                </Alert>
+                <div className="text-center py-12">
+                  <div className="mb-4">
+                    <CalendarIcon className="h-16 w-16 text-gray-400 mx-auto mb-3" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">No Schedules Available</h3>
+                    <p className="text-gray-600 mb-4">
+                      The doctor doesn't have any available schedules on {format(selectedDate, "MMMM d, yyyy")}.
+                    </p>
+                    <div className="space-y-2 text-sm text-gray-500">
+                      <p>• Try selecting a different date</p>
+                      <p>• The doctor may not be available today</p>
+                      <p>• Schedules may be fully booked</p>
+                    </div>
+                  </div>
+                  <Alert>
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>
+                      <strong>Tip:</strong> Use the calendar on the left to select another date, or check back later as new schedules may become available.
+                    </AlertDescription>
+                  </Alert>
+                </div>
               ) : (
                 <>
                   <div className="space-y-3">
@@ -241,14 +292,19 @@ export default function PatientBookingPage() {
                       // Check for new status conditions
                       const isScheduleCompleted = schedule.scheduleStatus === 'completed';
                       const isBookingClosed = schedule.bookingStatus === 'closed';
-                      const isUnavailable = isAtCapacity || isScheduleCompleted || isBookingClosed;
+                      const hasExisting = hasExistingAppointment(schedule.id);
+                      const isUnavailable = isAtCapacity || isScheduleCompleted || isBookingClosed || hasExisting;
                       
                       // Determine status message and badge
                       let statusBadge = "Select";
                       let statusMessage = "";
                       let badgeVariant: "outline" | "destructive" | "secondary" = "outline";
                       
-                      if (isScheduleCompleted) {
+                      if (hasExisting) {
+                        statusBadge = "Already Booked";
+                        statusMessage = "You already have an appointment for this schedule";
+                        badgeVariant = "secondary";
+                      } else if (isScheduleCompleted) {
                         statusBadge = "Completed";
                         statusMessage = "Schedule completed - doctor has finished";
                         badgeVariant = "secondary";
@@ -265,9 +321,9 @@ export default function PatientBookingPage() {
                       return (
                         <Button
                           key={schedule.id}
-                          variant={selectedSchedule?.id === schedule.id ? "default" : "outline"}
+                          variant="outline"
                           className="w-full flex justify-between items-center h-auto py-4 px-4"
-                          onClick={() => !isUnavailable ? setSelectedSchedule(schedule) : undefined}
+                          onClick={() => !isUnavailable ? bookAppointment(schedule) : undefined}
                           disabled={isUnavailable}
                         >
                           <div className="flex flex-col items-start">
@@ -290,35 +346,13 @@ export default function PatientBookingPage() {
                               </div>
                             )}
                           </div>
-                          <Badge variant={badgeVariant}>
-                            {statusBadge}
+                          <Badge variant={isUnavailable ? badgeVariant : "default"}>
+                            {isUnavailable ? statusBadge : "Book Now"}
                           </Badge>
                         </Button>
                       );
                     })}
                   </div>
-
-                  {selectedSchedule && (
-                    <div className="mt-6">
-                      <Button
-                        className="w-full"
-                        onClick={() => bookAppointmentMutation.mutate()}
-                        disabled={
-                          bookAppointmentMutation.isPending || 
-                          (selectedSchedule.maxTokens > 0 && 
-                           selectedSchedule.currentTokenCount !== undefined && 
-                           selectedSchedule.currentTokenCount >= selectedSchedule.maxTokens)
-                        }
-                      >
-                        {selectedSchedule.maxTokens > 0 && 
-                         selectedSchedule.currentTokenCount !== undefined && 
-                         selectedSchedule.currentTokenCount >= selectedSchedule.maxTokens
-                          ? "Schedule is full"
-                          : `Book an appointment at ${selectedSchedule.clinic.name}`
-                        }
-                      </Button>
-                    </div>
-                  )}
                 </>
               )}
             </CardContent>

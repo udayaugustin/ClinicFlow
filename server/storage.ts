@@ -24,7 +24,7 @@ import {
   type OtpVerification,
   type InsertOtpVerification,
 } from "@shared/schema";
-import { eq, or, and, sql, inArray, lte, gte, count, not, gt, lt, getTableColumns, isNotNull } from "drizzle-orm";
+import { eq, or, and, sql, inArray, lte, gte, count, not, gt, lt, getTableColumns, isNotNull ,ne } from "drizzle-orm";
 import { db } from "./db";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
@@ -565,6 +565,371 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(clinics);
   }
 
+  // Comprehensive search functionality for patients
+  async searchByCity(cityName: string): Promise<any[]> {
+    try {
+      // Get all clinics in the specified city
+      const cityResults = await db
+        .select({
+          id: clinics.id,
+          name: clinics.name,
+          address: clinics.address,
+          city: clinics.city,
+          state: clinics.state,
+          phone: clinics.phone,
+          email: clinics.email,
+          openingHours: clinics.openingHours
+        })
+        .from(clinics)
+        .where(sql`LOWER(${clinics.city}) LIKE LOWER(${'%' + cityName + '%'})`);
+
+      // For each clinic, get doctor count
+      const resultsWithDoctors = await Promise.all(
+        cityResults.map(async (clinic) => {
+          const doctorCount = await db
+            .select({ count: count() })
+            .from(users)
+            .leftJoin(doctorClinics, eq(users.id, doctorClinics.doctorId))
+            .where(
+              and(
+                eq(users.role, "doctor"),
+                or(
+                  eq(users.clinicId, clinic.id),
+                  eq(doctorClinics.clinicId, clinic.id)
+                )
+              )
+            );
+
+          return {
+            id: `city-${clinic.id}`,
+            type: 'city',
+            name: clinic.name,
+            city: clinic.city,
+            address: clinic.address,
+            phone: clinic.phone,
+            email: clinic.email,
+            openingHours: clinic.openingHours,
+            hospitalCount: doctorCount[0]?.count || 0,
+            clinicId: clinic.id
+          };
+        })
+      );
+
+      return resultsWithDoctors;
+    } catch (error) {
+      console.error('Error in searchByCity:', error);
+      throw error;
+    }
+  }
+
+  async searchByHospitalName(hospitalName: string): Promise<any[]> {
+    try {
+      // Find clinics matching the hospital name
+      const hospitalResults = await db
+        .select()
+        .from(clinics)
+        .where(sql`LOWER(${clinics.name}) LIKE LOWER(${'%' + hospitalName + '%'})`);
+
+      // For each hospital, get all doctors
+      const resultsWithDoctors = await Promise.all(
+        hospitalResults.map(async (hospital) => {
+          const doctors = await this.getDoctorsWithSchedulesByClinic(hospital.id);
+          
+          return {
+            id: `hospital-${hospital.id}`,
+            type: 'hospital',
+            name: hospital.name,
+            city: hospital.city,
+            address: hospital.address,
+            phone: hospital.phone,
+            email: hospital.email,
+            openingHours: hospital.openingHours,
+            clinicId: hospital.id,
+            doctors: doctors || []
+          };
+        })
+      );
+
+      return resultsWithDoctors;
+    } catch (error) {
+      console.error('Error in searchByHospitalName:', error);
+      throw error;
+    }
+  }
+
+  async searchByDoctorName(doctorName: string): Promise<any[]> {
+    try {
+      // Find doctors matching the name
+      const doctorResults = await db
+        .select({
+          id: users.id,
+          name: users.name,
+          specialty: users.specialty,
+          bio: users.bio,
+          imageUrl: users.imageUrl,
+          clinicId: users.clinicId,
+          clinicName: clinics.name,
+          clinicAddress: clinics.address,
+          clinicCity: clinics.city,
+          clinicPhone: clinics.phone
+        })
+        .from(users)
+        .leftJoin(clinics, eq(users.clinicId, clinics.id))
+        .where(
+          and(
+            eq(users.role, "doctor"),
+            sql`LOWER(${users.name}) LIKE LOWER(${'%' + doctorName + '%'})`
+          )
+        );
+
+      // For each doctor, get today's schedules
+      const resultsWithSchedules = await Promise.all(
+        doctorResults.map(async (doctor) => {
+          const schedules = await this.getDoctorTodaySchedules(doctor.id);
+          
+          return {
+            id: `doctor-${doctor.id}`,
+            type: 'doctor',
+            name: doctor.name,
+            specialty: doctor.specialty,
+            bio: doctor.bio,
+            imageUrl: doctor.imageUrl,
+            doctorId: doctor.id,
+            clinicId: doctor.clinicId,
+            hospitalName: doctor.clinicName,
+            hospitalAddress: doctor.clinicAddress,
+            hospitalCity: doctor.clinicCity,
+            hospitalPhone: doctor.clinicPhone,
+            schedules: schedules || []
+          };
+        })
+      );
+
+      return resultsWithSchedules;
+    } catch (error) {
+      console.error('Error in searchByDoctorName:', error);
+      throw error;
+    }
+  }
+
+  async searchBySpecialty(specialty: string): Promise<any[]> {
+    try {
+      // Find doctors with matching specialty - include both direct clinic assignments and doctor_clinics table
+      const specialtyResults = await db
+        .select({
+          id: users.id,
+          name: users.name,
+          specialty: users.specialty,
+          bio: users.bio,
+          imageUrl: users.imageUrl,
+          directClinicId: users.clinicId,
+          doctorClinicId: doctorClinics.clinicId,
+          clinicName: clinics.name,
+          clinicAddress: clinics.address,
+          clinicCity: clinics.city,
+          clinicPhone: clinics.phone
+        })
+        .from(users)
+        .leftJoin(doctorClinics, eq(users.id, doctorClinics.doctorId))
+        .leftJoin(clinics, or(
+          eq(users.clinicId, clinics.id),
+          eq(doctorClinics.clinicId, clinics.id)
+        ))
+        .where(
+          and(
+            eq(users.role, "doctor"),
+            sql`LOWER(${users.specialty}) LIKE LOWER(${'%' + specialty + '%'})`
+          )
+        );
+
+      // Group by clinic to show hospital-based results
+      const clinicMap = new Map();
+      
+      specialtyResults.forEach(doctor => {
+        const clinicId = doctor.directClinicId || doctor.doctorClinicId;
+        if (clinicId && doctor.clinicName) {
+          if (!clinicMap.has(clinicId)) {
+            clinicMap.set(clinicId, {
+              id: `specialty-clinic-${clinicId}`,
+              type: 'specialty',
+              name: doctor.clinicName,
+              city: doctor.clinicCity,
+              address: doctor.clinicAddress,
+              phone: doctor.clinicPhone,
+              clinicId: clinicId,
+              specialty,
+              doctors: []
+            });
+          }
+          
+          // Check if doctor is already added to avoid duplicates
+          const existingDoctor = clinicMap.get(clinicId).doctors.find((d: any) => d.id === doctor.id);
+          if (!existingDoctor) {
+            clinicMap.get(clinicId).doctors.push({
+              id: doctor.id,
+              name: doctor.name,
+              specialty: doctor.specialty,
+              bio: doctor.bio,
+              imageUrl: doctor.imageUrl
+            });
+          }
+        }
+      });
+
+      return Array.from(clinicMap.values());
+    } catch (error) {
+      console.error('Error in searchBySpecialty:', error);
+      throw error;
+    }
+  }
+
+  // Helper method to get doctors with schedules for a clinic
+  async getDoctorsWithSchedulesByClinic(clinicId: number): Promise<any[]> {
+    try {
+      const doctors = await db
+        .select({
+          id: users.id,
+          name: users.name,
+          specialty: users.specialty,
+          bio: users.bio,
+          imageUrl: users.imageUrl
+        })
+        .from(users)
+        .leftJoin(doctorClinics, eq(users.id, doctorClinics.doctorId))
+        .where(
+          and(
+            eq(users.role, "doctor"),
+            or(
+              eq(users.clinicId, clinicId),
+              eq(doctorClinics.clinicId, clinicId)
+            )
+          )
+        );
+
+      // For each doctor, get today's schedules
+      const doctorsWithSchedules = await Promise.all(
+        doctors.map(async (doctor) => {
+          const schedules = await this.getDoctorTodaySchedules(doctor.id, clinicId);
+          
+          return {
+            ...doctor,
+            schedules: schedules || []
+          };
+        })
+      );
+
+      return doctorsWithSchedules;
+    } catch (error) {
+      console.error('Error in getDoctorsWithSchedulesByClinic:', error);
+      throw error;
+    }
+  }
+
+  // Helper method to get today's schedules for a doctor
+  async getDoctorTodaySchedules(doctorId: number, clinicId?: number): Promise<any[]> {
+    try {
+      const today = new Date();
+      const startOfDay = new Date(today);
+      startOfDay.setHours(0, 0, 0, 0);
+      
+      const endOfDay = new Date(today);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      const whereConditions = [
+        eq(doctorSchedules.doctorId, doctorId),
+        gte(doctorSchedules.date, startOfDay),
+        lte(doctorSchedules.date, endOfDay),
+        eq(doctorSchedules.isActive, true)
+      ];
+
+      if (clinicId) {
+        whereConditions.push(eq(doctorSchedules.clinicId, clinicId));
+      }
+
+      const schedules = await db
+        .select({
+          id: doctorSchedules.id,
+          clinicId: doctorSchedules.clinicId,
+          date: doctorSchedules.date,
+          startTime: doctorSchedules.startTime,
+          endTime: doctorSchedules.endTime,
+          maxTokens: doctorSchedules.maxTokens,
+          scheduleStatus: doctorSchedules.scheduleStatus,
+          bookingStatus: doctorSchedules.bookingStatus,
+          averageConsultationTime: doctorSchedules.averageConsultationTime,
+          clinicName: clinics.name,
+          clinicAddress: clinics.address
+        })
+        .from(doctorSchedules)
+        .leftJoin(clinics, eq(doctorSchedules.clinicId, clinics.id))
+        .where(and(...whereConditions))
+        .orderBy(doctorSchedules.startTime);
+
+      // For each schedule, get current appointment count
+      const schedulesWithCounts = await Promise.all(
+        schedules.map(async (schedule) => {
+          const appointmentCount = await this.getAppointmentCountForDoctor(
+            doctorId, 
+            schedule.clinicId, 
+            schedule.id
+          );
+
+          return {
+            ...schedule,
+            currentAppointments: appointmentCount,
+            availableSlots: schedule.maxTokens ? schedule.maxTokens - appointmentCount : null
+          };
+        })
+      );
+
+      return schedulesWithCounts;
+    } catch (error) {
+      console.error('Error in getDoctorTodaySchedules:', error);
+      throw error;
+    }
+  }
+
+  // Unified search method that handles all search types
+  async performSearch(query: string, type: string): Promise<any[]> {
+    try {
+      if (!query || !query.trim()) {
+        return [];
+      }
+
+      const searchQuery = query.trim();
+
+      switch (type) {
+        case 'city':
+          return await this.searchByCity(searchQuery);
+        case 'hospital':
+          return await this.searchByHospitalName(searchQuery);
+        case 'doctor':
+          return await this.searchByDoctorName(searchQuery);
+        case 'specialty':
+          return await this.searchBySpecialty(searchQuery);
+        case 'all':
+        default:
+          // Perform all types of search and combine results
+          const [cityResults, hospitalResults, doctorResults, specialtyResults] = await Promise.all([
+            this.searchByCity(searchQuery),
+            this.searchByHospitalName(searchQuery),
+            this.searchByDoctorName(searchQuery),
+            this.searchBySpecialty(searchQuery)
+          ]);
+
+          return [
+            ...cityResults,
+            ...hospitalResults,
+            ...doctorResults,
+            ...specialtyResults
+          ];
+      }
+    } catch (error) {
+      console.error('Error in performSearch:', error);
+      throw error;
+    }
+  }
+
   async getClinic(id: number): Promise<Clinic | undefined> {
     const [clinic] = await db.select().from(clinics).where(eq(clinics.id, id));
     return clinic;
@@ -1031,6 +1396,25 @@ export class DatabaseStorage implements IStorage {
       throw new Error("No active schedule found for this doctor on the selected day");
     }
     
+    // Check for duplicate booking - same patient, doctor, and schedule
+    const existingAppointment = await db
+      .select()
+      .from(appointments)
+      .where(
+        and(
+          eq(appointments.patientId, appointment.patientId),
+          eq(appointments.doctorId, appointment.doctorId),
+          eq(appointments.scheduleId, schedule.id),
+          // Only check for non-cancelled appointments
+          ne(appointments.status, "cancelled")
+        )
+      )
+      .limit(1);
+    
+    if (existingAppointment.length > 0) {
+      throw new Error("You already have an appointment booked with this doctor for this schedule. Please check your existing appointments.");
+    }
+    
     // Get current token count
     const [tokenCount] = await db
       .select({
@@ -1482,15 +1866,21 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  async getPatientAppointments(patientId: number): Promise<(Appointment & { doctor: User })[]> {
+  async getPatientAppointments(patientId: number, doctorId?: number): Promise<(Appointment & { doctor: User })[]> {
     try {
-      console.log('Getting appointments for patient:', patientId);
+      console.log('Getting appointments for patient:', patientId, 'doctorId:', doctorId);
+
+      // Build the where condition
+      const whereConditions = [eq(appointments.patientId, patientId)];
+      if (doctorId) {
+        whereConditions.push(eq(appointments.doctorId, doctorId));
+      }
 
       // Get patient's appointments
       const appointmentsResult = await db
         .select()
         .from(appointments)
-        .where(eq(appointments.patientId, patientId));
+        .where(and(...whereConditions));
 
       console.log('Patient appointments:', JSON.stringify(appointmentsResult, null, 2));
 
