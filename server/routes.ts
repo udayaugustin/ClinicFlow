@@ -2959,6 +2959,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Fix token numbers route - for admin use
+  app.post("/api/admin/fix-token-numbers", async (req, res) => {
+    // Only allow super admin to run this fix
+    if (!req.user || req.user.role !== 'super_admin') {
+      return res.sendStatus(403);
+    }
+
+    try {
+      await storage.fixTokenNumbers();
+      res.json({ message: "Token numbers have been fixed successfully!" });
+    } catch (error) {
+      console.error("Error fixing token numbers:", error);
+      res.status(500).json({ message: "Failed to fix token numbers" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

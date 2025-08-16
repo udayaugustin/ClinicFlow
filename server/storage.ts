@@ -628,7 +628,18 @@ export class DatabaseStorage implements IStorage {
       const hospitalResults = await db
         .select()
         .from(clinics)
-        .where(sql`LOWER(${clinics.name}) LIKE LOWER(${'%' + hospitalName + '%'})`);
+        .where(sql`LOWER(${clinics.name}) LIKE LOWER(${'%' + hospitalName + '%'})`)
+        .orderBy(
+          sql`
+            CASE 
+              WHEN LOWER(${clinics.name}) = LOWER(${hospitalName}) THEN 1
+              WHEN LOWER(${clinics.name}) LIKE LOWER(${hospitalName + '%'}) THEN 2
+              WHEN LOWER(${clinics.name}) LIKE LOWER(${'%' + hospitalName + '%'}) THEN 3
+              ELSE 4
+            END,
+            ${clinics.name}
+          `
+        );
 
       // For each hospital, get all doctors
       const resultsWithDoctors = await Promise.all(
@@ -680,6 +691,17 @@ export class DatabaseStorage implements IStorage {
             eq(users.role, "doctor"),
             sql`LOWER(${users.name}) LIKE LOWER(${'%' + doctorName + '%'})`
           )
+        )
+        .orderBy(
+          sql`
+            CASE 
+              WHEN LOWER(${users.name}) = LOWER(${doctorName}) THEN 1
+              WHEN LOWER(${users.name}) LIKE LOWER(${doctorName + '%'}) THEN 2
+              WHEN LOWER(${users.name}) LIKE LOWER(${'%' + doctorName + '%'}) THEN 3
+              ELSE 4
+            END,
+            ${users.name}
+          `
         );
 
       // For each doctor, get today's schedules
@@ -738,14 +760,49 @@ export class DatabaseStorage implements IStorage {
         .where(
           and(
             eq(users.role, "doctor"),
-            sql`LOWER(${users.specialty}) LIKE LOWER(${'%' + specialty + '%'})`
+            or(
+              sql`LOWER(${users.specialty}) = LOWER(${specialty})`,
+              sql`LOWER(${users.specialty}) LIKE LOWER(${specialty + '%'})`
+            )
           )
+        )
+        .orderBy(
+          sql`
+            CASE 
+              WHEN LOWER(${users.specialty}) = LOWER(${specialty}) THEN 1
+              WHEN LOWER(${users.specialty}) LIKE LOWER(${specialty + '%'}) THEN 2
+              ELSE 3
+            END,
+            ${users.name}
+          `
         );
 
       // Group by clinic to show hospital-based results
       const clinicMap = new Map();
       
+      // First, collect unique doctors and get their schedules
+      const uniqueDoctors = new Map();
       specialtyResults.forEach(doctor => {
+        if (!uniqueDoctors.has(doctor.id)) {
+          uniqueDoctors.set(doctor.id, doctor);
+        }
+      });
+
+      // Get schedules for all unique doctors
+      const doctorsWithSchedules = await Promise.all(
+        Array.from(uniqueDoctors.values()).map(async (doctor) => {
+          const clinicId = doctor.directClinicId || doctor.doctorClinicId;
+          const schedules = await this.getDoctorTodaySchedules(doctor.id, clinicId);
+          
+          return {
+            ...doctor,
+            schedules: schedules || []
+          };
+        })
+      );
+
+      // Now group by clinic
+      doctorsWithSchedules.forEach(doctor => {
         const clinicId = doctor.directClinicId || doctor.doctorClinicId;
         if (clinicId && doctor.clinicName) {
           if (!clinicMap.has(clinicId)) {
@@ -770,7 +827,8 @@ export class DatabaseStorage implements IStorage {
               name: doctor.name,
               specialty: doctor.specialty,
               bio: doctor.bio,
-              imageUrl: doctor.imageUrl
+              imageUrl: doctor.imageUrl,
+              schedules: doctor.schedules  // ✅ ADDED SCHEDULES HERE
             });
           }
         }
@@ -1347,6 +1405,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getNextTokenNumber(doctorId: number, clinicId: number, scheduleId: number): Promise<number> {
+    // Add some debugging
+    console.log(`Getting next token for doctor ${doctorId}, clinic ${clinicId}, schedule ${scheduleId}`);
+    
     const [result] = await db
       .select({
         maxToken: sql<number>`COALESCE(MAX(token_number), 0)`,
@@ -1356,11 +1417,16 @@ export class DatabaseStorage implements IStorage {
         and(
           eq(appointments.doctorId, doctorId),
           eq(appointments.clinicId, clinicId),
-          eq(appointments.scheduleId, scheduleId)
+          eq(appointments.scheduleId, scheduleId),
+          // Only count non-cancelled appointments
+          ne(appointments.status, "cancel")
         )
       );
 
-    return (result?.maxToken || 0) + 1;
+    const nextToken = (result?.maxToken || 0) + 1;
+    console.log(`Next token number will be: ${nextToken} (max found: ${result?.maxToken || 0})`);
+    
+    return nextToken;
   }
 
   async createAppointment(appointment: Omit<Appointment, "id"> & { tokenNumber?: number }): Promise<Appointment> {
@@ -2384,22 +2450,24 @@ export class DatabaseStorage implements IStorage {
       .where(
         and(
           eq(appointments.doctorId, doctorId),
-          sql`DATE(${appointments.date}) = DATE(${date.toISOString()})`
+          sql`DATE(${appointments.date}) = DATE(${date.toISOString()})`,
+          // Only count active appointments (exclude cancelled ones)
+          ne(appointments.status, "cancel")
         )
       );
   
-    // Create a map of clinic to appointment count
-    const clinicAppointmentCount = new Map<number, number>();
+    // Create a map of schedule to appointment count (NOT clinic!)
+    const scheduleAppointmentCount = new Map<number, number>();
     appointmentsForDate.forEach(appt => {
-      if (appt.clinicId) {
-        const count = clinicAppointmentCount.get(appt.clinicId) || 0;
-        clinicAppointmentCount.set(appt.clinicId, count + 1);
+      if (appt.scheduleId) {
+        const count = scheduleAppointmentCount.get(appt.scheduleId) || 0;
+        scheduleAppointmentCount.set(appt.scheduleId, count + 1);
       }
     });
 
-    // Add current token count to each schedule
+    // Add current token count to each schedule based on its own appointments
     schedules.forEach(schedule => {
-      schedule.currentTokenCount = clinicAppointmentCount.get(schedule.clinicId) || 0;
+      schedule.currentTokenCount = scheduleAppointmentCount.get(schedule.id) || 0;
     });
 
     // Calculate available slots - exclude completed schedules and closed bookings
@@ -2543,7 +2611,9 @@ export class DatabaseStorage implements IStorage {
           and(
             eq(appointments.doctorId, doctorId),
             eq(appointments.clinicId, clinicId),
-            eq(appointments.scheduleId, scheduleId)
+            eq(appointments.scheduleId, scheduleId),
+            // Only count active appointments (exclude cancelled ones)
+            ne(appointments.status, "cancel")
           )
         );
       
@@ -3084,7 +3154,9 @@ export class DatabaseStorage implements IStorage {
             .where(
               and(
                 eq(appointments.doctorId, doctor.id),
-                sql`DATE(appointments.date) = CURRENT_DATE`
+                sql`DATE(appointments.date) = CURRENT_DATE`,
+                // Only count active appointments (exclude cancelled ones)
+                ne(appointments.status, "cancel")
               )
             );
 
@@ -3168,6 +3240,7 @@ export class DatabaseStorage implements IStorage {
     doctorName: users.name,
     startTime: doctorSchedules.startTime,
     endTime: doctorSchedules.endTime,
+    maxTokens: doctorSchedules.maxTokens,
     isPaused: doctorSchedules.isPaused,
     isActive: doctorSchedules.isActive,
     isVisible: doctorSchedules.isVisible,
@@ -3220,7 +3293,9 @@ export class DatabaseStorage implements IStorage {
               .where(
                 and(
                   eq(appointments.scheduleId, schedule.id),
-                  sql`DATE(${appointments.date}) = ${todayString}`
+                  sql`DATE(${appointments.date}) = ${todayString}`,
+                  // Only count active appointments (exclude cancelled ones)
+                  ne(appointments.status, "cancel")
                 )
               );
   
@@ -3280,6 +3355,7 @@ export class DatabaseStorage implements IStorage {
               doctorName: schedule.doctorName,
               timeSlot,
               appointmentCount: Number(result?.count) || 0,
+              maxTokens: schedule.maxTokens || 20,
               status: scheduleStatus,
             };
           } catch (error) {
@@ -4146,6 +4222,85 @@ export class DatabaseStorage implements IStorage {
         )
       );
     return result?.count || 0;
+  }
+
+  // Fix existing token numbers to be per-schedule instead of per-doctor-per-day
+  async fixTokenNumbers(): Promise<void> {
+    console.log('🔧 Starting token number fix...');
+    
+    try {
+      // Get all appointments that have scheduleId
+      const allAppointments = await db
+        .select()
+        .from(appointments)
+        .where(
+          and(
+            isNotNull(appointments.scheduleId),
+            ne(appointments.status, "cancel") // Don't fix cancelled appointments
+          )
+        )
+        .orderBy(appointments.date, appointments.id); // Order by date, then by creation order
+
+      console.log(`Found ${allAppointments.length} appointments to potentially fix`);
+
+      // Group appointments by schedule
+      const appointmentsBySchedule = new Map<number, typeof allAppointments>();
+      allAppointments.forEach(apt => {
+        if (apt.scheduleId) {
+          if (!appointmentsBySchedule.has(apt.scheduleId)) {
+            appointmentsBySchedule.set(apt.scheduleId, []);
+          }
+          appointmentsBySchedule.get(apt.scheduleId)!.push(apt);
+        }
+      });
+
+      console.log(`Found ${appointmentsBySchedule.size} schedules to fix`);
+
+      // Fix token numbers for each schedule
+      for (const [scheduleId, scheduleAppointments] of appointmentsBySchedule) {
+        console.log(`Fixing tokens for schedule ${scheduleId} (${scheduleAppointments.length} appointments)`);
+        
+        // Sort by date, then by current token number to maintain relative order
+        scheduleAppointments.sort((a, b) => {
+          const dateCompare = new Date(a.date).getTime() - new Date(b.date).getTime();
+          if (dateCompare !== 0) return dateCompare;
+          return a.tokenNumber - b.tokenNumber;
+        });
+
+        // Group by date within the schedule
+        const appointmentsByDate = new Map<string, typeof scheduleAppointments>();
+        scheduleAppointments.forEach(apt => {
+          const dateKey = new Date(apt.date).toISOString().split('T')[0];
+          if (!appointmentsByDate.has(dateKey)) {
+            appointmentsByDate.set(dateKey, []);
+          }
+          appointmentsByDate.get(dateKey)!.push(apt);
+        });
+
+        // Reassign token numbers starting from 1 for each date
+        for (const [dateKey, dateAppointments] of appointmentsByDate) {
+          console.log(`  Fixing ${dateAppointments.length} appointments for ${dateKey}`);
+          
+          for (let i = 0; i < dateAppointments.length; i++) {
+            const apt = dateAppointments[i];
+            const newTokenNumber = i + 1;
+            
+            if (apt.tokenNumber !== newTokenNumber) {
+              console.log(`    Appointment ${apt.id}: ${apt.tokenNumber} → ${newTokenNumber}`);
+              await db
+                .update(appointments)
+                .set({ tokenNumber: newTokenNumber })
+                .where(eq(appointments.id, apt.id));
+            }
+          }
+        }
+      }
+
+      console.log('✅ Token number fix completed!');
+    } catch (error) {
+      console.error('❌ Error fixing token numbers:', error);
+      throw error;
+    }
   }
 }
 
