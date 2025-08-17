@@ -13,6 +13,7 @@ interface SchedulesToday {
     doctorName: string;
     timeSlot: string;
     appointmentCount: number;
+    maxTokens?: number;
     status: 'token_started' | 'in_progress' | 'paused' | 'completed' | 'cancelled' | 'inactive_hidden' | 'inactive_visible' | 'schedule_completed' | 'booking_closed';
   }>;
   summary: {
@@ -121,7 +122,7 @@ export function SchedulesTodayCard() {
                    schedule.status.charAt(0).toUpperCase() + schedule.status.slice(1)}
                 </Badge>
                 <p className="text-sm text-gray-600 mt-1">
-                  {schedule.appointmentCount}/20 appointments
+                  {schedule.appointmentCount}/{schedule.maxTokens || 20} appointments
                 </p>
               </div>
             </div>
