@@ -85,7 +85,7 @@ export function SchedulesTodayCard() {
           Today's Schedules
         </CardTitle>
         <CardDescription>
-          View and manage today's appointments
+          View and manage today's tokens
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -134,7 +134,7 @@ export function SchedulesTodayCard() {
           className="w-full"
           onClick={() => navigate("/schedules")}
         >
-          Manage Schedule
+          Create / Manage Schedule
           <ChevronRight className="ml-2 h-4 w-4" />
         </Button>
       </CardFooter>

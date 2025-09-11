@@ -500,8 +500,7 @@ export default function PatientClinicDetails() {
          isFavorite: schedule.isFavorite || false,
          isVisible: schedule.isVisible || false,
          statusMessage: isScheduleCompleted ? 'Schedule completed - doctor has finished' :
-                       isBookingClosed ? 'Booking closed - new appointments not accepted' :
-                       !schedule.isActive ? 'Currently inactive' : ''
+                       isBookingClosed ? 'Booking closed - new appointments not accepted' : ''
        };
      });
   }, [scheduleData]);
@@ -719,7 +718,7 @@ export default function PatientClinicDetails() {
                                   <Badge variant="secondary">Booking Closed</Badge>
                                 )}
                                 {!schedule.isActive && schedule.scheduleStatus !== 'completed' && schedule.bookingStatus !== 'closed' && (
-                                  <Badge variant="destructive">Inactive</Badge>
+                                  <Badge variant="destructive">Booking Not Started</Badge>
                                 )}
                                 {schedule.isAvailable && !hasExistingAppointment(schedule.id) && (
                                   <Badge variant="default">Available</Badge>
@@ -727,23 +726,23 @@ export default function PatientClinicDetails() {
                               </div>
                             </div>
                             
-                            {/* Favorite Toggle Button */}
+                            {/* Favorite Toggle */}
                             {user && user.role === 'patient' && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
+                              <div
                                 onClick={() => handleToggleFavorite(schedule)}
-                                disabled={favoriteMutation.isPending}
-                                className="h-8 w-8 p-0"
+                                className="flex items-center gap-2 cursor-pointer"
                               >
                                 {favoriteMutation.isPending ? (
                                   <Loader2 className="h-4 w-4 animate-spin" />
                                 ) : schedule.isFavorite ? (
                                   <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
                                 ) : (
-                                  <StarOff className="h-4 w-4 text-gray-400 hover:text-yellow-400" />
+                                  <>
+                                    <StarOff className="h-4 w-4 text-gray-400 hover:text-yellow-400" />
+                                    <span className="text-sm font-medium text-gray-600 hover:text-yellow-600">Add to Favorites</span>
+                                  </>
                                 )}
-                              </Button>
+                              </div>
                             )}
                           </div>
                           

@@ -666,7 +666,7 @@ export default function DoctorSchedulesPage() {
                       checked={formData.isActive}
                       onCheckedChange={(checked) => handleSwitchChange("isActive", checked)}
                     />
-                    <Label htmlFor="isActive">Active</Label>
+                    <Label htmlFor="isActive">Start Booking</Label>
                   </div>
 
                   <div className="space-y-2">
@@ -676,7 +676,7 @@ export default function DoctorSchedulesPage() {
                         checked={formData.isVisible}
                         onCheckedChange={(checked) => handleSwitchChange("isVisible", checked)}
                       />
-                      <Label htmlFor="isVisible">Show to Patients</Label>
+                      <Label htmlFor="isVisible">Show to Patients (Booking Not Started)</Label>
                     </div>
                     <p className="text-sm text-muted-foreground ml-6">
                       When enabled, this schedule will be visible to patients for booking appointments
