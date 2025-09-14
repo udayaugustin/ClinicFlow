@@ -1006,10 +1006,10 @@ export default function AttenderDashboard() {
       <Dialog open={isWalkInDialogOpen} onOpenChange={setIsWalkInDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>Create Walk-in Appointment</DialogTitle>
+            <DialogTitle>Create Walk-in Token</DialogTitle>
             <DialogDescription>
               {walkInCurrentDoctor && (
-                <p>Creating appointment for Dr. {walkInCurrentDoctor.doctorName} on {format(selectedDate, "PPP")}</p>
+                <p>Creating Token for Dr. {walkInCurrentDoctor.doctorName} on {format(selectedDate, "PPP")}</p>
               )}
             </DialogDescription>
           </DialogHeader>
