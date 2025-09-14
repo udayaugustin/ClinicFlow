@@ -1054,7 +1054,7 @@ export default function AttenderDashboard() {
               onClick={handleCreateWalkInAppointment}
               disabled={createWalkInAppointmentMutation.isPending}
             >
-              {createWalkInAppointmentMutation.isPending ? "Creating..." : "Create Appointment"}
+              {createWalkInAppointmentMutation.isPending ? "Creating..." : "Create Token"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -679,7 +679,7 @@ export default function DoctorSchedulesPage() {
                       <Label htmlFor="isVisible">Show to Patients (Booking Not Started)</Label>
                     </div>
                     <p className="text-sm text-muted-foreground ml-6">
-                      When enabled, this schedule will be visible to patients for booking appointments
+                      When enabled, this schedule will be visible to patients for booking tokens
                     </p>
                   </div>
 
