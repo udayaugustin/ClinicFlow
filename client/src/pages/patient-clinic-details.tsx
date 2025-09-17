@@ -659,7 +659,7 @@ export default function PatientClinicDetails() {
               <div className="mt-8">
                 <h3 className="text-xl font-semibold mb-4 flex items-center">
                   <CalendarDays className="mr-2 h-5 w-5" />
-                  Available Tokens
+                  Available Schedules
                 </h3>
                 
                 <Tabs defaultValue={processedSchedules[0]?.id}>
