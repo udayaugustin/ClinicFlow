@@ -750,7 +750,7 @@ export default function AttenderDashboard() {
                                     </div>
                                     <div className="flex items-center gap-3 w-full">
                                       {hasArrived ? (
-                                        <div className="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">Doctor Present</div>
+                                        <div className="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">Doctor Arrived</div>
                                       ) : (
                                         <div className="px-3 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">Awaiting Doctor</div>
                                       )}
@@ -812,6 +812,7 @@ export default function AttenderDashboard() {
                                           <Button
                                             variant={getPresenceData(doctorData.doctor.id, schedule.id).hasArrived ? "default" : "outline"}
                                             className="gap-2"
+                                            disabled={getPresenceData(doctorData.doctor.id, schedule.id).hasArrived}
                                             onClick={() => handleToggleDoctorArrival(
                                               doctorData.doctor.id,
                                               schedule.clinicId || doctorData.clinicId || user?.clinicId,
@@ -822,7 +823,7 @@ export default function AttenderDashboard() {
                                             {getPresenceData(doctorData.doctor.id, schedule.id).hasArrived ? (
                                               <>
                                                 <CheckCircle2 className="h-4 w-4" />
-                                                Doctor Present
+                                                Doctor Arrived
                                               </>
                                             ) : (
                                               <>
@@ -838,7 +839,7 @@ export default function AttenderDashboard() {
                                             disabled={schedule.scheduleStatus === 'completed'}
                                             onClick={() => handleCompleteSchedule(schedule.id)}
                                           >
-                                            Schedule Completed
+                                            Complete Schedule
                                           </Button>
                                           <Button
                                             variant="outline"
@@ -1005,10 +1006,10 @@ export default function AttenderDashboard() {
       <Dialog open={isWalkInDialogOpen} onOpenChange={setIsWalkInDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>Create Walk-in Appointment</DialogTitle>
+            <DialogTitle>Create Walk-in Token</DialogTitle>
             <DialogDescription>
               {walkInCurrentDoctor && (
-                <p>Creating appointment for Dr. {walkInCurrentDoctor.doctorName} on {format(selectedDate, "PPP")}</p>
+                <p>Creating Token for Dr. {walkInCurrentDoctor.doctorName} on {format(selectedDate, "PPP")}</p>
               )}
             </DialogDescription>
           </DialogHeader>
@@ -1053,7 +1054,7 @@ export default function AttenderDashboard() {
               onClick={handleCreateWalkInAppointment}
               disabled={createWalkInAppointmentMutation.isPending}
             >
-              {createWalkInAppointmentMutation.isPending ? "Creating..." : "Create Appointment"}
+              {createWalkInAppointmentMutation.isPending ? "Creating..." : "Create Token"}
             </Button>
           </DialogFooter>
         </DialogContent>

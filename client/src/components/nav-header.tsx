@@ -69,7 +69,7 @@ export function NavHeader() {
                   </Link>
                 </Button>
               )}
-              {canAccessSchedules && (
+              {/* {canAccessSchedules && (
                 <Button variant="ghost" asChild className="hidden md:flex">
                   <Link href="/schedules">
                     <Clock className="mr-2 h-4 w-4" />
@@ -77,7 +77,7 @@ export function NavHeader() {
                   </Link>
                 </Button>
               )}
-              
+               */}
               {/* Show favorites link for patients */}
               {user?.role === "patient" && (
                 <Button variant="ghost" asChild className="hidden md:flex">

@@ -251,7 +251,7 @@ export default function PatientClinicDetails() {
     if (hasExistingAppointment(schedule.id)) {
       toast({
         title: "Appointment Already Exists",
-        description: "You already have an appointment booked for this schedule. Please check your existing appointments.",
+        description: "You already have an appointment booked for this schedule. Please check your existing tokens.",
         variant: "destructive",
       });
       return;
@@ -500,8 +500,7 @@ export default function PatientClinicDetails() {
          isFavorite: schedule.isFavorite || false,
          isVisible: schedule.isVisible || false,
          statusMessage: isScheduleCompleted ? 'Schedule completed - doctor has finished' :
-                       isBookingClosed ? 'Booking closed - new appointments not accepted' :
-                       !schedule.isActive ? 'Currently inactive' : ''
+                       isBookingClosed ? 'Booking closed - new tokens not accepted' : ''
        };
      });
   }, [scheduleData]);
@@ -660,7 +659,7 @@ export default function PatientClinicDetails() {
               <div className="mt-8">
                 <h3 className="text-xl font-semibold mb-4 flex items-center">
                   <CalendarDays className="mr-2 h-5 w-5" />
-                  Available Appointments
+                  Available Schedules
                 </h3>
                 
                 <Tabs defaultValue={processedSchedules[0]?.id}>
@@ -692,7 +691,7 @@ export default function PatientClinicDetails() {
                               <p className="text-sm text-muted-foreground">
                                 <span className="font-medium">Available Time:</span> {schedule.slots[0] || 'No slots'}
                                 {schedule.maxTokens && (
-                                  <> | <span className="font-medium">Max Appointments:</span> {schedule.maxTokens}</>
+                                  <> | <span className="font-medium">Max Tokens:</span> {schedule.maxTokens}</>
                                 )}
                                 {schedule.statusMessage && (
                                   <span className="ml-2 text-red-500"> ({schedule.statusMessage})</span>
@@ -719,7 +718,7 @@ export default function PatientClinicDetails() {
                                   <Badge variant="secondary">Booking Closed</Badge>
                                 )}
                                 {!schedule.isActive && schedule.scheduleStatus !== 'completed' && schedule.bookingStatus !== 'closed' && (
-                                  <Badge variant="destructive">Inactive</Badge>
+                                  <Badge variant="destructive">Booking Not Started</Badge>
                                 )}
                                 {schedule.isAvailable && !hasExistingAppointment(schedule.id) && (
                                   <Badge variant="default">Available</Badge>
@@ -727,23 +726,23 @@ export default function PatientClinicDetails() {
                               </div>
                             </div>
                             
-                            {/* Favorite Toggle Button */}
+                            {/* Favorite Toggle */}
                             {user && user.role === 'patient' && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
+                              <div
                                 onClick={() => handleToggleFavorite(schedule)}
-                                disabled={favoriteMutation.isPending}
-                                className="h-8 w-8 p-0"
+                                className="flex items-center gap-2 cursor-pointer"
                               >
                                 {favoriteMutation.isPending ? (
                                   <Loader2 className="h-4 w-4 animate-spin" />
                                 ) : schedule.isFavorite ? (
                                   <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
                                 ) : (
-                                  <StarOff className="h-4 w-4 text-gray-400 hover:text-yellow-400" />
+                                  <>
+                                    <StarOff className="h-4 w-4 text-gray-400 hover:text-yellow-400" />
+                                    <span className="text-sm font-medium text-gray-600 hover:text-yellow-600">Add to Favorites</span>
+                                  </>
                                 )}
-                              </Button>
+                              </div>
                             )}
                           </div>
                           
@@ -779,7 +778,7 @@ export default function PatientClinicDetails() {
                                     variant="outline"
                                     onClick={() => navigate("/appointments")}
                                   >
-                                    View My Appointments
+                                    View My Tokens
                                   </Button>
                                 </div>
                               ) : (
@@ -792,7 +791,7 @@ export default function PatientClinicDetails() {
                                   ) : (
                                     <Calendar className="mr-2 h-4 w-4" />
                                   )}
-                                  Book Appointment
+                                  Book Token
                                 </Button>
                               )}
                             </div>

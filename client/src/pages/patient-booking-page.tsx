@@ -170,7 +170,7 @@ export default function PatientBookingPage() {
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              Please log in to book appointments.
+              Please log in to book tokens.
             </AlertDescription>
           </Alert>
         </main>

@@ -85,7 +85,7 @@ export function SchedulesTodayCard() {
           Today's Schedules
         </CardTitle>
         <CardDescription>
-          View and manage today's appointments
+          View and manage today's tokens
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -100,7 +100,7 @@ export function SchedulesTodayCard() {
           </div>
           <div className="text-center">
             <p className="text-lg font-semibold">{schedulesToday.summary.totalAppointments}</p>
-            <p className="text-xs text-gray-600">Appointments</p>
+            <p className="text-xs text-gray-600">Tokens</p>
           </div>
         </div>
         
@@ -122,7 +122,7 @@ export function SchedulesTodayCard() {
                    schedule.status.charAt(0).toUpperCase() + schedule.status.slice(1)}
                 </Badge>
                 <p className="text-sm text-gray-600 mt-1">
-                  {schedule.appointmentCount}/{schedule.maxTokens || 20} appointments
+                  {schedule.appointmentCount}/{schedule.maxTokens || 20} tokens
                 </p>
               </div>
             </div>
@@ -134,7 +134,7 @@ export function SchedulesTodayCard() {
           className="w-full"
           onClick={() => navigate("/schedules")}
         >
-          Manage Schedule
+          Create / Manage Schedule
           <ChevronRight className="ml-2 h-4 w-4" />
         </Button>
       </CardFooter>

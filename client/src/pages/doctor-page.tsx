@@ -100,7 +100,7 @@ export default function DoctorPage() {
                 <Button asChild className="w-full">
                   <Link href={`/book/${doctor.id}`}>
                     <CalendarDays className="mr-2 h-4 w-4" />
-                    Book Appointment
+                    Book Token
                   </Link>
                 </Button>
               </CardContent>
