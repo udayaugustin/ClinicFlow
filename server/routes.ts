@@ -994,6 +994,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Super Admin Dashboard Metrics endpoint
+  app.get("/api/super-admin/dashboard-metrics", async (req, res) => {
+    if (!req.user || req.user.role !== "super_admin") return res.sendStatus(403);
+    try {
+      const metrics = await storage.getSuperAdminDashboardMetrics();
+      res.json(metrics);
+    } catch (error) {
+      console.error('Error fetching super admin dashboard metrics:', error);
+      res.status(500).json({ message: 'Failed to fetch dashboard metrics' });
+    }
+  });
+
   // Token progress endpoint for patients to check their position in queue
   app.get("/api/doctors/:id/token-progress", async (req, res) => {
     try {
