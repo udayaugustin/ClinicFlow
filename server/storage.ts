@@ -264,6 +264,18 @@ export interface IStorage {
     doctorId: number,
     scheduleId: number
   ): Promise<any[]>;
+
+  // Super Admin Dashboard methods
+  getSuperAdminDashboardMetrics(): Promise<{
+    totalAppointments: number;
+    completedAppointments: number;
+    pendingAppointments: number;
+    activePatients: number;
+    activeDoctors: number;
+    todayRevenue: number;
+    monthlyRevenue: number;
+    totalClinics: number;
+  }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -4299,6 +4311,181 @@ export class DatabaseStorage implements IStorage {
       console.log('✅ Token number fix completed!');
     } catch (error) {
       console.error('❌ Error fixing token numbers:', error);
+      throw error;
+    }
+  }
+
+  // Super Admin Dashboard methods
+  async getSuperAdminDashboardMetrics(): Promise<{
+    // Overview Stats
+    totalClinics: number;
+    totalDoctors: number;
+    totalPatients: number;
+    totalAppointments: number;
+    
+    // User counts by role
+    totalClinicAdmins: number;
+    totalAttenders: number;
+    
+    // Recent Activity (last 7 days)
+    recentAppointments: number;
+    completedAppointments: number;
+    newRegistrations: number;
+    
+    // Today's activity
+    appointmentsToday: number;
+  }> {
+    try {
+      // Get current date ranges (using UTC to match database timestamps)
+      const now = new Date();
+      
+      // Convert to UTC dates to match database timestamp format
+      const today = new Date();
+      const startOfToday = new Date(Date.UTC(
+        today.getFullYear(), 
+        today.getMonth(), 
+        today.getDate(), 
+        0, 0, 0, 0
+      ));
+      const endOfToday = new Date(Date.UTC(
+        today.getFullYear(), 
+        today.getMonth(), 
+        today.getDate(), 
+        23, 59, 59, 999
+      ));
+
+      // Last 7 days range (UTC)
+      const last7DaysDate = new Date(today);
+      last7DaysDate.setDate(today.getDate() - 7);
+      const last7Days = new Date(Date.UTC(
+        last7DaysDate.getFullYear(),
+        last7DaysDate.getMonth(),
+        last7DaysDate.getDate(),
+        0, 0, 0, 0
+      ));
+
+      // Last 6 months range (UTC)
+      const last6MonthsDate = new Date(today);
+      last6MonthsDate.setMonth(today.getMonth() - 6);
+      const last6Months = new Date(Date.UTC(
+        last6MonthsDate.getFullYear(),
+        last6MonthsDate.getMonth(),
+        last6MonthsDate.getDate(),
+        0, 0, 0, 0
+      ));
+
+
+      // === OVERVIEW STATS ===
+      // Total clinics count
+      const [totalClinicsResult] = await db
+        .select({ count: count() })
+        .from(clinics);
+
+      // Total doctors count (doctors with role 'doctor')
+      const [totalDoctorsResult] = await db
+        .select({ count: count() })
+        .from(users)
+        .where(eq(users.role, 'doctor'));
+
+      // Total patients count (unique users with role 'patient')
+      const [totalPatientsResult] = await db
+        .select({ count: count() })
+        .from(users)
+        .where(eq(users.role, 'patient'));
+
+      // Total appointments count (LAST 6 MONTHS)
+      const [totalAppointmentsResult] = await db
+        .select({ count: count() })
+        .from(appointments)
+        .where(
+          and(
+            gte(appointments.createdAt, last6Months),
+            lte(appointments.createdAt, endOfToday)
+          )
+        );
+
+      // === USER COUNTS BY ROLE ===
+      // Clinic admins count
+      const [totalClinicAdminsResult] = await db
+        .select({ count: count() })
+        .from(users)
+        .where(eq(users.role, 'clinic_admin'));
+
+      // Attenders count
+      const [totalAttendersResult] = await db
+        .select({ count: count() })
+        .from(users)
+        .where(eq(users.role, 'attender'));
+
+      // === RECENT ACTIVITY (LAST 7 DAYS) ===
+      // Recent appointments (last 7 days)
+      const [recentAppointmentsResult] = await db
+        .select({ count: count() })
+        .from(appointments)
+        .where(
+          and(
+            gte(appointments.createdAt, last7Days),
+            lte(appointments.createdAt, endOfToday)
+          )
+        );
+
+      // Completed appointments (last 7 days)
+      const [completedAppointmentsResult] = await db
+        .select({ count: count() })
+        .from(appointments)
+        .where(
+          and(
+            eq(appointments.status, 'completed'),
+            gte(appointments.date, last7Days),
+            lte(appointments.date, endOfToday)
+          )
+        );
+
+      // New patient registrations (last 7 days)
+      const [newRegistrationsResult] = await db
+        .select({ count: count() })
+        .from(users)
+        .where(
+          and(
+            eq(users.role, 'patient'),
+            gte(users.createdAt, last7Days),
+            lte(users.createdAt, endOfToday)
+          )
+        );
+
+      // === TODAY'S ACTIVITY ===
+      // Appointments today (any status)
+      const [appointmentsTodayResult] = await db
+        .select({ count: count() })
+        .from(appointments)
+        .where(
+          and(
+            gte(appointments.date, startOfToday),
+            lte(appointments.date, endOfToday)
+          )
+        );
+
+      return {
+        // Overview Stats
+        totalClinics: totalClinicsResult?.count || 0,
+        totalDoctors: totalDoctorsResult?.count || 0,
+        totalPatients: totalPatientsResult?.count || 0,
+        totalAppointments: totalAppointmentsResult?.count || 0, // LAST 6 MONTHS
+        
+        // User counts by role
+        totalClinicAdmins: totalClinicAdminsResult?.count || 0,
+        totalAttenders: totalAttendersResult?.count || 0,
+        
+        // Recent Activity (last 7 days)
+        recentAppointments: recentAppointmentsResult?.count || 0,
+        completedAppointments: completedAppointmentsResult?.count || 0,
+        newRegistrations: newRegistrationsResult?.count || 0,
+        
+        // Today's activity
+        appointmentsToday: appointmentsTodayResult?.count || 0,
+      };
+    } catch (error) {
+      console.error('Error fetching super admin dashboard metrics:', error);
       throw error;
     }
   }

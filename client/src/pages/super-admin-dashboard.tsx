@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { DashboardHeader } from "@/components/dashboard-header";
-import { PlusCircle, Hospital, User, UserCog, Building2, Activity, Edit, Eye, Trash2, MapPin, Phone, Mail, Clock, Loader2, FileSpreadsheet, CreditCard, Search, Calendar, Stethoscope } from "lucide-react";
+import { PlusCircle, Hospital, User, UserCog, Building2, Activity, Edit, Eye, Trash2, MapPin, Phone, Mail, Clock, Loader2, FileSpreadsheet, CreditCard, Search, Calendar, Stethoscope, RefreshCw } from "lucide-react";
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -351,6 +351,18 @@ export default function SuperAdminDashboard() {
       const res = await apiRequest('GET', '/api/clinics');
       return await res.json();
     },
+  });
+
+  // Fetch dashboard metrics with auto-refresh
+  const { data: dashboardMetrics, isLoading: isMetricsLoading, isError: isMetricsError, refetch: refetchMetrics } = useQuery({
+    queryKey: ['super-admin-dashboard-metrics'],
+    queryFn: async () => {
+      const res = await apiRequest('GET', '/api/super-admin/dashboard-metrics');
+      return await res.json();
+    },
+    refetchInterval: 30000, // Auto-refresh every 30 seconds
+    refetchIntervalInBackground: true, // Continue refreshing when tab is not active
+    staleTime: 0, // Always consider data stale to force refresh
   });
 
   // Create clinic with admin mutation
@@ -952,12 +964,211 @@ export default function SuperAdminDashboard() {
     // Default dashboard view
     return (
       <div className="p-6">
-        <h1 className="text-2xl font-bold mb-6">Welcome, {user.name}</h1>
-        <div className="text-center py-12">
-          <Activity className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-gray-600 mb-2">Super Admin Dashboard</h2>
-          <p className="text-gray-500">Select "Clinic Management" from the sidebar to get started</p>
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Welcome, {user.name}</h1>
+            <p className="text-gray-600 mt-1">Overview of your clinic network and system activity</p>
+          </div>
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => refetchMetrics()}
+            disabled={isMetricsLoading}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${isMetricsLoading ? 'animate-spin' : ''}`} />
+            {isMetricsLoading ? 'Refreshing...' : 'Refresh'}
+          </Button>
         </div>
+
+        {isMetricsLoading ? (
+          <div className="text-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" />
+            <p className="text-gray-500">Loading dashboard metrics...</p>
+          </div>
+        ) : isMetricsError ? (
+          <div className="text-center py-12">
+            <Activity className="h-16 w-16 text-red-400 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold text-red-600 mb-2">Unable to load dashboard</h2>
+            <p className="text-gray-500">There was an error loading the dashboard metrics. Please try again later.</p>
+          </div>
+        ) : (
+          <>
+            {/* Overview Stats Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+              {/* Total Clinics */}
+              <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-blue-600 text-sm font-medium">Total Clinics</p>
+                      <p className="text-3xl font-bold text-blue-700">{dashboardMetrics?.totalClinics || 0}</p>
+                    </div>
+                    <Hospital className="h-10 w-10 text-blue-500" />
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Total Doctors */}
+              <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-green-600 text-sm font-medium">Total Doctors</p>
+                      <p className="text-3xl font-bold text-green-700">{dashboardMetrics?.totalDoctors || 0}</p>
+                    </div>
+                    <Stethoscope className="h-10 w-10 text-green-500" />
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Total Patients */}
+              <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-purple-600 text-sm font-medium">Total Patients</p>
+                      <p className="text-3xl font-bold text-purple-700">{dashboardMetrics?.totalPatients || 0}</p>
+                    </div>
+                    <User className="h-10 w-10 text-purple-500" />
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Total Appointments */}
+              <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-orange-600 text-sm font-medium">Total Appointments</p>
+                      <p className="text-3xl font-bold text-orange-700">{dashboardMetrics?.totalAppointments || 0}</p>
+                      <p className="text-orange-500 text-xs mt-1">Last 6 months</p>
+                    </div>
+                    <Calendar className="h-10 w-10 text-orange-500" />
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Recent Activity & Staff Metrics */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+              {/* Recent Activity Card */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Activity className="h-5 w-5 text-blue-600" />
+                    Recent Activity (Last 7 Days)
+                  </CardTitle>
+                  <CardDescription>Overview of recent system activity</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
+                      <span className="text-sm font-medium text-gray-700">New Tokens</span>
+                    </div>
+                    <span className="text-lg font-bold text-blue-600">{dashboardMetrics?.recentAppointments || 0}</span>
+                  </div>
+                  
+                  <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="w-2 h-2 bg-green-600 rounded-full"></div>
+                      <span className="text-sm font-medium text-gray-700">Completed Tokens</span>
+                    </div>
+                    <span className="text-lg font-bold text-green-600">{dashboardMetrics?.completedAppointments || 0}</span>
+                  </div>
+                  
+                  <div className="flex items-center justify-between p-3 bg-purple-50 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="w-2 h-2 bg-purple-600 rounded-full"></div>
+                      <span className="text-sm font-medium text-gray-700">New Patient Registrations</span>
+                    </div>
+                    <span className="text-lg font-bold text-purple-600">{dashboardMetrics?.newRegistrations || 0}</span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Staff Management Cards */}
+              <div className="space-y-6">
+                {/* Total Clinic Admins */}
+                <Card className="bg-gradient-to-br from-indigo-50 to-indigo-100 border-indigo-200">
+                  <CardContent className="p-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-indigo-600 text-sm font-medium">Total Clinic Admins</p>
+                        <p className="text-3xl font-bold text-indigo-700">{dashboardMetrics?.totalClinicAdmins || 0}</p>
+                      </div>
+                      <UserCog className="h-10 w-10 text-indigo-500" />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Total Attenders */}
+                <Card className="bg-gradient-to-br from-teal-50 to-teal-100 border-teal-200">
+                  <CardContent className="p-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-teal-600 text-sm font-medium">Total Attenders</p>
+                        <p className="text-3xl font-bold text-teal-700">{dashboardMetrics?.totalAttenders || 0}</p>
+                      </div>
+                      <User className="h-10 w-10 text-teal-500" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+
+            {/* Quick Actions */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <PlusCircle className="h-5 w-5 text-blue-600" />
+                  Quick Actions
+                </CardTitle>
+                <CardDescription>Common administrative tasks</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <Button 
+                    variant="outline" 
+                    className="h-20 flex flex-col items-center justify-center gap-2 border-2 border-dashed border-blue-300 hover:border-blue-500 hover:bg-blue-50"
+                    onClick={() => setSelectedMenuItem("clinic-management")}
+                  >
+                    <Hospital className="h-6 w-6 text-blue-600" />
+                    <span className="text-sm font-medium">Manage Clinics</span>
+                  </Button>
+                  
+                  <Button 
+                    variant="outline" 
+                    className="h-20 flex flex-col items-center justify-center gap-2 border-2 border-dashed border-purple-300 hover:border-purple-500 hover:bg-purple-50"
+                    onClick={() => setSelectedMenuItem("patient-details")}
+                  >
+                    <Search className="h-6 w-6 text-purple-600" />
+                    <span className="text-sm font-medium">Search Patients</span>
+                  </Button>
+                  
+                  <Button 
+                    variant="outline" 
+                    className="h-20 flex flex-col items-center justify-center gap-2 border-2 border-dashed border-green-300 hover:border-green-500 hover:bg-green-50"
+                    onClick={() => setSelectedMenuItem("export-reports")}
+                  >
+                    <FileSpreadsheet className="h-6 w-6 text-green-600" />
+                    <span className="text-sm font-medium">Export Reports</span>
+                  </Button>
+                  
+                  <Button 
+                    variant="outline" 
+                    className="h-20 flex flex-col items-center justify-center gap-2 border-2 border-dashed border-orange-300 hover:border-orange-500 hover:bg-orange-50"
+                    onClick={() => setSelectedMenuItem("refund")}
+                  >
+                    <CreditCard className="h-6 w-6 text-orange-600" />
+                    <span className="text-sm font-medium">Manage Refunds</span>
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </>
+        )}
       </div>
     );
   };
