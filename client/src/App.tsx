@@ -32,6 +32,14 @@ import PatientLogin from "@/pages/auth/patient-login";
 import PatientRegister from "@/pages/auth/patient-register";
 import StaffLogin from "@/pages/auth/staff-login";
 import AdminLogin from "@/pages/auth/admin-login";
+// Policy and help pages
+import PrivacyPolicy from "@/pages/policies/PrivacyPolicy";
+import TermsConditions from "@/pages/policies/TermsConditions";
+import CancellationRefund from "@/pages/policies/CancellationRefund";
+import AboutUs from "@/pages/policies/AboutUs";
+import AdditionalPolicies from "@/pages/policies/AdditionalPolicies";
+import FAQs from "@/pages/help/FAQs";
+import ContactUs from "@/pages/help/ContactUs";
 
 // Wrap DoctorManagementPage with ProtectedRoute
 const ProtectedDoctorManagement = () => (
@@ -119,6 +127,16 @@ function Router() {
       <Route path="/patient/dashboard" component={PatientDashboard} />
       <Route path="/patient/clinics/:id" component={PatientClinicDetails} />
       <Route path="/patient/favorites" component={PatientFavorites} />
+      
+      {/* Policy and Help Pages */}
+      <Route path="/policies/privacy-policy" component={PrivacyPolicy} />
+      <Route path="/policies/terms-conditions" component={TermsConditions} />
+      <Route path="/policies/cancellation-refund" component={CancellationRefund} />
+      <Route path="/policies/about-us" component={AboutUs} />
+      <Route path="/policies/additional-policies" component={AdditionalPolicies} />
+      <Route path="/help/faqs" component={FAQs} />
+      <Route path="/contact-us" component={ContactUs} />
+      
       <Route component={NotFound} />
     </Switch>
   );

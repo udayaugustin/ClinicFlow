@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { useLocation } from "wouter";
 import React from "react";
+import PatientFooter from "@/components/PatientFooter";
 
 export default function PatientDashboard() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -350,8 +351,11 @@ export default function PatientDashboard() {
   };
 
   return (
-    <div className="container mx-auto py-8 px-4">
-      <h1 className="text-3xl font-bold mb-6">Find Healthcare Near You</h1>
+    <div className="min-h-screen flex flex-col">
+      {/* Main Content */}
+      <div className="flex-1">
+        <div className="container mx-auto py-8 px-4">
+          <h1 className="text-3xl font-bold mb-6">Find Healthcare Near You</h1>
       
       {/* Enhanced Search Section */}
       <div className="flex flex-col md:flex-row gap-4 mb-8">
@@ -421,6 +425,11 @@ export default function PatientDashboard() {
           <p className="text-muted-foreground">No results found for "{searchTerm}"</p>
         </div>
       )}
+        </div>
+      </div>
+      
+      {/* Footer */}
+      <PatientFooter />
     </div>
   );
 }
