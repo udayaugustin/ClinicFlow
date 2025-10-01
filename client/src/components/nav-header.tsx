@@ -8,7 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, User, Calendar, UserPlus, Clock, Star } from "lucide-react";
+import { LogOut, User, Calendar, UserPlus, Clock, Star, MapPin } from "lucide-react";
 import { NotificationPopover } from "./notifications/notification-popover";
 import { CompactNavigationButtons } from "./navigation-buttons";
 import React from "react";
@@ -78,14 +78,22 @@ export function NavHeader() {
                 </Button>
               )}
                */}
-              {/* Show favorites link for patients */}
+              {/* Show map and favorites links for patients */}
               {user?.role === "patient" && (
-                <Button variant="ghost" asChild className="hidden md:flex">
-                  <Link href="/patient/favorites">
-                    <Star className="mr-2 h-4 w-4" />
-                    Favorites
-                  </Link>
-                </Button>
+                <>
+                  <Button variant="ghost" asChild className="hidden md:flex">
+                    <Link href="/map">
+                      <MapPin className="mr-2 h-4 w-4" />
+                      Find Near Me
+                    </Link>
+                  </Button>
+                  <Button variant="ghost" asChild className="hidden md:flex">
+                    <Link href="/patient/favorites">
+                      <Star className="mr-2 h-4 w-4" />
+                      Favorites
+                    </Link>
+                  </Button>
+                </>
               )}
               
               {/* Show notification bell for patients and doctors */}
@@ -150,12 +158,20 @@ export function NavHeader() {
                     </DropdownMenuItem>
                   )}
                   {user?.role === "patient" && (
-                    <DropdownMenuItem asChild>
-                      <Link href="/patient/favorites" className="gap-2">
-                        <Star size={16} />
-                        <span>Favorites</span>
-                      </Link>
-                    </DropdownMenuItem>
+                    <>
+                      <DropdownMenuItem asChild>
+                        <Link href="/map" className="gap-2">
+                          <MapPin size={16} />
+                          <span>Find Near Me</span>
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/patient/favorites" className="gap-2">
+                          <Star size={16} />
+                          <span>Favorites</span>
+                        </Link>
+                      </DropdownMenuItem>
+                    </>
                   )}
                   <DropdownMenuItem
                     className="gap-2 text-red-600"

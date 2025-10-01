@@ -40,6 +40,7 @@ import AboutUs from "@/pages/policies/AboutUs";
 import AdditionalPolicies from "@/pages/policies/AdditionalPolicies";
 import FAQs from "@/pages/help/FAQs";
 import ContactUs from "@/pages/help/ContactUs";
+import MapPage from "@/pages/map-page";
 
 // Wrap DoctorManagementPage with ProtectedRoute
 const ProtectedDoctorManagement = () => (
@@ -127,6 +128,7 @@ function Router() {
       <Route path="/patient/dashboard" component={PatientDashboard} />
       <Route path="/patient/clinics/:id" component={PatientClinicDetails} />
       <Route path="/patient/favorites" component={PatientFavorites} />
+      <Route path="/map" component={MapPage} />
       
       {/* Policy and Help Pages */}
       <Route path="/policies/privacy-policy" component={PrivacyPolicy} />
