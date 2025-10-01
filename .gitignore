@@ -42,5 +42,10 @@ dev-debug.log
 tasks.json
 tasks/ 
 
-# claude
+claude
 .claude
+
+# Development test files
+test-routemappy.*
+quick-test-routemappy.*
+image.png
