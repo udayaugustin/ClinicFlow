@@ -1,19 +1,27 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { MapPin, Navigation, AlertCircle, CheckCircle } from 'lucide-react';
+import { MapPin, Navigation, AlertCircle, CheckCircle, Settings } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useGeolocation } from '@/hooks/use-geolocation';
+import { LocationDiagnostics } from '@/components/location-diagnostics';
 
 export default function MapPage() {
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  
   const {
     status,
     position,
     error,
     isSupported,
     coordinates,
-    requestLocation
-  } = useGeolocation({ autoRequest: true });
+    requestLocation,
+    attemptInfo
+  } = useGeolocation({ 
+    autoRequest: true, 
+    minAccuracy: 500, // Accept locations within 500m for better accuracy
+    maxAttempts: 3 
+  });
 
 
   const renderLocationStatus = () => {
@@ -57,7 +65,11 @@ export default function MapPage() {
               </div>
               <CardTitle>Requesting Location...</CardTitle>
               <CardDescription>
-                Please allow location access in your browser
+                {attemptInfo ? (
+                  `Attempt ${attemptInfo.currentAttempt} of ${attemptInfo.maxAttempts} - Getting precise location...`
+                ) : (
+                  'Please allow location access in your browser'
+                )}
               </CardDescription>
             </CardHeader>
           </Card>
@@ -96,23 +108,72 @@ export default function MapPage() {
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <p className="text-sm font-medium text-muted-foreground">Accuracy</p>
-                        <p className="text-sm">{Math.round(coordinates.accuracy)} meters</p>
+                        <p className={`text-sm font-medium ${
+                          coordinates.accuracy <= 100 ? 'text-green-600' :
+                          coordinates.accuracy <= 500 ? 'text-yellow-600' :
+                          'text-red-600'
+                        }`}>
+                          {Math.round(coordinates.accuracy)} meters
+                          {coordinates.accuracy <= 100 && ' ✅'}
+                          {coordinates.accuracy > 100 && coordinates.accuracy <= 500 && ' ⚠️'}
+                          {coordinates.accuracy > 500 && ' ❌'}
+                        </p>
                       </div>
                       <div>
                         <p className="text-sm font-medium text-muted-foreground">Timestamp</p>
                         <p className="text-sm">{new Date(position.timestamp).toLocaleTimeString()}</p>
                       </div>
                     </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground">Attempts</p>
+                        <p className="text-sm">{attemptInfo.currentAttempt} / {attemptInfo.maxAttempts}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground">Quality</p>
+                        <p className={`text-sm font-medium ${
+                          coordinates.accuracy <= 100 ? 'text-green-600' :
+                          coordinates.accuracy <= 500 ? 'text-yellow-600' :
+                          'text-red-600'
+                        }`}>
+                          {coordinates.accuracy <= 100 ? 'Excellent' :
+                           coordinates.accuracy <= 500 ? 'Good' :
+                           'Poor'}
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 )}
-                <Button 
-                  onClick={requestLocation} 
-                  variant="outline" 
-                  className="mt-4"
-                >
-                  <Navigation className="mr-2 h-4 w-4" />
-                  Refresh Location
-                </Button>
+
+                {coordinates && coordinates.accuracy > 1000 && (
+                  <Alert className="mt-4">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>
+                      Poor location accuracy detected ({Math.round(coordinates.accuracy)}m). 
+                      This suggests GPS issues.
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                <div className="flex gap-2 mt-4">
+                  <Button 
+                    onClick={requestLocation} 
+                    variant="outline"
+                  >
+                    <Navigation className="mr-2 h-4 w-4" />
+                    Refresh Location
+                  </Button>
+                  
+                  {coordinates && coordinates.accuracy > 1000 && (
+                    <Button 
+                      onClick={() => setShowDiagnostics(!showDiagnostics)} 
+                      variant="outline"
+                    >
+                      <Settings className="mr-2 h-4 w-4" />
+                      Run Diagnostics
+                    </Button>
+                  )}
+                </div>
               </CardContent>
             </Card>
             
@@ -180,6 +241,13 @@ export default function MapPage() {
       </div>
       
       {renderLocationStatus()}
+      
+      {/* Diagnostics Section */}
+      {showDiagnostics && (
+        <div className="mt-8">
+          <LocationDiagnostics />
+        </div>
+      )}
     </div>
   );
 }
