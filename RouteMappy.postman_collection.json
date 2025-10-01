@@ -1,0 +1,154 @@
+{
+	"info": {
+		"_postman_id": "d4b99c50-52ff-4365-bb66-bdeaf34ffd65",
+		"name": "RouteMappy",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "44994555"
+	},
+	"item": [
+		{
+			"name": "GeoCode",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "https://api.routemappy.com/geocode?lat=37.33233140999172&lon=-122.0312186000035&key=enter_your_key",
+					"protocol": "https",
+					"host": [
+						"api",
+						"routemappy",
+						"com"
+					],
+					"path": [
+						"geocode"
+					],
+					"query": [
+						{
+							"key": "lat",
+							"value": "37.33233140999172"
+						},
+						{
+							"key": "lon",
+							"value": "-122.0312186000035"
+						},
+						{
+							"key": "key",
+							"value": "enter_your_key"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Nearest",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "https://api.routemappy.com/nearest?q=Madurai&key=enter_your_key&lat=9.908864584697607&lon=78.11492277881948",
+					"protocol": "https",
+					"host": [
+						"api",
+						"routemappy",
+						"com"
+					],
+					"path": [
+						"nearest"
+					],
+					"query": [
+						{
+							"key": "q",
+							"value": "Madurai"
+						},
+						{
+							"key": "key",
+							"value": "enter_your_key"
+						},
+						{
+							"key": "lat",
+							"value": "9.908864584697607"
+						},
+						{
+							"key": "lon",
+							"value": "78.11492277881948"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "AutoComplete",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "https://api.routemappy.com/autocomplete?q=Madurai&key=enter_your_key&lat=9.908864584697607&lon=78.11492277881948",
+					"protocol": "https",
+					"host": [
+						"api",
+						"routemappy",
+						"com"
+					],
+					"path": [
+						"autocomplete"
+					],
+					"query": [
+						{
+							"key": "q",
+							"value": "Madurai"
+						},
+						{
+							"key": "key",
+							"value": "enter_your_key"
+						},
+						{
+							"key": "lat",
+							"value": "9.908864584697607"
+						},
+						{
+							"key": "lon",
+							"value": "78.11492277881948"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Direction",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "https://api.routemappy.com/route?from=9.89736553888159, 77.98943831860285&to=9.984951029111834, 78.25448346787954&key=enter_your_key",
+					"protocol": "https",
+					"host": [
+						"api",
+						"routemappy",
+						"com"
+					],
+					"path": [
+						"route"
+					],
+					"query": [
+						{
+							"key": "from",
+							"value": "9.89736553888159, 77.98943831860285"
+						},
+						{
+							"key": "to",
+							"value": "9.984951029111834, 78.25448346787954"
+						},
+						{
+							"key": "key",
+							"value": "enter_your_key"
+						}
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}
