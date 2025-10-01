@@ -14,6 +14,8 @@ export const clinics = pgTable("clinics", {
   description: text("description"),
   phone: varchar("phone", { length: 20 }),
   email: varchar("email", { length: 255 }),
+  latitude: decimal("latitude", { precision: 10, scale: 8 }),
+  longitude: decimal("longitude", { precision: 11, scale: 8 }),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
