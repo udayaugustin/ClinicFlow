@@ -21,7 +21,8 @@
     "create-test-doctor": "tsx server/create-test-doctor.ts",
     "assign-doctor-to-attender": "tsx server/assign-doctor-to-attender.ts",
     "create-test-patient": "tsx server/create-test-patient.ts",
-    "seed-data": "tsx server/seed-data.ts"
+    "seed-data": "tsx server/seed-data.ts",
+    "add-chennai-hospitals": "tsx scripts/add-chennai-hospitals.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
