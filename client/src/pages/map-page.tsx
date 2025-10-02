@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { MapPin, Navigation, AlertCircle, CheckCircle, Settings } from 'lucide-react';
+import { MapPin, Navigation, AlertCircle, CheckCircle, Settings, AlertTriangle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useGeolocation } from '@/hooks/use-geolocation';
 import { LocationDiagnostics } from '@/components/location-diagnostics';
+import { LeafletMap } from '@/components/ui/leaflet-map';
+import { useNearbyClinics } from '@/hooks/use-nearby-clinics';
 
 export default function MapPage() {
   const [showDiagnostics, setShowDiagnostics] = useState(false);
@@ -22,6 +24,36 @@ export default function MapPage() {
     minAccuracy: 500, // Accept locations within 500m for better accuracy
     maxAttempts: 3 
   });
+
+  // Fetch nearby clinics (5-10km range)
+  const {
+    clinics: nearbyClinics,
+    loading: clinicsLoading,
+    error: clinicsError,
+    fetchClinics,
+    count: clinicsCount
+  } = useNearbyClinics({ 
+    radius: 10 // 10km radius, but filtered to 5-10km in backend
+  });
+
+  // Store last fetched location to prevent infinite loops
+  const [lastFetchedLocation, setLastFetchedLocation] = React.useState<{lat: number, lng: number} | null>(null);
+
+  // Fetch clinics when location is detected
+  React.useEffect(() => {
+    if (coordinates && status === 'granted') {
+      // Only fetch if location has changed significantly (more than 100m)
+      const hasLocationChanged = !lastFetchedLocation || 
+        Math.abs(coordinates.latitude - lastFetchedLocation.lat) > 0.001 ||
+        Math.abs(coordinates.longitude - lastFetchedLocation.lng) > 0.001;
+      
+      if (hasLocationChanged) {
+        console.log('🗺️ Location detected, fetching nearby clinics...');
+        fetchClinics(coordinates.latitude, coordinates.longitude, 10);
+        setLastFetchedLocation({ lat: coordinates.latitude, lng: coordinates.longitude });
+      }
+    }
+  }, [coordinates, status]); // Remove fetchClinics from dependencies
 
 
   const renderLocationStatus = () => {
@@ -177,18 +209,104 @@ export default function MapPage() {
               </CardContent>
             </Card>
             
-            {/* Placeholder for future map and search results */}
+            {/* OpenStreetMap Display */}
             <Card>
               <CardHeader>
-                <CardTitle>Search Results</CardTitle>
+                <CardTitle>Healthcare Map</CardTitle>
                 <CardDescription>
-                  Nearby hospitals and clinics will appear here
+                  Interactive map showing your location and nearby healthcare facilities
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <p className="text-muted-foreground text-center py-8">
-                  🔍 Feature coming soon: Find ENT specialists within 5-10 km
-                </p>
+                <div className="h-96 w-full">
+                  <LeafletMap
+                    center={coordinates ? [coordinates.latitude, coordinates.longitude] : [13.0827, 80.2707]}
+                    zoom={14}
+                    height="100%"
+                    showCurrentLocation={true}
+                    currentLocation={coordinates ? [coordinates.latitude, coordinates.longitude] : undefined}
+                    hospitals={nearbyClinics.map(clinic => ({
+                      id: clinic.id,
+                      name: clinic.name,
+                      latitude: clinic.latitude,
+                      longitude: clinic.longitude,
+                      address: `${clinic.address}, ${clinic.city}`,
+                      rating: undefined, // Real rating data would come from reviews/feedback
+                      distance: clinic.distance,
+                      phone: clinic.phone,
+                      openingHours: clinic.openingHours
+                    }))}
+                    onMapReady={(map) => {
+                      console.log('Map is ready!', map);
+                      console.log(`Displaying ${clinicsCount} clinics on map`);
+                    }}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Nearby Clinics Results */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span>Nearby Clinics (5-10km)</span>
+                  {clinicsLoading && (
+                    <div className="animate-pulse text-sm text-muted-foreground">Loading...</div>
+                  )}
+                </CardTitle>
+                <CardDescription>
+                  {clinicsCount > 0 ? 
+                    `Found ${clinicsCount} clinic${clinicsCount !== 1 ? 's' : ''} within 5-10km of your location` :
+                    clinicsLoading ? 'Searching for nearby clinics...' :
+                    clinicsError ? 'Unable to load nearby clinics' :
+                    'No clinics found in the 5-10km range'
+                  }
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {clinicsError ? (
+                  <Alert className="border-red-200 bg-red-50">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertDescription>
+                      {clinicsError}
+                    </AlertDescription>
+                  </Alert>
+                ) : clinicsLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                    <span className="ml-2 text-muted-foreground">Finding nearby clinics...</span>
+                  </div>
+                ) : clinicsCount > 0 ? (
+                  <div className="space-y-3">
+                    {nearbyClinics.slice(0, 5).map((clinic) => (
+                      <div key={clinic.id} className="flex items-center justify-between p-3 border rounded-lg">
+                        <div>
+                          <h4 className="font-medium">{clinic.name}</h4>
+                          <p className="text-sm text-muted-foreground">{clinic.address}, {clinic.city}</p>
+                          <p className="text-xs text-green-600 font-medium">{clinic.distance.toFixed(1)} km away</p>
+                        </div>
+                        <Button variant="outline" size="sm">
+                          View Doctors
+                        </Button>
+                      </div>
+                    ))}
+                    {clinicsCount > 5 && (
+                      <p className="text-sm text-muted-foreground text-center pt-2">
+                        And {clinicsCount - 5} more clinic{clinicsCount - 5 !== 1 ? 's' : ''} on the map
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <MapPin className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-muted-foreground">
+                      No clinics found within 5-10km range.
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-2">
+                      Try refreshing your location or expanding the search radius.
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>

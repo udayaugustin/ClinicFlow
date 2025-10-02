@@ -79,6 +79,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get nearby clinics within 5-10km radius
+  app.get("/api/clinics/nearby", async (req, res) => {
+    const { lat, lng, radius } = req.query;
+
+    try {
+      if (!lat || !lng) {
+        return res.status(400).json({ 
+          success: false,
+          message: 'Latitude and longitude are required',
+          example: '/api/clinics/nearby?lat=13.1194&lng=80.1625&radius=10'
+        });
+      }
+
+      const latitude = parseFloat(lat as string);
+      const longitude = parseFloat(lng as string);
+      const radiusInKm = radius ? parseFloat(radius as string) : 10;
+
+      // Enhanced validation
+      if (isNaN(latitude) || isNaN(longitude) || isNaN(radiusInKm)) {
+        console.error('Parsing error - lat:', lat, 'lng:', lng, 'radius:', radius);
+        return res.status(400).json({ 
+          success: false,
+          message: 'Invalid latitude, longitude, or radius values',
+          received: { lat, lng, radius },
+          parsed: { latitude, longitude, radiusInKm }
+        });
+      }
+
+      // Validate reasonable ranges
+      if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180 || radiusInKm < 0 || radiusInKm > 100) {
+        return res.status(400).json({ 
+          success: false,
+          message: 'Values out of valid range',
+          constraints: 'Latitude: -90 to 90, Longitude: -180 to 180, Radius: 0 to 100km'
+        });
+      }
+
+      console.log(`🔍 Searching for clinics near ${latitude}, ${longitude} within ${radiusInKm}km`);
+      const clinics = await storage.getClinicsNearLocation(latitude, longitude, radiusInKm);
+      
+      res.json({
+        success: true,
+        count: clinics.length,
+        location: { latitude, longitude, radius: radiusInKm },
+        clinics
+      });
+    } catch (error) {
+      console.error('Error fetching nearby clinics:', error);
+      res.status(500).json({ 
+        success: false,
+        message: 'Failed to fetch nearby clinics',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
   app.get("/api/doctors/:id", async (req, res) => {
     try {
       const doctor = await storage.getDoctorWithClinic(parseInt(req.params.id));

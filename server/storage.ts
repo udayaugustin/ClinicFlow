@@ -111,6 +111,7 @@ export interface IStorage {
   getDoctorsBySpecialty(specialty: string): Promise<User[]>;
   getDoctorWithClinic(id: number): Promise<(User & { clinic?: Clinic }) | undefined>;
   getDoctorsNearLocation(lat: number, lng: number, radiusInMiles?: number): Promise<User[]>;
+  getClinicsNearLocation(lat: number, lng: number, radiusInKm?: number): Promise<(Clinic & { distance: number })[]>;
   getClinicAdmins(): Promise<(User & { clinic?: Clinic })[]>;
   getClinics(): Promise<Clinic[]>;
   getClinic(id: number): Promise<Clinic | undefined>;
@@ -571,6 +572,59 @@ export class DatabaseStorage implements IStorage {
         )
       )
       .orderBy(haversineDistance);
+  }
+
+  async getClinicsNearLocation(lat: number, lng: number, radiusInKm: number = 10): Promise<(Clinic & { distance: number })[]> {
+    try {
+      // Haversine formula to calculate distance in kilometers
+      const haversineDistanceKm = sql`
+        6371 * ACOS(
+          COS(RADIANS(${lat})) * 
+          COS(RADIANS(CAST(latitude AS FLOAT))) * 
+          COS(RADIANS(CAST(longitude AS FLOAT)) - RADIANS(${lng})) + 
+          SIN(RADIANS(${lat})) * 
+          SIN(RADIANS(CAST(latitude AS FLOAT)))
+        )`;
+
+      const results = await db
+        .select({
+          id: clinics.id,
+          name: clinics.name,
+          address: clinics.address,
+          city: clinics.city,
+          state: clinics.state,
+          zipCode: clinics.zipCode,
+          phone: clinics.phone,
+          email: clinics.email,
+          openingHours: clinics.openingHours,
+          description: clinics.description,
+          imageUrl: clinics.imageUrl,
+          latitude: clinics.latitude,
+          longitude: clinics.longitude,
+          createdAt: clinics.createdAt,
+          distance: haversineDistanceKm
+        })
+        .from(clinics)
+        .where(
+          and(
+            sql`${haversineDistanceKm} <= ${radiusInKm}`,
+            sql`${haversineDistanceKm} >= 5`, // Only show clinics 5-10km away
+            sql`latitude IS NOT NULL`,
+            sql`longitude IS NOT NULL`
+          )
+        )
+        .orderBy(haversineDistanceKm);
+
+      console.log(`Found ${results.length} clinics within ${radiusInKm}km (5-10km range)`);
+      
+      return results.map(result => ({
+        ...result,
+        distance: Number(result.distance) || 0
+      }));
+    } catch (error) {
+      console.error('Error in getClinicsNearLocation:', error);
+      throw error;
+    }
   }
 
   async getClinics(): Promise<Clinic[]> {
