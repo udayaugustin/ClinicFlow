@@ -79,7 +79,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get nearby clinics within 5-10km radius
+  // Get nearby clinics within specified radius (0-10km)
   app.get("/api/clinics/nearby", async (req, res) => {
     const { lat, lng, radius } = req.query;
 
@@ -131,6 +131,153 @@ export async function registerRoutes(app: Express): Promise<Server> {
         success: false,
         message: 'Failed to fetch nearby clinics',
         error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Get public configurations (no authentication required)
+  app.get("/api/configurations/public", async (req, res) => {
+    try {
+      const { category } = req.query;
+      
+      let configs;
+      if (category) {
+        configs = await storage.getConfigurationsByCategory(category as string);
+      } else {
+        configs = await storage.getAllConfigurations();
+      }
+
+      // Transform to simple key-value format for clients
+      const configMap: Record<string, any> = {};
+      configs.forEach(config => {
+        let value: any = config.configValue;
+        
+        // Parse values based on type
+        if (config.configType === 'boolean') {
+          value = config.configValue === 'true';
+        } else if (config.configType === 'number') {
+          value = parseFloat(config.configValue);
+        } else if (config.configType === 'json') {
+          try {
+            value = JSON.parse(config.configValue);
+          } catch (e) {
+            value = config.configValue;
+          }
+        }
+        
+        configMap[config.configKey] = value;
+      });
+
+      res.json({
+        success: true,
+        configurations: configMap
+      });
+    } catch (error) {
+      console.error('Error fetching public configurations:', error);
+      res.status(500).json({ 
+        success: false,
+        message: 'Failed to fetch configurations'
+      });
+    }
+  });
+
+  // Get all admin configurations (super admin only)
+  app.get("/api/admin/configurations", async (req, res) => {
+    if (!req.user || req.user.role !== 'super_admin') {
+      return res.status(403).json({ message: 'Access denied. Super admin only.' });
+    }
+
+    try {
+      const { category } = req.query;
+      
+      let configs;
+      if (category) {
+        configs = await storage.getConfigurationsByCategory(category as string);
+      } else {
+        configs = await storage.getAllConfigurations();
+      }
+
+      res.json({
+        success: true,
+        configurations: configs
+      });
+    } catch (error) {
+      console.error('Error fetching admin configurations:', error);
+      res.status(500).json({ 
+        success: false,
+        message: 'Failed to fetch configurations'
+      });
+    }
+  });
+
+  // Update configuration (super admin only)
+  app.put("/api/admin/configurations/:key", async (req, res) => {
+    if (!req.user || req.user.role !== 'super_admin') {
+      return res.status(403).json({ message: 'Access denied. Super admin only.' });
+    }
+
+    try {
+      const { key } = req.params;
+      const { value } = req.body;
+
+      if (value === undefined || value === null) {
+        return res.status(400).json({ 
+          success: false,
+          message: 'Value is required'
+        });
+      }
+
+      // Convert value to string for storage
+      const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
+
+      const updated = await storage.updateConfiguration(key, stringValue, req.user.id);
+
+      res.json({
+        success: true,
+        configuration: updated
+      });
+    } catch (error) {
+      console.error('Error updating configuration:', error);
+      res.status(500).json({ 
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to update configuration'
+      });
+    }
+  });
+
+  // Bulk update configurations (super admin only)
+  app.put("/api/admin/configurations", async (req, res) => {
+    if (!req.user || req.user.role !== 'super_admin') {
+      return res.status(403).json({ message: 'Access denied. Super admin only.' });
+    }
+
+    try {
+      const { configurations } = req.body;
+
+      if (!configurations || typeof configurations !== 'object') {
+        return res.status(400).json({ 
+          success: false,
+          message: 'Configurations object is required'
+        });
+      }
+
+      const results = [];
+      for (const [key, value] of Object.entries(configurations)) {
+        const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
+        const updated = await storage.updateConfiguration(key, stringValue, req.user.id);
+        results.push(updated);
+      }
+
+      res.json({
+        success: true,
+        updated: results.length,
+        configurations: results
+      });
+    } catch (error) {
+      console.error('Error bulk updating configurations:', error);
+      res.status(500).json({ 
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to update configurations'
       });
     }
   });

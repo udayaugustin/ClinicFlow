@@ -83,31 +83,10 @@ export function LeafletMap({
       map.setView(currentLocation, zoom);
     }
 
-    // Add hospital markers
+    // Add hospital markers using default Leaflet icon
     hospitals.forEach((hospital) => {
-      const hospitalIcon = L.divIcon({
-        className: 'hospital-marker',
-        html: `
-          <div style="
-            width: 24px; 
-            height: 24px; 
-            background-color: #dc2626; 
-            border: 2px solid white; 
-            border-radius: 4px; 
-            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 14px;
-            color: white;
-            font-weight: bold;
-          ">
-            ⚕
-          </div>
-        `,
-        iconSize: [28, 28],
-        iconAnchor: [14, 14],
-      });
+      // Use the default red pin marker icon
+      const hospitalIcon = new L.Icon.Default();
 
       const popupContent = `
         <div style="min-width: 220px;">

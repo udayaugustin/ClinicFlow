@@ -79,7 +79,7 @@ export function useNearbyClinics(options: UseNearbyClinicsOptions = {}): UseNear
         throw new Error(data.message || 'Failed to fetch clinics');
       }
 
-      console.log(`✅ Found ${data.count} clinics within 5-${radiusKm}km range:`, data.clinics);
+      console.log(`✅ Found ${data.count} clinics within 0-${radiusKm}km range:`, data.clinics);
 
       setClinics(data.clinics);
       setLastLocation({ lat, lng, radius: radiusKm });

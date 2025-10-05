@@ -25,7 +25,7 @@ export default function MapPage() {
     maxAttempts: 3 
   });
 
-  // Fetch nearby clinics (5-10km range)
+  // Fetch nearby clinics (0-10km range)
   const {
     clinics: nearbyClinics,
     loading: clinicsLoading,
@@ -33,7 +33,7 @@ export default function MapPage() {
     fetchClinics,
     count: clinicsCount
   } = useNearbyClinics({ 
-    radius: 10 // 10km radius, but filtered to 5-10km in backend
+    radius: 10 // 10km radius from user location
   });
 
   // Store last fetched location to prevent infinite loops
@@ -249,17 +249,17 @@ export default function MapPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
-                  <span>Nearby Clinics (5-10km)</span>
+                  <span>Nearby Clinics (0-10km)</span>
                   {clinicsLoading && (
                     <div className="animate-pulse text-sm text-muted-foreground">Loading...</div>
                   )}
                 </CardTitle>
                 <CardDescription>
                   {clinicsCount > 0 ? 
-                    `Found ${clinicsCount} clinic${clinicsCount !== 1 ? 's' : ''} within 5-10km of your location` :
+                    `Found ${clinicsCount} clinic${clinicsCount !== 1 ? 's' : ''} within 10km of your location` :
                     clinicsLoading ? 'Searching for nearby clinics...' :
                     clinicsError ? 'Unable to load nearby clinics' :
-                    'No clinics found in the 5-10km range'
+                    'No clinics found within 10km'
                   }
                 </CardDescription>
               </CardHeader>
@@ -300,7 +300,7 @@ export default function MapPage() {
                   <div className="text-center py-8">
                     <MapPin className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                     <p className="text-muted-foreground">
-                      No clinics found within 5-10km range.
+                      No clinics found within 10km.
                     </p>
                     <p className="text-sm text-muted-foreground mt-2">
                       Try refreshing your location or expanding the search radius.

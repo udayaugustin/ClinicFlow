@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { CalendarDays, Search, Clock, Calendar, Loader2, Star, StarOff } from "lucide-react";
+import { CalendarDays, Search, Clock, Calendar, Loader2, Star, StarOff, Navigation } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -20,9 +20,13 @@ export default function PatientClinicDetails() {
   // Get clinic ID from URL
   const [, params] = useRoute("/patient/clinics/:id");
   const clinicId = params?.id;
-  const [_, navigate] = useLocation();
+  const [location, navigate] = useLocation();
   const { toast } = useToast();
   const { user } = useAuth();
+  
+  // Get doctorId from URL query parameters
+  const urlParams = new URLSearchParams(location.split('?')[1]);
+  const doctorIdFromUrl = urlParams.get('doctorId');
 
   // Fetch clinic data from API
   const { data: clinic, isLoading: isClinicLoading, error: clinicError } = useQuery({
@@ -47,6 +51,16 @@ export default function PatientClinicDetails() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedDoctor, setSelectedDoctor] = useState<string | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<{ day: string, time: string } | null>(null);
+  
+  // Auto-select doctor from URL parameter when doctors data loads
+  useEffect(() => {
+    if (doctorIdFromUrl && doctors.length > 0 && !selectedDoctor) {
+      const doctorExists = doctors.some((doc: any) => doc.id === doctorIdFromUrl);
+      if (doctorExists) {
+        setSelectedDoctor(doctorIdFromUrl);
+      }
+    }
+  }, [doctorIdFromUrl, doctors, selectedDoctor]);
   
   // Track schedule status for notifications
   const previousScheduleData = useRef<any[]>([]);
@@ -561,7 +575,21 @@ export default function PatientClinicDetails() {
               <h1 className="text-3xl font-bold">{clinic.name}</h1>
               <NavigationButtons />
             </div>
-            <p className="text-muted-foreground mt-2">{clinic.address}</p>
+            <div className="flex items-start gap-2 mt-2">
+              <p className="text-muted-foreground flex-1">{clinic.address}</p>
+              <Button 
+                variant="outline" 
+                size="sm"
+                className="flex items-center gap-2 shrink-0"
+                onClick={() => {
+                  const address = encodeURIComponent(`${clinic.address}, ${clinic.city || ''}, ${clinic.state || ''}`);
+                  window.open(`https://www.google.com/maps/search/?api=1&query=${address}`, '_blank');
+                }}
+              >
+                <Navigation className="h-4 w-4" />
+                Navigate
+              </Button>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
               <div>
                 <h3 className="font-medium">Contact Information</h3>

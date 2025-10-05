@@ -11,6 +11,7 @@ import {
   notifications,
   otpVerifications,
   loginAttempts,
+  adminConfigurations,
   type User,
   type AttenderDoctor,
   type InsertUser,
@@ -23,6 +24,8 @@ import {
   type InsertPatientFavorite,
   type OtpVerification,
   type InsertOtpVerification,
+  type AdminConfiguration,
+  type InsertAdminConfiguration,
 } from "@shared/schema";
 import { eq, or, and, sql, inArray, lte, gte, count, not, gt, lt, getTableColumns, isNotNull ,ne } from "drizzle-orm";
 import { db } from "./db";
@@ -576,51 +579,75 @@ export class DatabaseStorage implements IStorage {
 
   async getClinicsNearLocation(lat: number, lng: number, radiusInKm: number = 10): Promise<(Clinic & { distance: number })[]> {
     try {
-      // Haversine formula to calculate distance in kilometers
-      const haversineDistanceKm = sql`
-        6371 * ACOS(
-          COS(RADIANS(${lat})) * 
-          COS(RADIANS(CAST(latitude AS FLOAT))) * 
-          COS(RADIANS(CAST(longitude AS FLOAT)) - RADIANS(${lng})) + 
-          SIN(RADIANS(${lat})) * 
-          SIN(RADIANS(CAST(latitude AS FLOAT)))
-        )`;
-
-      const results = await db
-        .select({
-          id: clinics.id,
-          name: clinics.name,
-          address: clinics.address,
-          city: clinics.city,
-          state: clinics.state,
-          zipCode: clinics.zipCode,
-          phone: clinics.phone,
-          email: clinics.email,
-          openingHours: clinics.openingHours,
-          description: clinics.description,
-          imageUrl: clinics.imageUrl,
-          latitude: clinics.latitude,
-          longitude: clinics.longitude,
-          createdAt: clinics.createdAt,
-          distance: haversineDistanceKm
-        })
-        .from(clinics)
-        .where(
-          and(
-            sql`${haversineDistanceKm} <= ${radiusInKm}`,
-            sql`${haversineDistanceKm} >= 5`, // Only show clinics 5-10km away
-            sql`latitude IS NOT NULL`,
-            sql`longitude IS NOT NULL`
-          )
-        )
-        .orderBy(haversineDistanceKm);
-
-      console.log(`Found ${results.length} clinics within ${radiusInKm}km (5-10km range)`);
+      console.log(`Searching for clinics near ${lat}, ${lng} within ${radiusInKm}km`);
       
-      return results.map(result => ({
-        ...result,
-        distance: Number(result.distance) || 0
-      }));
+      // Test with a simpler approach first - just get all clinics
+      console.log('Attempting to fetch all clinics...');
+      const allClinics = await db.select().from(clinics);
+      console.log(`Successfully fetched ${allClinics.length} total clinics`);
+      
+      // Filter clinics that have valid coordinates and calculate distances
+      const clinicsWithDistance: any[] = [];
+      
+      for (const clinic of allClinics) {
+        // Check if clinic has coordinates
+        if (!clinic.latitude || !clinic.longitude) {
+          console.log(`Skipping clinic ${clinic.name} - no coordinates`);
+          continue;
+        }
+        
+        const clinicLat = parseFloat(clinic.latitude.toString());
+        const clinicLng = parseFloat(clinic.longitude.toString());
+        
+        if (isNaN(clinicLat) || isNaN(clinicLng)) {
+          console.log(`Skipping clinic ${clinic.name} - invalid coordinates: ${clinic.latitude}, ${clinic.longitude}`);
+          continue;
+        }
+        
+        // Calculate distance using Haversine formula
+        const R = 6371; // Earth's radius in kilometers
+        const dLat = (clinicLat - lat) * Math.PI / 180;
+        const dLng = (clinicLng - lng) * Math.PI / 180;
+        const a = 
+          Math.sin(dLat/2) * Math.sin(dLat/2) +
+          Math.cos(lat * Math.PI / 180) * Math.cos(clinicLat * Math.PI / 180) *
+          Math.sin(dLng/2) * Math.sin(dLng/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        const distance = R * c;
+        
+        console.log(`🏥 Clinic "${clinic.name}" at ${clinicLat}, ${clinicLng} is ${distance.toFixed(2)}km away`);
+        
+        // Include clinics within the 0-10km range (changed from 5-10km)
+        if (distance >= 0 && distance <= radiusInKm) {
+          console.log(`✅ Including clinic "${clinic.name}" (${distance.toFixed(2)}km)`);
+          clinicsWithDistance.push({
+            id: clinic.id,
+            name: clinic.name,
+            address: clinic.address,
+            city: clinic.city,
+            state: clinic.state,
+            zipCode: clinic.zipCode,
+            phone: clinic.phone,
+            email: clinic.email,
+            openingHours: clinic.openingHours,
+            description: clinic.description,
+            imageUrl: clinic.imageUrl,
+            createdAt: clinic.createdAt,
+            latitude: clinicLat,
+            longitude: clinicLng,
+            distance: distance
+          });
+        } else {
+          console.log(`❌ Excluding clinic "${clinic.name}" (${distance.toFixed(2)}km) - outside 0-${radiusInKm}km range`);
+        }
+      }
+      
+      // Sort by distance
+      clinicsWithDistance.sort((a, b) => a.distance - b.distance);
+      
+      console.log(`Found ${clinicsWithDistance.length} clinics within 0-${radiusInKm}km range (updated from 5-10km)`);
+      
+      return clinicsWithDistance;
     } catch (error) {
       console.error('Error in getClinicsNearLocation:', error);
       throw error;
@@ -828,7 +855,7 @@ export class DatabaseStorage implements IStorage {
             eq(users.role, "doctor"),
             or(
               sql`LOWER(${users.specialty}) = LOWER(${specialty})`,
-              sql`LOWER(${users.specialty}) LIKE LOWER(${specialty + '%'})`
+              sql`LOWER(${users.specialty}) LIKE LOWER(${'%' + specialty + '%'})`
             )
           )
         )
@@ -837,7 +864,8 @@ export class DatabaseStorage implements IStorage {
             CASE 
               WHEN LOWER(${users.specialty}) = LOWER(${specialty}) THEN 1
               WHEN LOWER(${users.specialty}) LIKE LOWER(${specialty + '%'}) THEN 2
-              ELSE 3
+              WHEN LOWER(${users.specialty}) LIKE LOWER(${'%' + specialty + '%'}) THEN 3
+              ELSE 4
             END,
             ${users.name}
           `
@@ -1951,7 +1979,19 @@ export class DatabaseStorage implements IStorage {
   
   async getDoctorsByClinic(clinicId: number): Promise<User[]> {
     try {
-      const result = await db
+      // Get doctors assigned directly via users.clinic_id
+      const directDoctors = await db
+        .select()
+        .from(users)
+        .where(
+          and(
+            eq(users.role, 'doctor'),
+            eq(users.clinicId, clinicId)
+          )
+        );
+      
+      // Get doctors assigned via doctor_clinics junction table
+      const junctionDoctors = await db
         .select({
           doctor: users
         })
@@ -1959,7 +1999,14 @@ export class DatabaseStorage implements IStorage {
         .innerJoin(users, eq(doctorClinics.doctorId, users.id))
         .where(eq(doctorClinics.clinicId, clinicId));
       
-      return result.map(r => r.doctor);
+      // Combine both results and remove duplicates by ID
+      const allDoctors = [...directDoctors, ...junctionDoctors.map(r => r.doctor)];
+      const uniqueDoctors = Array.from(
+        new Map(allDoctors.map(doctor => [doctor.id, doctor])).values()
+      );
+      
+      console.log(`Found ${uniqueDoctors.length} doctors for clinic ${clinicId}`);
+      return uniqueDoctors;
     } catch (error) {
       console.error('Error fetching clinic doctors:', error);
       throw error;
@@ -4540,6 +4587,86 @@ export class DatabaseStorage implements IStorage {
       };
     } catch (error) {
       console.error('Error fetching super admin dashboard metrics:', error);
+      throw error;
+    }
+  }
+
+  // Admin Configuration methods
+  async getConfiguration(key: string): Promise<AdminConfiguration | undefined> {
+    try {
+      const [config] = await db
+        .select()
+        .from(adminConfigurations)
+        .where(eq(adminConfigurations.configKey, key))
+        .limit(1);
+      return config;
+    } catch (error) {
+      console.error(`Error fetching configuration for key ${key}:`, error);
+      throw error;
+    }
+  }
+
+  async getConfigurationsByCategory(category: string): Promise<AdminConfiguration[]> {
+    try {
+      const configs = await db
+        .select()
+        .from(adminConfigurations)
+        .where(eq(adminConfigurations.category, category));
+      return configs;
+    } catch (error) {
+      console.error(`Error fetching configurations for category ${category}:`, error);
+      throw error;
+    }
+  }
+
+  async getAllConfigurations(): Promise<AdminConfiguration[]> {
+    try {
+      const configs = await db
+        .select()
+        .from(adminConfigurations);
+      return configs;
+    } catch (error) {
+      console.error('Error fetching all configurations:', error);
+      throw error;
+    }
+  }
+
+  async updateConfiguration(
+    key: string, 
+    value: string, 
+    updatedBy?: number
+  ): Promise<AdminConfiguration> {
+    try {
+      const [updated] = await db
+        .update(adminConfigurations)
+        .set({ 
+          configValue: value,
+          updatedBy: updatedBy,
+          updatedAt: new Date()
+        })
+        .where(eq(adminConfigurations.configKey, key))
+        .returning();
+
+      if (!updated) {
+        throw new Error(`Configuration with key ${key} not found`);
+      }
+
+      return updated;
+    } catch (error) {
+      console.error(`Error updating configuration ${key}:`, error);
+      throw error;
+    }
+  }
+
+  async createConfiguration(config: InsertAdminConfiguration): Promise<AdminConfiguration> {
+    try {
+      const [created] = await db
+        .insert(adminConfigurations)
+        .values(config)
+        .returning();
+      return created;
+    } catch (error) {
+      console.error('Error creating configuration:', error);
       throw error;
     }
   }
