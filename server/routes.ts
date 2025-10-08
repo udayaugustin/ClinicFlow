@@ -8,6 +8,7 @@ import { insertDoctorDetailSchema, appointments } from "../shared/schema";
 import { z } from "zod";
 import { notificationService } from './services/notification';
 import { ETAService } from './services/eta';
+import { walletService } from './services/wallet';
 import { db } from './db';
 import { eq, and, sql } from 'drizzle-orm';
 import { scrypt, randomBytes } from "crypto";
@@ -2984,6 +2985,237 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fixing token numbers:", error);
       res.status(500).json({ message: "Failed to fix token numbers" });
+    }
+  });
+
+  // ================ WALLET API ENDPOINTS ================
+
+  // Get patient wallet balance
+  app.get("/api/wallet/balance", async (req, res) => {
+    if (!req.user || req.user.role !== 'patient') {
+      return res.status(403).json({ message: 'Only patients can access wallet' });
+    }
+
+    try {
+      const balance = await walletService.getWalletBalance(req.user.id);
+      res.json({ balance });
+    } catch (error) {
+      console.error('Error fetching wallet balance:', error);
+      res.status(500).json({ message: 'Failed to fetch wallet balance' });
+    }
+  });
+
+  // Get patient wallet summary with transactions and stats
+  app.get("/api/wallet/summary", async (req, res) => {
+    if (!req.user || req.user.role !== 'patient') {
+      return res.status(403).json({ message: 'Only patients can access wallet' });
+    }
+
+    try {
+      const summary = await walletService.getWalletSummary(req.user.id);
+      res.json(summary);
+    } catch (error) {
+      console.error('Error fetching wallet summary:', error);
+      res.status(500).json({ message: 'Failed to fetch wallet summary' });
+    }
+  });
+
+  // Get wallet transaction history
+  app.get("/api/wallet/transactions", async (req, res) => {
+    if (!req.user || req.user.role !== 'patient') {
+      return res.status(403).json({ message: 'Only patients can access wallet' });
+    }
+
+    try {
+      const limit = parseInt(req.query.limit as string) || 50;
+      const offset = parseInt(req.query.offset as string) || 0;
+      
+      const transactions = await walletService.getWalletTransactions(req.user.id, limit, offset);
+      res.json(transactions);
+    } catch (error) {
+      console.error('Error fetching wallet transactions:', error);
+      res.status(500).json({ message: 'Failed to fetch wallet transactions' });
+    }
+  });
+
+  // Admin endpoint: Credit/Debit patient wallet
+  app.post("/api/admin/wallet/transaction", async (req, res) => {
+    if (!req.user || !['super_admin', 'clinic_admin', 'hospital_admin'].includes(req.user.role)) {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
+    try {
+      const { patientId, amount, isCredit, reason } = req.body;
+      
+      if (!patientId || !amount || !reason) {
+        return res.status(400).json({ message: 'Patient ID, amount, and reason are required' });
+      }
+
+      if (amount <= 0) {
+        return res.status(400).json({ message: 'Amount must be positive' });
+      }
+
+      const transaction = await walletService.adminWalletTransaction(
+        patientId,
+        amount,
+        isCredit,
+        reason,
+        req.user.id
+      );
+
+      // Send notification to patient
+      await notificationService.createNotification({
+        userId: patientId,
+        appointmentId: null,
+        title: isCredit ? "Wallet Credited" : "Wallet Debited",
+        message: `₹${amount} has been ${isCredit ? 'added to' : 'deducted from'} your wallet. Reason: ${reason}`,
+        type: isCredit ? "wallet_credit" : "wallet_debit"
+      });
+
+      res.json(transaction);
+    } catch (error) {
+      console.error('Error processing admin wallet transaction:', error);
+      res.status(500).json({ message: error instanceof Error ? error.message : 'Failed to process transaction' });
+    }
+  });
+
+  // Process schedule cancellation refunds (Attender/Admin)
+  app.post("/api/schedules/:scheduleId/cancel-with-refunds", async (req, res) => {
+    if (!req.user || !['attender', 'clinic_admin', 'hospital_admin'].includes(req.user.role)) {
+      return res.status(403).json({ message: 'Attender or admin access required' });
+    }
+
+    try {
+      const scheduleId = parseInt(req.params.scheduleId);
+      const { cancelReason } = req.body;
+
+      if (!cancelReason) {
+        return res.status(400).json({ message: 'Cancel reason is required' });
+      }
+
+      // First, cancel the schedule
+      await storage.updateSchedule(scheduleId, { 
+        isActive: false, 
+        cancelReason,
+        status: 'cancelled'
+      });
+
+      // Process all refunds for this schedule
+      const refundResult = await walletService.processScheduleCancellationRefunds(
+        scheduleId,
+        cancelReason,
+        req.user.id
+      );
+
+      // Send schedule cancellation notifications
+      try {
+        await notificationService.notifyScheduleCancelled(scheduleId, cancelReason);
+      } catch (notifError) {
+        console.error('Error sending schedule cancellation notifications:', notifError);
+      }
+
+      res.json({
+        message: 'Schedule cancelled and refunds processed successfully',
+        refundedAppointments: refundResult.refundedAppointments,
+        totalRefundAmount: refundResult.totalRefundAmount,
+        details: refundResult.refundDetails
+      });
+    } catch (error) {
+      console.error('Error cancelling schedule with refunds:', error);
+      res.status(500).json({ message: error instanceof Error ? error.message : 'Failed to cancel schedule with refunds' });
+    }
+  });
+
+  // Process partial refunds when doctor leaves mid-session
+  app.post("/api/schedules/:scheduleId/partial-refunds", async (req, res) => {
+    if (!req.user || !['attender', 'clinic_admin', 'hospital_admin'].includes(req.user.role)) {
+      return res.status(403).json({ message: 'Attender or admin access required' });
+    }
+
+    try {
+      const scheduleId = parseInt(req.params.scheduleId);
+      const { completedAppointmentIds, cancelReason } = req.body;
+
+      if (!cancelReason || !Array.isArray(completedAppointmentIds)) {
+        return res.status(400).json({ message: 'Cancel reason and completed appointment IDs are required' });
+      }
+
+      // Process partial refunds
+      const refundResult = await walletService.processPartialRefund(
+        scheduleId,
+        completedAppointmentIds,
+        cancelReason,
+        req.user.id
+      );
+
+      res.json({
+        message: 'Partial refunds processed successfully',
+        refundedAppointments: refundResult.refundedAppointments,
+        totalRefundAmount: refundResult.totalRefundAmount,
+        details: refundResult.refundDetails
+      });
+    } catch (error) {
+      console.error('Error processing partial refunds:', error);
+      res.status(500).json({ message: error instanceof Error ? error.message : 'Failed to process partial refunds' });
+    }
+  });
+
+  // Mark patient as no-show (no refund)
+  app.post("/api/appointments/:appointmentId/no-show", async (req, res) => {
+    if (!req.user || !['attender', 'clinic_admin', 'hospital_admin'].includes(req.user.role)) {
+      return res.status(403).json({ message: 'Attender or admin access required' });
+    }
+
+    try {
+      const appointmentId = parseInt(req.params.appointmentId);
+      const { notes } = req.body;
+
+      await walletService.markPatientNoShow(appointmentId, req.user.id, notes);
+
+      res.json({ message: 'Patient marked as no-show successfully' });
+    } catch (error) {
+      console.error('Error marking patient as no-show:', error);
+      res.status(500).json({ message: 'Failed to mark patient as no-show' });
+    }
+  });
+
+  // Get wallet statistics for admin dashboard
+  app.get("/api/admin/wallet/stats", async (req, res) => {
+    if (!req.user || !['super_admin', 'clinic_admin', 'hospital_admin'].includes(req.user.role)) {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
+    try {
+      // Get wallet statistics from database
+      const stats = await db.execute(sql`
+        SELECT 
+          COUNT(pw.id) as total_wallets,
+          SUM(pw.balance::numeric) as total_balance,
+          SUM(pw.total_earned::numeric) as total_refunds_given,
+          SUM(pw.total_spent::numeric) as total_revenue,
+          COUNT(wt.id) as total_transactions
+        FROM patient_wallets pw
+        LEFT JOIN wallet_transactions wt ON pw.id = wt.wallet_id
+        WHERE pw.is_active = true
+      `);
+
+      const recentTransactions = await db.execute(sql`
+        SELECT 
+          wt.*,
+          u.name as patient_name
+        FROM wallet_transactions wt
+        JOIN users u ON wt.patient_id = u.id
+        ORDER BY wt.created_at DESC
+        LIMIT 20
+      `);
+
+      res.json({
+        stats: stats.rows[0] || {},
+        recentTransactions: recentTransactions.rows
+      });
+    } catch (error) {
+      console.error('Error fetching wallet stats:', error);
+      res.status(500).json({ message: 'Failed to fetch wallet statistics' });
     }
   });
 

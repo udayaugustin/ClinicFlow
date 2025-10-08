@@ -125,6 +125,14 @@ export const appointments = pgTable("appointments", {
   estimatedStartTime: timestamp("estimated_start_time"),
   actualStartTime: timestamp("actual_start_time"),
   actualEndTime: timestamp("actual_end_time"),
+  // Wallet and Payment fields
+  consultationFee: decimal("consultation_fee", { precision: 10, scale: 2 }).default("0.00"),
+  isPaid: boolean("is_paid").default(false),
+  paymentMethod: varchar("payment_method", { length: 50 }).default("wallet"), // wallet, cash, card, etc.
+  walletTransactionId: integer("wallet_transaction_id").references(() => walletTransactions.id),
+  isRefundEligible: boolean("is_refund_eligible").default(true),
+  hasBeenRefunded: boolean("has_been_refunded").default(false),
+  refundAmount: decimal("refund_amount", { precision: 10, scale: 2 }).default("0.00"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
@@ -185,6 +193,69 @@ export const otpVerifications = pgTable("otp_verifications", {
   expiresAt: timestamp("expires_at").notNull(),
   verified: boolean("verified").default(false),
   verificationAttempts: integer("verification_attempts").default(0),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+});
+
+// Patient Wallet System
+export const patientWallets = pgTable("patient_wallets", {
+  id: serial("id").primaryKey(),
+  patientId: integer("patient_id").notNull().references(() => users.id),
+  balance: decimal("balance", { precision: 10, scale: 2 }).notNull().default("0.00"),
+  totalEarned: decimal("total_earned", { precision: 10, scale: 2 }).notNull().default("0.00"), // Total refunds received
+  totalSpent: decimal("total_spent", { precision: 10, scale: 2 }).notNull().default("0.00"), // Total spent on appointments
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
+});
+
+// Wallet Transaction Types
+export const walletTransactionTypes = [
+  "appointment_payment",    // Money deducted for booking appointment
+  "refund_schedule_cancel", // Refund due to schedule cancellation
+  "refund_doctor_absent",   // Refund due to doctor not arriving
+  "partial_refund",         // Partial refund when doctor leaves mid-session
+  "admin_credit",           // Manual credit by admin
+  "admin_debit",            // Manual debit by admin
+  "wallet_topup",           // Patient adds money to wallet
+  "withdrawal"              // Patient withdraws money from wallet
+] as const;
+
+export type WalletTransactionType = typeof walletTransactionTypes[number];
+
+export const walletTransactions = pgTable("wallet_transactions", {
+  id: serial("id").primaryKey(),
+  walletId: integer("wallet_id").notNull().references(() => patientWallets.id),
+  patientId: integer("patient_id").notNull().references(() => users.id),
+  appointmentId: integer("appointment_id").references(() => appointments.id),
+  scheduleId: integer("schedule_id").references(() => doctorSchedules.id),
+  transactionType: varchar("transaction_type", { length: 50 }).notNull(),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  previousBalance: decimal("previous_balance", { precision: 10, scale: 2 }).notNull(),
+  newBalance: decimal("new_balance", { precision: 10, scale: 2 }).notNull(),
+  description: text("description").notNull(),
+  referenceId: varchar("reference_id", { length: 100 }), // For external payment references
+  processedBy: integer("processed_by").references(() => users.id), // Admin/system who processed
+  status: varchar("status", { length: 20 }).default("completed"), // completed, pending, failed
+  metadata: text("metadata"), // JSON field for additional data
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+});
+
+// Refund Tracking for Appointments
+export const appointmentRefunds = pgTable("appointment_refunds", {
+  id: serial("id").primaryKey(),
+  appointmentId: integer("appointment_id").notNull().references(() => appointments.id),
+  patientId: integer("patient_id").notNull().references(() => users.id),
+  scheduleId: integer("schedule_id").notNull().references(() => doctorSchedules.id),
+  doctorId: integer("doctor_id").notNull().references(() => users.id),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id),
+  originalAmount: decimal("original_amount", { precision: 10, scale: 2 }).notNull(),
+  refundAmount: decimal("refund_amount", { precision: 10, scale: 2 }).notNull(),
+  refundReason: varchar("refund_reason", { length: 100 }).notNull(),
+  refundType: varchar("refund_type", { length: 50 }).notNull(), // full, partial, none
+  walletTransactionId: integer("wallet_transaction_id").references(() => walletTransactions.id),
+  processedBy: integer("processed_by").notNull().references(() => users.id),
+  processedAt: timestamp("processed_at").default(sql`CURRENT_TIMESTAMP`),
+  notes: text("notes"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
@@ -335,6 +406,69 @@ export const notificationsRelations = relations(notifications, ({ one }) => ({
   }),
 }));
 
+// Wallet Relations
+export const patientWalletsRelations = relations(patientWallets, ({ one, many }) => ({
+  patient: one(users, {
+    fields: [patientWallets.patientId],
+    references: [users.id],
+  }),
+  transactions: many(walletTransactions),
+}));
+
+export const walletTransactionsRelations = relations(walletTransactions, ({ one }) => ({
+  wallet: one(patientWallets, {
+    fields: [walletTransactions.walletId],
+    references: [patientWallets.id],
+  }),
+  patient: one(users, {
+    fields: [walletTransactions.patientId],
+    references: [users.id],
+  }),
+  appointment: one(appointments, {
+    fields: [walletTransactions.appointmentId],
+    references: [appointments.id],
+  }),
+  schedule: one(doctorSchedules, {
+    fields: [walletTransactions.scheduleId],
+    references: [doctorSchedules.id],
+  }),
+  processedByUser: one(users, {
+    fields: [walletTransactions.processedBy],
+    references: [users.id],
+  }),
+}));
+
+export const appointmentRefundsRelations = relations(appointmentRefunds, ({ one }) => ({
+  appointment: one(appointments, {
+    fields: [appointmentRefunds.appointmentId],
+    references: [appointments.id],
+  }),
+  patient: one(users, {
+    fields: [appointmentRefunds.patientId],
+    references: [users.id],
+  }),
+  schedule: one(doctorSchedules, {
+    fields: [appointmentRefunds.scheduleId],
+    references: [doctorSchedules.id],
+  }),
+  doctor: one(users, {
+    fields: [appointmentRefunds.doctorId],
+    references: [users.id],
+  }),
+  clinic: one(clinics, {
+    fields: [appointmentRefunds.clinicId],
+    references: [clinics.id],
+  }),
+  walletTransaction: one(walletTransactions, {
+    fields: [appointmentRefunds.walletTransactionId],
+    references: [walletTransactions.id],
+  }),
+  processedByUser: one(users, {
+    fields: [appointmentRefunds.processedBy],
+    references: [users.id],
+  }),
+}));
+
 export const insertUserSchema = createInsertSchema(users);
 export const insertClinicSchema = createInsertSchema(clinics);
 export const insertAppointmentSchema = createInsertSchema(appointments);
@@ -356,6 +490,18 @@ export const insertPatientFavoriteSchema = createInsertSchema(patientFavorites);
 export const insertNotificationSchema = createInsertSchema(notifications);
 export const insertOtpVerificationSchema = createInsertSchema(otpVerifications);
 
+// Wallet Schema Validations
+export const insertPatientWalletSchema = createInsertSchema(patientWallets);
+export const insertWalletTransactionSchema = createInsertSchema(walletTransactions, {
+  amount: z.number().positive(),
+  transactionType: z.enum(walletTransactionTypes),
+});
+export const insertAppointmentRefundSchema = createInsertSchema(appointmentRefunds, {
+  originalAmount: z.number().positive(),
+  refundAmount: z.number().min(0),
+  refundType: z.enum(['full', 'partial', 'none']),
+});
+
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type Clinic = typeof clinics.$inferSelect;
@@ -371,6 +517,14 @@ export type Notification = typeof notifications.$inferSelect;
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type OtpVerification = typeof otpVerifications.$inferSelect;
 export type InsertOtpVerification = z.infer<typeof insertOtpVerificationSchema>;
+
+// Wallet Types
+export type PatientWallet = typeof patientWallets.$inferSelect;
+export type InsertPatientWallet = z.infer<typeof insertPatientWalletSchema>;
+export type WalletTransaction = typeof walletTransactions.$inferSelect;
+export type InsertWalletTransaction = z.infer<typeof insertWalletTransactionSchema>;
+export type AppointmentRefund = typeof appointmentRefunds.$inferSelect;
+export type InsertAppointmentRefund = z.infer<typeof insertAppointmentRefundSchema>;
 
 export const specialties = [
   "Cardiologist",
