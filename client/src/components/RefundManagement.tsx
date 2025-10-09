@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Label } from "./ui/label";
@@ -9,6 +9,7 @@ import { Checkbox } from "./ui/checkbox";
 import { useToast } from "../hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { CreditCard, Hospital, Calendar, RefreshCw, CheckCircle } from "lucide-react";
+import { invalidateWalletQueries } from "@/utils/wallet-utils";
 
 interface Clinic {
   id: number;
@@ -29,6 +30,11 @@ interface CancelledSchedule {
 
 interface CancelledAppointment {
   id: number;
+  patientId: number;
+  consultationFee: string;
+  hasBeenRefunded?: boolean;
+  refundAmount?: string;
+  isEligibleForRefund?: boolean;
   serialNumber: number;
   patientName: string;
   mobileNumber: string;
@@ -46,6 +52,7 @@ export function RefundManagement() {
   const [selectedAppointments, setSelectedAppointments] = useState<Set<number>>(new Set());
   const [isProcessingRefund, setIsProcessingRefund] = useState(false);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   // Fetch all clinics
   const { data: clinics = [], isLoading: loadingClinics } = useQuery<Clinic[]>({
@@ -112,10 +119,9 @@ export function RefundManagement() {
   // Handle select all - only select appointments that are eligible for refund
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      // Only appointments with "cancel" status are eligible for refund
-      // Exclude "completed" (service delivered) and "no_show" (patient fault)
+      // Only select appointments that are marked as eligible for refund
       const eligibleAppointments = cancelledAppointments
-        .filter(appointment => appointment.tokenStatus === 'cancel')
+        .filter(appointment => appointment.isEligibleForRefund)
         .map(a => a.id);
       setSelectedAppointments(new Set(eligibleAppointments));
     } else {
@@ -137,21 +143,51 @@ export function RefundManagement() {
     setIsProcessingRefund(true);
     
     try {
-      // TODO: Implement actual refund processing
-      // For now, just show success message
-      
-      setTimeout(() => {
-        toast({
-          title: "Refund Success",
-          description: `Successfully processed refunds for ${selectedAppointments.size} cancelled appointment(s)`,
-          variant: "default",
+      // Process refunds for each selected appointment using admin wallet transaction endpoint
+      const refundPromises = Array.from(selectedAppointments).map(async (appointmentId) => {
+        const appointment = cancelledAppointments.find(a => a.id === appointmentId);
+        if (!appointment || !appointment.patientId) return; // Skip walk-in appointments (no patientId)
+        
+        const refundAmount = parseFloat(appointment.consultationFee || '21'); // Use actual fee or default to ₹21
+        
+        // Call admin wallet transaction API to credit consultation fee back to patient
+        const response = await apiRequest('POST', '/api/admin/wallet/transaction', {
+          patientId: appointment.patientId, // Use correct patient ID
+          amount: refundAmount, // Use actual consultation fee amount
+          isCredit: true,
+          reason: `Refund for cancelled appointment - Schedule: ${selectedSchedule}`
         });
         
-        // Clear selections and refresh data
-        setSelectedAppointments(new Set());
-        refetch();
-        setIsProcessingRefund(false);
-      }, 1500);
+        if (!response.ok) {
+          throw new Error(`Failed to process refund for appointment ${appointmentId}`);
+        }
+        
+        // Mark appointment as refunded in database
+        const markRefundedResponse = await apiRequest('PATCH', `/api/appointments/${appointmentId}/mark-refunded`, {
+          refundAmount: refundAmount
+        });
+        
+        if (!markRefundedResponse.ok) {
+          console.warn(`Failed to mark appointment ${appointmentId} as refunded, but wallet transaction succeeded`);
+        }
+        
+        return response.json();
+      });
+      
+      await Promise.all(refundPromises);
+      
+      toast({
+        title: "Refund Success",
+        description: `Successfully processed refunds for ${selectedAppointments.size} cancelled appointment(s)`,
+        variant: "default",
+      });
+      
+      // Invalidate wallet queries to refresh wallet balance across the app
+      invalidateWalletQueries(queryClient);
+      
+      // Clear selections and refresh data
+      setSelectedAppointments(new Set());
+      refetch();
       
     } catch (error) {
       console.error('Error processing refunds:', error);
@@ -160,6 +196,7 @@ export function RefundManagement() {
         description: "Failed to process refunds. Please try again.",
         variant: "destructive",
       });
+    } finally {
       setIsProcessingRefund(false);
     }
   };
@@ -382,17 +419,17 @@ export function RefundManagement() {
                         id="select-all"
                         checked={
                           cancelledAppointments.length > 0 && 
-                          cancelledAppointments.filter(a => a.tokenStatus === 'cancel').length > 0 &&
-                          selectedAppointments.size === cancelledAppointments.filter(a => a.tokenStatus === 'cancel').length
+                          cancelledAppointments.filter(a => a.isEligibleForRefund).length > 0 &&
+                          selectedAppointments.size === cancelledAppointments.filter(a => a.isEligibleForRefund).length
                         }
                         onCheckedChange={handleSelectAll}
                       />
                       <Label htmlFor="select-all" className="text-sm font-medium">
-                        Select All Eligible ({cancelledAppointments.filter(a => a.tokenStatus === 'cancel').length})
+                        Select All Eligible ({cancelledAppointments.filter(a => a.isEligibleForRefund).length})
                       </Label>
-                      {(cancelledAppointments.some(a => a.tokenStatus === 'completed') || cancelledAppointments.some(a => a.tokenStatus === 'no_show')) && (
+                      {cancelledAppointments.filter(a => !a.isEligibleForRefund).length > 0 && (
                         <span className="text-xs text-gray-500">
-                          • {cancelledAppointments.filter(a => a.tokenStatus === 'completed').length} completed, {cancelledAppointments.filter(a => a.tokenStatus === 'no_show').length} no-show (not eligible)
+                          • {cancelledAppointments.filter(a => a.tokenStatus === 'completed').length} completed, {cancelledAppointments.filter(a => a.tokenStatus === 'no_show').length} no-show, {cancelledAppointments.filter(a => a.hasBeenRefunded).length} already refunded (not eligible)
                         </span>
                       )}
                     </div>
@@ -423,13 +460,17 @@ export function RefundManagement() {
                         {cancelledAppointments.map((appointment) => (
                           <TableRow 
                             key={appointment.id} 
-                            className={`hover:bg-gray-50 ${appointment.tokenStatus !== 'cancel' ? 'bg-gray-50 opacity-60' : ''}`}
+                            className={`hover:bg-gray-50 ${
+                              !appointment.isEligibleForRefund
+                                ? 'bg-gray-50 opacity-60' 
+                                : ''
+                            }`}
                           >
                             <TableCell>
                               <Checkbox
                                 checked={selectedAppointments.has(appointment.id)}
                                 onCheckedChange={(checked) => handleAppointmentSelect(appointment.id, checked as boolean)}
-                                disabled={appointment.tokenStatus !== 'cancel'}
+                                disabled={!appointment.isEligibleForRefund}
                               />
                             </TableCell>
                             <TableCell className="font-medium text-center">{appointment.serialNumber}</TableCell>
@@ -459,7 +500,7 @@ export function RefundManagement() {
                                 </span>
                                 {appointment.tokenStatus === 'completed' && (
                                   <span className="text-xs text-gray-500">
-                                    (No refund needed)
+                                    (Service delivered - no refund)
                                   </span>
                                 )}
                                 {appointment.tokenStatus === 'no_show' && (
@@ -467,9 +508,14 @@ export function RefundManagement() {
                                     (Patient fault - not eligible)
                                   </span>
                                 )}
-                                {appointment.tokenStatus === 'cancel' && (
+                                {appointment.isEligibleForRefund && (
                                   <span className="text-xs text-green-600">
                                     (Eligible for refund)
+                                  </span>
+                                )}
+                                {appointment.hasBeenRefunded && (
+                                  <span className="text-xs text-blue-600">
+                                    (Already refunded: ₹{parseFloat(appointment.refundAmount || '0').toFixed(2)})
                                   </span>
                                 )}
                               </div>

@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { invalidateWalletQueries } from "@/utils/wallet-utils";
 import { Loader2 } from "lucide-react";
 import React from "react";
 
@@ -93,6 +94,8 @@ export default function BookingPage() {
       queryClient.invalidateQueries({ queryKey: ["user-appointments", doctorId] });
       // Invalidate schedules to update appointment counts
       queryClient.invalidateQueries({ queryKey: ["schedulesToday"] });
+      // Invalidate wallet queries to refresh wallet balance
+      invalidateWalletQueries(queryClient);
       toast({
         title: "Appointment Booked Successfully! ✅",
         description: "Your appointment has been confirmed. You cannot book another appointment with the same doctor.",

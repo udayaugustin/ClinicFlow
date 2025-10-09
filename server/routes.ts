@@ -373,16 +373,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      // Calculate platform fee + GST
+      const platformFee = 20.00; // ₹20 platform fee
+      const gstRate = 0.05; // 5% GST
+      const gstAmount = platformFee * gstRate; // ₹1
+      const totalAmount = platformFee + gstAmount; // ₹21 total
+
+      // Check if patient has sufficient wallet balance
+      const patientWallet = await storage.getPatientWallet(req.user.id);
+      if (!patientWallet || parseFloat(patientWallet.balance) < totalAmount) {
+        return res.status(400).json({ 
+          message: `Insufficient wallet balance. Required: ₹${totalAmount}, Available: ₹${patientWallet?.balance || 0}` 
+        });
+      }
+
       const appointmentData = {
         ...req.body,
         patientId: req.user.id,
         clinicId,
         date: appointmentDate,
         tokenNumber: req.body.tokenNumber, // This can be undefined and will be generated in storage
-        scheduleId: schedule.id
+        scheduleId: schedule.id,
+        consultationFee: totalAmount, // Store total amount as consultation fee
+        isPaid: true,
+        paymentMethod: 'wallet',
+        isRefundEligible: true
       };
 
-      const appointment = await storage.createAppointment(appointmentData);
+      // Create appointment and process wallet payment
+      const appointment = await storage.createAppointmentWithWalletPayment(
+        appointmentData, 
+        platformFee, 
+        gstAmount, 
+        totalAmount
+      );
       
       // Calculate initial ETA for the appointment
       try {
@@ -405,6 +429,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: 'Failed to create appointment' });
     }
   });
+
 
   app.patch("/api/appointments/:id/status", async (req, res) => {
     if (!req.user || !['attender', 'clinic_admin'].includes(req.user.role)) return res.sendStatus(403);
@@ -3176,6 +3201,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error marking patient as no-show:', error);
       res.status(500).json({ message: 'Failed to mark patient as no-show' });
+    }
+  });
+
+  // Mark appointment as refunded (for duplicate refund prevention)
+  app.patch("/api/appointments/:appointmentId/mark-refunded", async (req, res) => {
+    if (!req.user || !['super_admin', 'clinic_admin', 'hospital_admin'].includes(req.user.role)) {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
+    try {
+      const appointmentId = parseInt(req.params.appointmentId);
+      const { refundAmount } = req.body;
+
+      await storage.markAppointmentAsRefunded(appointmentId, refundAmount || 0);
+
+      res.json({ message: 'Appointment marked as refunded successfully' });
+    } catch (error) {
+      console.error('Error marking appointment as refunded:', error);
+      res.status(500).json({ message: 'Failed to mark appointment as refunded' });
     }
   });
 
