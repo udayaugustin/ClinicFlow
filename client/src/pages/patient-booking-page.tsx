@@ -15,6 +15,7 @@ import { AlertCircle, Clock, UserCheck, UserX, Building, Calendar as CalendarIco
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { NavigationButtons } from "@/components/navigation-buttons";
+import { invalidateWalletQueries } from "@/utils/wallet-utils";
 
 // Define types
 type Clinic = {
@@ -122,6 +123,8 @@ export default function PatientBookingPage() {
       queryClient.invalidateQueries({ queryKey: ["user-appointments", doctorId] });
       // Invalidate schedules to update appointment counts
       queryClient.invalidateQueries({ queryKey: ["schedulesToday"] });
+      // Invalidate wallet queries to refresh wallet balance
+      invalidateWalletQueries(queryClient);
       // Force an immediate refetch
       refetchSlots();
       toast({

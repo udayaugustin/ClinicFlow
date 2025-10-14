@@ -10,6 +10,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { format } from "date-fns";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { invalidateWalletQueries } from "@/utils/wallet-utils";
 
 type CreateAppointmentModalProps = {
   open: boolean;
@@ -113,6 +114,8 @@ export function CreateAppointmentModal({
       });
       queryClient.invalidateQueries({ queryKey: ["appointments"] });
       queryClient.invalidateQueries({ queryKey: ["token-count"] });
+      // Invalidate wallet queries to refresh wallet balance
+      invalidateWalletQueries(queryClient);
       onOpenChange(false);
       resetForm();
     },

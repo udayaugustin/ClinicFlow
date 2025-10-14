@@ -11,6 +11,7 @@ import {
 import { LogOut, User, Calendar, UserPlus, Clock, Star } from "lucide-react";
 import { NotificationPopover } from "./notifications/notification-popover";
 import { CompactNavigationButtons } from "./navigation-buttons";
+import { CompactWallet } from "./wallet/compact-wallet";
 import React from "react";
 
 export function NavHeader() {
@@ -80,12 +81,15 @@ export function NavHeader() {
                */}
               {/* Show favorites link for patients */}
               {user?.role === "patient" && (
-                <Button variant="ghost" asChild className="hidden md:flex">
-                  <Link href="/patient/favorites">
-                    <Star className="mr-2 h-4 w-4" />
-                    Favorites
-                  </Link>
-                </Button>
+                <>
+                  <Button variant="ghost" asChild className="hidden md:flex">
+                    <Link href="/patient/favorites">
+                      <Star className="mr-2 h-4 w-4" />
+                      Favorites
+                    </Link>
+                  </Button>
+                  <CompactWallet />
+                </>
               )}
               
               {/* Show notification bell for patients and doctors */}
