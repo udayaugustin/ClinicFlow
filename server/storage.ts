@@ -668,24 +668,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Comprehensive search functionality for patients
-  async searchByCity(cityName: string): Promise<any[]> {
+  async searchByCity(cityName: string, userLat?: number, userLng?: number): Promise<any[]> {
     try {
       // Get all clinics in the specified city
       const cityResults = await db
-        .select({
-          id: clinics.id,
-          name: clinics.name,
-          address: clinics.address,
-          city: clinics.city,
-          state: clinics.state,
-          phone: clinics.phone,
-          email: clinics.email,
-          openingHours: clinics.openingHours
-        })
+        .select()
         .from(clinics)
         .where(sql`LOWER(${clinics.city}) LIKE LOWER(${'%' + cityName + '%'})`);
 
-      // For each clinic, get doctor count
+      // For each clinic, get doctor count and calculate distance
       const resultsWithDoctors = await Promise.all(
         cityResults.map(async (clinic) => {
           const doctorCount = await db
@@ -702,6 +693,26 @@ export class DatabaseStorage implements IStorage {
               )
             );
 
+          // Calculate distance if user location and clinic coordinates available
+          let distance = null;
+          if (userLat && userLng && clinic.latitude && clinic.longitude) {
+            const lat = parseFloat(clinic.latitude.toString());
+            const lng = parseFloat(clinic.longitude.toString());
+            
+            if (!isNaN(lat) && !isNaN(lng)) {
+              // Haversine formula for distance calculation
+              const R = 6371; // Earth's radius in kilometers
+              const dLat = (lat - userLat) * Math.PI / 180;
+              const dLng = (lng - userLng) * Math.PI / 180;
+              const a = 
+                Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(userLat * Math.PI / 180) * Math.cos(lat * Math.PI / 180) *
+                Math.sin(dLng/2) * Math.sin(dLng/2);
+              const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+              distance = R * c;
+            }
+          }
+
           return {
             id: `city-${clinic.id}`,
             type: 'city',
@@ -712,10 +723,21 @@ export class DatabaseStorage implements IStorage {
             email: clinic.email,
             openingHours: clinic.openingHours,
             hospitalCount: doctorCount[0]?.count || 0,
-            clinicId: clinic.id
+            clinicId: clinic.id,
+            distance
           };
         })
       );
+
+      // Sort by distance if available (nearest first)
+      if (userLat && userLng) {
+        resultsWithDoctors.sort((a, b) => {
+          if (a.distance === null && b.distance === null) return 0;
+          if (a.distance === null) return 1;
+          if (b.distance === null) return -1;
+          return a.distance - b.distance;
+        });
+      }
 
       return resultsWithDoctors;
     } catch (error) {
@@ -724,7 +746,7 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  async searchByHospitalName(hospitalName: string): Promise<any[]> {
+  async searchByHospitalName(hospitalName: string, userLat?: number, userLng?: number): Promise<any[]> {
     try {
       // Find clinics matching the hospital name
       const hospitalResults = await db
@@ -743,10 +765,30 @@ export class DatabaseStorage implements IStorage {
           `
         );
 
-      // For each hospital, get all doctors
+      // For each hospital, get all doctors and calculate distance
       const resultsWithDoctors = await Promise.all(
         hospitalResults.map(async (hospital) => {
           const doctors = await this.getDoctorsWithSchedulesByClinic(hospital.id);
+          
+          // Calculate distance if user location and clinic coordinates available
+          let distance = null;
+          if (userLat && userLng && hospital.latitude && hospital.longitude) {
+            const lat = parseFloat(hospital.latitude.toString());
+            const lng = parseFloat(hospital.longitude.toString());
+            
+            if (!isNaN(lat) && !isNaN(lng)) {
+              // Haversine formula for distance calculation
+              const R = 6371; // Earth's radius in kilometers
+              const dLat = (lat - userLat) * Math.PI / 180;
+              const dLng = (lng - userLng) * Math.PI / 180;
+              const a = 
+                Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(userLat * Math.PI / 180) * Math.cos(lat * Math.PI / 180) *
+                Math.sin(dLng/2) * Math.sin(dLng/2);
+              const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+              distance = R * c;
+            }
+          }
           
           return {
             id: `hospital-${hospital.id}`,
@@ -758,10 +800,21 @@ export class DatabaseStorage implements IStorage {
             email: hospital.email,
             openingHours: hospital.openingHours,
             clinicId: hospital.id,
+            distance,
             doctors: doctors || []
           };
         })
       );
+
+      // Sort by distance if available (nearest first)
+      if (userLat && userLng) {
+        resultsWithDoctors.sort((a, b) => {
+          if (a.distance === null && b.distance === null) return 0;
+          if (a.distance === null) return 1;
+          if (b.distance === null) return -1;
+          return a.distance - b.distance;
+        });
+      }
 
       return resultsWithDoctors;
     } catch (error) {
@@ -836,9 +889,9 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  async searchBySpecialty(specialty: string): Promise<any[]> {
+  async searchBySpecialty(specialty: string, userLat?: number, userLng?: number): Promise<any[]> {
     try {
-      // Find doctors with matching specialty - include both direct clinic assignments and doctor_clinics table
+      // Find doctors with matching specialty - include clinic coordinates for distance calculation
       const specialtyResults = await db
         .select({
           id: users.id,
@@ -851,7 +904,9 @@ export class DatabaseStorage implements IStorage {
           clinicName: clinics.name,
           clinicAddress: clinics.address,
           clinicCity: clinics.city,
-          clinicPhone: clinics.phone
+          clinicPhone: clinics.phone,
+          clinicLatitude: clinics.latitude,
+          clinicLongitude: clinics.longitude
         })
         .from(users)
         .leftJoin(doctorClinics, eq(users.id, doctorClinics.doctorId))
@@ -904,11 +959,31 @@ export class DatabaseStorage implements IStorage {
         })
       );
 
-      // Now group by clinic
+      // Now group by clinic and calculate distance if user location provided
       doctorsWithSchedules.forEach(doctor => {
         const clinicId = doctor.directClinicId || doctor.doctorClinicId;
         if (clinicId && doctor.clinicName) {
           if (!clinicMap.has(clinicId)) {
+            // Calculate distance if coordinates available
+            let distance = null;
+            if (userLat && userLng && doctor.clinicLatitude && doctor.clinicLongitude) {
+              const lat = parseFloat(doctor.clinicLatitude.toString());
+              const lng = parseFloat(doctor.clinicLongitude.toString());
+              
+              if (!isNaN(lat) && !isNaN(lng)) {
+                // Haversine formula for distance calculation
+                const R = 6371; // Earth's radius in kilometers
+                const dLat = (lat - userLat) * Math.PI / 180;
+                const dLng = (lng - userLng) * Math.PI / 180;
+                const a = 
+                  Math.sin(dLat/2) * Math.sin(dLat/2) +
+                  Math.cos(userLat * Math.PI / 180) * Math.cos(lat * Math.PI / 180) *
+                  Math.sin(dLng/2) * Math.sin(dLng/2);
+                const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                distance = R * c;
+              }
+            }
+            
             clinicMap.set(clinicId, {
               id: `specialty-clinic-${clinicId}`,
               type: 'specialty',
@@ -918,6 +993,7 @@ export class DatabaseStorage implements IStorage {
               phone: doctor.clinicPhone,
               clinicId: clinicId,
               specialty,
+              distance,
               doctors: []
             });
           }
@@ -931,13 +1007,24 @@ export class DatabaseStorage implements IStorage {
               specialty: doctor.specialty,
               bio: doctor.bio,
               imageUrl: doctor.imageUrl,
-              schedules: doctor.schedules  // ✅ ADDED SCHEDULES HERE
+              schedules: doctor.schedules
             });
           }
         }
       });
 
-      return Array.from(clinicMap.values());
+      // Sort by distance if available (nearest first)
+      const results = Array.from(clinicMap.values());
+      if (userLat && userLng) {
+        results.sort((a, b) => {
+          if (a.distance === null && b.distance === null) return 0;
+          if (a.distance === null) return 1;
+          if (b.distance === null) return -1;
+          return a.distance - b.distance;
+        });
+      }
+      
+      return results;
     } catch (error) {
       console.error('Error in searchBySpecialty:', error);
       throw error;
@@ -1051,7 +1138,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Unified search method that handles all search types
-  async performSearch(query: string, type: string): Promise<any[]> {
+  async performSearch(query: string, type: string, userLat?: number, userLng?: number): Promise<any[]> {
     try {
       if (!query || !query.trim()) {
         return [];
@@ -1061,29 +1148,43 @@ export class DatabaseStorage implements IStorage {
 
       switch (type) {
         case 'city':
-          return await this.searchByCity(searchQuery);
+          return await this.searchByCity(searchQuery, userLat, userLng);
         case 'hospital':
-          return await this.searchByHospitalName(searchQuery);
+          return await this.searchByHospitalName(searchQuery, userLat, userLng);
         case 'doctor':
           return await this.searchByDoctorName(searchQuery);
         case 'specialty':
-          return await this.searchBySpecialty(searchQuery);
+          return await this.searchBySpecialty(searchQuery, userLat, userLng);
         case 'all':
         default:
           // Perform all types of search and combine results
+          // Prioritize doctors and specialties over clinics for better UX
           const [cityResults, hospitalResults, doctorResults, specialtyResults] = await Promise.all([
-            this.searchByCity(searchQuery),
-            this.searchByHospitalName(searchQuery),
+            this.searchByCity(searchQuery, userLat, userLng),
+            this.searchByHospitalName(searchQuery, userLat, userLng),
             this.searchByDoctorName(searchQuery),
-            this.searchBySpecialty(searchQuery)
+            this.searchBySpecialty(searchQuery, userLat, userLng)
           ]);
 
-          return [
-            ...cityResults,
-            ...hospitalResults,
-            ...doctorResults,
-            ...specialtyResults
-          ];
+          // Deduplicate results based on clinicId to prevent showing same clinic twice
+          const seenClinicIds = new Set<number>();
+          const deduplicatedResults = [];
+          
+          // Process in priority order
+          for (const result of [...doctorResults, ...specialtyResults, ...hospitalResults, ...cityResults]) {
+            // For clinic/hospital/city results, check for duplicates by clinicId
+            if (result.clinicId && (result.type === 'hospital' || result.type === 'city' || result.type === 'specialty')) {
+              if (!seenClinicIds.has(result.clinicId)) {
+                seenClinicIds.add(result.clinicId);
+                deduplicatedResults.push(result);
+              }
+            } else {
+              // For doctor results or results without clinicId, add directly
+              deduplicatedResults.push(result);
+            }
+          }
+
+          return deduplicatedResults;
       }
     } catch (error) {
       console.error('Error in performSearch:', error);

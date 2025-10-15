@@ -1,97 +1,14 @@
-[
-    {
-        "name": "Mother's Speciality Hospital",
-        "address": "24/36 OLD TOWN SHIP, Office Rd, Secretariat Colony, Venkatapuram, Ambattur, Chennai, Tamil Nadu 600053",
-        "latitude": 13.121067199999999,
-        "longitude": 80.1497799,
-        "bounding_box": {
-            "north_east": {
-                "lat": 13.1224155802915,
-                "lon": 80.15113258029152
-            },
-            "south_west": {
-                "lat": 13.119717619708496,
-                "lon": 80.1484346197085
-            }
-        },
-        "rating": 4.5,
-        "user_rating_count": 1835,
-        "maps_url": "https://maps.google.com/?cid=17481574499691666252&g_mp=Cidnb29nbGUubWFwcy5wbGFjZXMudjEuUGxhY2VzLlNlYXJjaFRleHQQAhgEIAA"
-    },
-    {
-        "name": "Mahalakshmi Hospital",
-        "address": "No. 205, 37, Ambattur Red Hills Rd, near Rakki Theatre, Ram Nagar, Ambattur, Chennai, Tamil Nadu 600053",
-        "latitude": 13.1225965,
-        "longitude": 80.1469712,
-        "bounding_box": {
-            "north_east": {
-                "lat": 13.123896130291502,
-                "lon": 80.14829283029151
-            },
-            "south_west": {
-                "lat": 13.121198169708498,
-                "lon": 80.1455948697085
-            }
-        },
-        "rating": 3.8,
-        "user_rating_count": 588,
-        "maps_url": "https://maps.google.com/?cid=7531280856339139777&g_mp=Cidnb29nbGUubWFwcy5wbGFjZXMudjEuUGxhY2VzLlNlYXJjaFRleHQQAhgEIAA"
-    },
-    {
-        "name": "ESSVEE Hospital",
-        "address": "Madras Thiruvallur High Road, 506, Chennai - Thiruttani - Renigunta Hwy, Ram Nagar, Ambattur, Chennai, Tamil Nadu 600053",
-        "latitude": 13.1231844,
-        "longitude": 80.1460238,
-        "bounding_box": {
-            "north_east": {
-                "lat": 13.1244833302915,
-                "lon": 80.1473412802915
-            },
-            "south_west": {
-                "lat": 13.121785369708496,
-                "lon": 80.14464331970849
-            }
-        },
-        "rating": 3.3,
-        "user_rating_count": 448,
-        "maps_url": "https://maps.google.com/?cid=17773275755547335106&g_mp=Cidnb29nbGUubWFwcy5wbGFjZXMudjEuUGxhY2VzLlNlYXJjaFRleHQQAhgEIAA"
-    },
-    {
-        "name": "Teja Hospital",
-        "address": "471, Chennai - Tiruvallur High Rd, opposite Rakki Cinemas, Manthoppu Nagar, Ambattur, Chennai, Tamil Nadu 600053",
-        "latitude": 13.1219624,
-        "longitude": 80.1470667,
-        "bounding_box": {
-            "north_east": {
-                "lat": 13.1234570802915,
-                "lon": 80.1485021802915
-            },
-            "south_west": {
-                "lat": 13.120759119708495,
-                "lon": 80.1458042197085
-            }
-        },
-        "rating": 3.2,
-        "user_rating_count": 101,
-        "maps_url": "https://maps.google.com/?cid=4488818707958547095&g_mp=Cidnb29nbGUubWFwcy5wbGFjZXMudjEuUGxhY2VzLlNlYXJjaFRleHQQAhgEIAA"
-    },
-    {
-        "name": "Madhavan Eye Care",
-        "address": "465, (MTH ROAD, Chennai - Thiruttani - Renigunta Hwy, Vivek Nagar, Ram Nagar, Ambattur, Chennai, Tamil Nadu 600053",
-        "latitude": 13.121761999999999,
-        "longitude": 80.1477546,
-        "bounding_box": {
-            "north_east": {
-                "lat": 13.123180880291503,
-                "lon": 80.1491475802915
-            },
-            "south_west": {
-                "lat": 13.120482919708499,
-                "lon": 80.14644961970849
-            }
-        },
-        "rating": 4.9,
-        "user_rating_count": 296,
-        "maps_url": "https://maps.google.com/?cid=15653750570117902161&g_mp=Cidnb29nbGUubWFwcy5wbGFjZXMudjEuUGxhY2VzLlNlYXJjaFRleHQQAhgEIAA"
-    }
-]
+{"level":"info","ts":1760546154.5199203,"msg":"using config from file","file":"/assets/Caddyfile"}
+{"level":"info","ts":1760546154.5209174,"msg":"adapted config to JSON","adapter":"caddyfile"}
+{"level":"warn","ts":1760546154.5211556,"logger":"admin","msg":"admin endpoint disabled"}
+{"level":"info","ts":1760546154.5213091,"logger":"http.auto_https","msg":"automatic HTTPS is completely disabled for server","server_name":"srv0"}
+{"level":"info","ts":1760546154.521447,"logger":"tls.cache.maintenance","msg":"started background certificate maintenance","cache":"0xc00050af80"}
+{"level":"info","ts":1760546154.5217597,"logger":"http.log","msg":"server running","name":"srv0","protocols":["h1","h2","h3"]}
+{"level":"info","ts":1760546154.5217762,"msg":"serving initial configuration"}
+{"level":"info","ts":1760546154.5242867,"logger":"tls","msg":"cleaning storage unit","storage":"FileStorage:/root/.local/share/caddy"}
+{"level":"info","ts":1760546154.524457,"logger":"tls","msg":"finished cleaning storage units"}
+{"level":"info","ts":1760546175.240577,"logger":"http.log.access.log0","msg":"handled request","request":{"remote_ip":"10.0.1.25","remote_port":"57102","client_ip":"122.164.84.164","proto":"HTTP/1.1","method":"GET","host":"clinik.co.in","uri":"/","headers":{"Accept-Language":["en-US,en;q=0.9,hi;q=0.8,ta;q=0.7"],"X-Forwarded-Port":["443"],"X-Real-Ip":["122.164.84.164"],"Priority":["u=0, i"],"Sec-Ch-Ua-Mobile":["?0"],"Upgrade-Insecure-Requests":["1"],"X-Forwarded-For":["122.164.84.164"],"X-Forwarded-Proto":["https"],"User-Agent":["Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"],"Accept-Encoding":["gzip, deflate, br, zstd"],"Cache-Control":["max-age=0"],"Sec-Fetch-Dest":["document"],"Sec-Fetch-User":["?1"],"Sec-Ch-Ua":["\"Google Chrome\";v=\"141\", \"Not?A_Brand\";v=\"8\", \"Chromium\";v=\"141\""],"Sec-Ch-Ua-Platform":["\"Windows\""],"Sec-Fetch-Mode":["navigate"],"Sec-Fetch-Site":["none"],"X-Forwarded-Host":["clinik.co.in"],"Accept":["text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"],"Cookie":["REDACTED"],"X-Forwarded-Server":["c41417a5dc09"]}},"bytes_read":0,"user_id":"","duration":0.000408347,"size":0,"status":404,"resp_headers":{"Server":["Caddy"]}}
+{"level":"info","ts":1760546178.0008066,"logger":"http.log.access.log0","msg":"handled request","request":{"remote_ip":"10.0.1.25","remote_port":"57102","client_ip":"122.164.84.164","proto":"HTTP/1.1","method":"GET","host":"clinik.co.in","uri":"/","headers":{"Sec-Ch-Ua-Platform":["\"Windows\""],"Sec-Fetch-Dest":["document"],"X-Forwarded-For":["122.164.84.164"],"Priority":["u=0, i"],"Sec-Ch-Ua":["\"Google Chrome\";v=\"141\", \"Not?A_Brand\";v=\"8\", \"Chromium\";v=\"141\""],"X-Forwarded-Port":["443"],"X-Forwarded-Proto":["https"],"X-Forwarded-Server":["c41417a5dc09"],"Accept-Language":["en-US,en;q=0.9,hi;q=0.8,ta;q=0.7"],"Sec-Ch-Ua-Mobile":["?0"],"Sec-Fetch-Mode":["navigate"],"Upgrade-Insecure-Requests":["1"],"X-Forwarded-Host":["clinik.co.in"],"X-Real-Ip":["122.164.84.164"],"User-Agent":["Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"],"Accept-Encoding":["gzip, deflate, br, zstd"],"Cache-Control":["max-age=0"],"Sec-Fetch-User":["?1"],"Accept":["text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"],"Cookie":["REDACTED"],"Sec-Fetch-Site":["none"]}},"bytes_read":0,"user_id":"","duration":0.000240499,"size":0,"status":404,"resp_headers":{"Server":["Caddy"]}}
+{"level":"info","ts":1760546178.8855524,"logger":"http.log.access.log0","msg":"handled request","request":{"remote_ip":"10.0.1.25","remote_port":"57102","client_ip":"122.164.84.164","proto":"HTTP/1.1","method":"GET","host":"clinik.co.in","uri":"/","headers":{"Accept-Encoding":["gzip, deflate, br, zstd"],"Accept-Language":["en-US,en;q=0.9,hi;q=0.8,ta;q=0.7"],"Sec-Ch-Ua":["\"Google Chrome\";v=\"141\", \"Not?A_Brand\";v=\"8\", \"Chromium\";v=\"141\""],"Sec-Fetch-Mode":["navigate"],"X-Forwarded-Host":["clinik.co.in"],"X-Forwarded-Port":["443"],"User-Agent":["Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"],"Sec-Fetch-Site":["none"],"Sec-Fetch-User":["?1"],"X-Forwarded-For":["122.164.84.164"],"X-Forwarded-Server":["c41417a5dc09"],"Priority":["u=0, i"],"Cache-Control":["max-age=0"],"Sec-Ch-Ua-Mobile":["?0"],"Sec-Fetch-Dest":["document"],"Accept":["text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"],"Cookie":["REDACTED"],"Sec-Ch-Ua-Platform":["\"Windows\""],"Upgrade-Insecure-Requests":["1"],"X-Forwarded-Proto":["https"],"X-Real-Ip":["122.164.84.164"]}},"bytes_read":0,"user_id":"","duration":0.000187918,"size":0,"status":404,"resp_headers":{"Server":["Caddy"]}}
+{"level":"info","ts":1760546179.6357963,"logger":"http.log.access.log0","msg":"handled request","request":{"remote_ip":"10.0.1.25","remote_port":"57102","client_ip":"122.164.84.164","proto":"HTTP/1.1","method":"GET","host":"clinik.co.in","uri":"/","headers":{"Sec-Fetch-User":["?1"],"X-Forwarded-Port":["443"],"X-Forwarded-Proto":["https"],"Accept-Encoding":["gzip, deflate, br, zstd"],"Cookie":["REDACTED"],"Priority":["u=0, i"],"Sec-Fetch-Dest":["document"],"Sec-Fetch-Mode":["navigate"],"X-Real-Ip":["122.164.84.164"],"User-Agent":["Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"],"Accept":["text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"],"Sec-Ch-Ua":["\"Google Chrome\";v=\"141\", \"Not?A_Brand\";v=\"8\", \"Chromium\";v=\"141\""],"Sec-Fetch-Site":["none"],"X-Forwarded-Server":["c41417a5dc09"],"Cache-Control":["max-age=0"],"X-Forwarded-For":["122.164.84.164"],"X-Forwarded-Host":["clinik.co.in"],"Accept-Language":["en-US,en;q=0.9,hi;q=0.8,ta;q=0.7"],"Sec-Ch-Ua-Mobile":["?0"],"Sec-Ch-Ua-Platform":["\"Windows\""],"Upgrade-Insecure-Requests":["1"]}},"bytes_read":0,"user_id":"","duration":0.000182279,"size":0,"status":404,"resp_headers":{"Server":["Caddy"]}}
+{"level":"info","ts":1760546179.8559294,"logger":"http.log.access.log0","msg":"handled request","request":{"remote_ip":"10.0.1.25","remote_port":"57102","client_ip":"122.164.84.164","proto":"HTTP/1.1","method":"GET","host":"clinik.co.in","uri":"/","headers":{"User-Agent":["Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"],"X-Forwarded-Proto":["https"],"X-Real-Ip":["122.164.84.164"],"Sec-Fetch-Dest":["document"],"Sec-Fetch-User":["?1"],"X-Forwarded-Server":["c41417a5dc09"],"Sec-Ch-Ua-Mobile":["?0"],"Sec-Ch-Ua-Platform":["\"Windows\""],"Sec-Fetch-Mode":["navigate"],"Upgrade-Insecure-Requests":["1"],"Accept-Language":["en-US,en;q=0.9,hi;q=0.8,ta;q=0.7"],"Cache-Control":["max-age=0"],"Priority":["u=0, i"],"Sec-Ch-Ua":["\"Google Chrome\";v=\"141\", \"Not?A_Brand\";v=\"8\", \"Chromium\";v=\"141\""],"X-Forwarded-For":["122.164.84.164"],"X-Forwarded-Host":["clinik.co.in"],"X-Forwarded-Port":["443"],"Accept":["text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"],"Accept-Encoding":["gzip, deflate, br, zstd"],"Cookie":["REDACTED"],"Sec-Fetch-Site":["none"]}},"bytes_read":0,"user_id":"","duration":0.000188369,"size":0,"status":404,"resp_headers":{"Server":["Caddy"]}}

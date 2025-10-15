@@ -89,7 +89,7 @@ export default function PatientDashboard() {
 
   // Fetch search results based on search term and type (works independently from nearby)
   const { data: searchResults = [], isLoading: isLoadingSearch, error } = useQuery({
-    queryKey: ["search", searchTerm, searchType],
+    queryKey: ["search", searchTerm, searchType, coordinates?.latitude, coordinates?.longitude],
     queryFn: async () => {
       if (!searchTerm.trim()) return [];
       
@@ -97,6 +97,12 @@ export default function PatientDashboard() {
         q: searchTerm,
         type: searchType
       });
+      
+      // Add user location if available for distance-based sorting
+      if (coordinates) {
+        params.append('lat', coordinates.latitude.toString());
+        params.append('lng', coordinates.longitude.toString());
+      }
       
       const response = await fetch(`/api/search?${params}`);
       if (!response.ok) {
@@ -142,6 +148,16 @@ export default function PatientDashboard() {
     if (nearbyEnabled && coordinates && nearbyClinics.length > 0) {
       const searchLower = searchTerm.toLowerCase();
       
+      // Prioritize doctor/specialty searches - show DB results first
+      const hasDoctorOrSpecialtyResults = (searchResults || []).some((r: any) => 
+        r.type === 'doctor' || r.type === 'specialty'
+      );
+      
+      // If searching for doctors/specialties, show DB results first
+      if (hasDoctorOrSpecialtyResults) {
+        return searchResults || [];
+      }
+      
       // Filter nearby clinics that match search
       const matchingNearbyClinics = nearbyClinics.filter((clinic) => {
         if (clinic.name.toLowerCase().includes(searchLower)) return true;
@@ -169,14 +185,18 @@ export default function PatientDashboard() {
       // Add database search results that are NOT in nearby results
       const additionalResults = (searchResults || []).filter((result: any) => {
         // For clinic/hospital results, check if not already in nearby
-        if (result.type === 'hospital' && result.id) {
-          return !nearbyClinicIds.has(result.id);
+        if ((result.type === 'hospital' || result.type === 'city') && result.clinicId) {
+          return !nearbyClinicIds.has(result.clinicId);
+        }
+        // For specialty results, check if clinic is not in nearby
+        if (result.type === 'specialty' && result.clinicId) {
+          return !nearbyClinicIds.has(result.clinicId);
         }
         // For doctor results, check if their clinic is not in nearby
         if (result.type === 'doctor' && result.clinicId) {
           return !nearbyClinicIds.has(result.clinicId);
         }
-        // Include other result types (city, specialty)
+        // Include other result types that don't have clinicId
         return true;
       });
       
@@ -457,13 +477,18 @@ export default function PatientDashboard() {
           <Card key={result.id} className="mb-4">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   {result.type === 'specialty' ? (
                     <Stethoscope className="h-5 w-5 text-purple-600" />
                   ) : (
                     <Building2 className="h-5 w-5 text-green-600" />
                   )}
                   <CardTitle className="text-lg">{result.name}</CardTitle>
+                  {result.distance !== null && result.distance !== undefined && (
+                    <Badge className="bg-green-600 text-white text-xs">
+                      {result.distance.toFixed(1)} km away
+                    </Badge>
+                  )}
                   {result.type === 'specialty' && (
                     <Badge variant="secondary">{result.specialty} specialists</Badge>
                   )}

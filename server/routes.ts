@@ -321,7 +321,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Enhanced search endpoints for patients
   app.get("/api/search", async (req, res) => {
     try {
-      const { q: query, type = 'all' } = req.query;
+      const { q: query, type = 'all', lat, lng } = req.query;
       
       if (!query || typeof query !== 'string') {
         return res.status(400).json({ message: 'Search query is required' });
@@ -332,7 +332,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'Invalid search type' });
       }
 
-      const results = await storage.performSearch(query, type as string);
+      // Parse user location if provided
+      const userLat = lat ? parseFloat(lat as string) : undefined;
+      const userLng = lng ? parseFloat(lng as string) : undefined;
+
+      const results = await storage.performSearch(query, type as string, userLat, userLng);
       res.json(results);
     } catch (error) {
       console.error('Error performing search:', error);
