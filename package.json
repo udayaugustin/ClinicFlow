@@ -21,7 +21,8 @@
     "create-test-doctor": "tsx server/create-test-doctor.ts",
     "assign-doctor-to-attender": "tsx server/assign-doctor-to-attender.ts",
     "create-test-patient": "tsx server/create-test-patient.ts",
-    "seed-data": "tsx server/seed-data.ts"
+    "seed-data": "tsx server/seed-data.ts",
+    "add-chennai-hospitals": "tsx scripts/add-chennai-hospitals.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
@@ -57,6 +58,7 @@
     "@radix-ui/react-tooltip": "^1.1.3",
     "@replit/vite-plugin-shadcn-theme-json": "^0.0.4",
     "@tanstack/react-query": "^5.60.5",
+    "@types/leaflet": "^1.9.20",
     "@types/pg": "^8.11.11",
     "boxen": "^8.0.1",
     "chalk": "^4.1.2",
@@ -85,6 +87,7 @@
     "input-otp": "^1.2.4",
     "inquirer": "^12.5.0",
     "jsonwebtoken": "^9.0.2",
+    "leaflet": "^1.9.4",
     "lru-cache": "^10.2.0",
     "lucide-react": "^0.453.0",
     "memorystore": "^1.6.7",
@@ -98,6 +101,7 @@
     "react-dom": "^18.3.1",
     "react-hook-form": "^7.53.1",
     "react-icons": "^5.4.0",
+    "react-leaflet": "^4.2.1",
     "react-resizable-panels": "^2.1.4",
     "recharts": "^2.13.0",
     "tailwind-merge": "^2.5.4",

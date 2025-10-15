@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { DashboardHeader } from "@/components/dashboard-header";
-import { PlusCircle, Hospital, User, UserCog, Building2, Activity, Edit, Eye, Trash2, MapPin, Phone, Mail, Clock, Loader2, FileSpreadsheet, CreditCard, Search, Calendar, Stethoscope, RefreshCw } from "lucide-react";
+import { PlusCircle, Hospital, User, UserCog, Building2, Activity, Edit, Eye, Trash2, MapPin, Phone, Mail, Clock, Loader2, FileSpreadsheet, CreditCard, Search, Calendar, Stethoscope, RefreshCw, Settings } from "lucide-react";
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -17,8 +17,12 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
+import { Label } from "@/components/ui/label";
 import SuperAdminExportReports from "@/components/SuperAdminExportReports";
 import RefundManagement from "@/components/RefundManagement";
+import { useAdminConfig } from "@/hooks/use-app-config";
 
 // Clinic schema with admin user fields
 const clinicSchema = z.object({
@@ -961,6 +965,244 @@ export default function SuperAdminDashboard() {
       return <RefundManagement />;
     }
 
+    if (selectedMenuItem === "nearby-settings") {
+      const NearbySettingsComponent = () => {
+        const { configurations, isLoading, updateConfigurations, isUpdating } = useAdminConfig();
+        const { toast } = useToast();
+        
+        const [enabled, setEnabled] = React.useState(true);
+        const [radius, setRadius] = React.useState(20);
+        const [maxRadius, setMaxRadius] = React.useState(50);
+        const [fallbackEnabled, setFallbackEnabled] = React.useState(true);
+
+        // Load current settings
+        React.useEffect(() => {
+          if (configurations && configurations.length > 0) {
+            configurations.forEach((config: any) => {
+              if (config.configKey === 'nearby_default_enabled') {
+                setEnabled(config.configValue === 'true');
+              } else if (config.configKey === 'nearby_default_radius_km') {
+                setRadius(parseInt(config.configValue));
+              } else if (config.configKey === 'nearby_max_radius_km') {
+                setMaxRadius(parseInt(config.configValue));
+              } else if (config.configKey === 'nearby_fallback_enabled') {
+                setFallbackEnabled(config.configValue === 'true');
+              }
+            });
+          }
+        }, [configurations]);
+
+        const handleSave = async () => {
+          try {
+            await updateConfigurations({
+              'nearby_default_enabled': enabled.toString(),
+              'nearby_default_radius_km': radius.toString(),
+              'nearby_max_radius_km': maxRadius.toString(),
+              'nearby_fallback_enabled': fallbackEnabled.toString(),
+            });
+            
+            toast({
+              title: "Settings saved",
+              description: "Nearby hospital settings have been updated successfully.",
+            });
+          } catch (error) {
+            toast({
+              title: "Error",
+              description: "Failed to save settings. Please try again.",
+              variant: "destructive",
+            });
+          }
+        };
+
+        if (isLoading) {
+          return (
+            <div className="p-6">
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+                <span className="ml-3 text-gray-600">Loading settings...</span>
+              </div>
+            </div>
+          );
+        }
+
+        return (
+          <div className="p-6">
+            <div className="mb-6">
+              <h1 className="text-2xl font-bold text-gray-900">Nearby Settings</h1>
+              <p className="text-gray-600 mt-1">Configure default nearby hospital settings for all users</p>
+            </div>
+
+            <Card className="max-w-2xl">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Settings className="h-5 w-5" />
+                  Nearby Hospitals Configuration
+                </CardTitle>
+                <CardDescription>
+                  Control the default behavior of nearby hospital feature for all users
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Enable/Disable Auto-Nearby */}
+                <div className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="nearby-enabled" className="text-base font-medium">
+                      Enable Auto-Nearby Mode
+                    </Label>
+                    <p className="text-sm text-gray-500">
+                      Automatically show nearby hospitals when users visit the page
+                    </p>
+                  </div>
+                  <Switch
+                    id="nearby-enabled"
+                    checked={enabled}
+                    onCheckedChange={setEnabled}
+                  />
+                </div>
+
+                {/* Default Radius */}
+                <div className="space-y-4 p-4 border rounded-lg">
+                  <div>
+                    <Label htmlFor="default-radius" className="text-base font-medium">
+                      Default Search Radius
+                    </Label>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Default distance for nearby hospital searches
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">Radius:</span>
+                      <span className="text-lg font-bold text-blue-600">{radius} km</span>
+                    </div>
+                    <Slider
+                      id="default-radius"
+                      min={5}
+                      max={maxRadius}
+                      step={5}
+                      value={[radius]}
+                      onValueChange={(value) => setRadius(value[0])}
+                      className="w-full"
+                    />
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>5 km</span>
+                      <span>{maxRadius} km</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Maximum Radius */}
+                <div className="space-y-4 p-4 border rounded-lg">
+                  <div>
+                    <Label htmlFor="max-radius" className="text-base font-medium">
+                      Maximum Radius Limit
+                    </Label>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Maximum distance users can search
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">Max Radius:</span>
+                      <span className="text-lg font-bold text-orange-600">{maxRadius} km</span>
+                    </div>
+                    <Slider
+                      id="max-radius"
+                      min={Math.max(radius, 10)}
+                      max={100}
+                      step={10}
+                      value={[maxRadius]}
+                      onValueChange={(value) => setMaxRadius(value[0])}
+                      className="w-full"
+                    />
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>{Math.max(radius, 10)} km</span>
+                      <span>100 km</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Fallback Behavior */}
+                <div className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="fallback-enabled" className="text-base font-medium">
+                      Enable Fallback to All Hospitals
+                    </Label>
+                    <p className="text-sm text-gray-500">
+                      Show all hospitals if location is unavailable or denied
+                    </p>
+                  </div>
+                  <Switch
+                    id="fallback-enabled"
+                    checked={fallbackEnabled}
+                    onCheckedChange={setFallbackEnabled}
+                  />
+                </div>
+
+                {/* Preview/Info Box */}
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <MapPin className="h-5 w-5 text-blue-600 mt-0.5" />
+                    <div>
+                      <h4 className="font-medium text-blue-900 mb-2">Current Configuration</h4>
+                      <div className="space-y-1 text-sm text-blue-800">
+                        <p>• Auto-nearby: <strong>{enabled ? 'Enabled' : 'Disabled'}</strong></p>
+                        <p>• Default radius: <strong>{radius} km</strong></p>
+                        <p>• Maximum radius: <strong>{maxRadius} km</strong></p>
+                        <p>• Fallback: <strong>{fallbackEnabled ? 'Enabled' : 'Disabled'}</strong></p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+              <CardFooter className="flex justify-end gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    // Reset to current saved values
+                    if (configurations && configurations.length > 0) {
+                      configurations.forEach((config: any) => {
+                        if (config.configKey === 'nearby_default_enabled') {
+                          setEnabled(config.configValue === 'true');
+                        } else if (config.configKey === 'nearby_default_radius_km') {
+                          setRadius(parseInt(config.configValue));
+                        } else if (config.configKey === 'nearby_max_radius_km') {
+                          setMaxRadius(parseInt(config.configValue));
+                        } else if (config.configKey === 'nearby_fallback_enabled') {
+                          setFallbackEnabled(config.configValue === 'true');
+                        }
+                      });
+                    }
+                  }}
+                >
+                  Reset
+                </Button>
+                <Button
+                  onClick={handleSave}
+                  disabled={isUpdating}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  {isUpdating ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Settings className="mr-2 h-4 w-4" />
+                      Save Settings
+                    </>
+                  )}
+                </Button>
+              </CardFooter>
+            </Card>
+          </div>
+        );
+      };
+
+      return <NearbySettingsComponent />;
+    }
+
     // Default dashboard view
     return (
       <div className="p-6">
@@ -1310,6 +1552,28 @@ export default function SuperAdminDashboard() {
                 </p>
                 <p className={`text-xs ${selectedMenuItem === "refund" ? "text-blue-600" : "text-gray-500"}`}>
                   Process refunds
+                </p>
+              </div>
+            </button>
+
+            {/* Nearby Settings Option */}
+            <button
+              onClick={() => setSelectedMenuItem("nearby-settings")}
+              className={`w-full text-left px-3 py-3 rounded-lg mb-2 transition-all duration-200 flex items-center group ${
+                selectedMenuItem === "nearby-settings"
+                  ? "bg-blue-50 text-blue-700 border-l-4 border-blue-600"
+                  : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
+              }`}
+            >
+              <span className={`mr-3 ${selectedMenuItem === "nearby-settings" ? "text-blue-600" : "text-gray-500 group-hover:text-gray-700"}`}>
+                <Settings className="h-5 w-5" />
+              </span>
+              <div className="flex-1">
+                <p className={`font-medium text-sm ${selectedMenuItem === "nearby-settings" ? "text-blue-700" : ""}`}>
+                  Nearby Settings
+                </p>
+                <p className={`text-xs ${selectedMenuItem === "nearby-settings" ? "text-blue-600" : "text-gray-500"}`}>
+                  Configure nearby mode
                 </p>
               </div>
             </button>

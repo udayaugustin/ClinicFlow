@@ -14,6 +14,8 @@ export const clinics = pgTable("clinics", {
   description: text("description"),
   phone: varchar("phone", { length: 20 }),
   email: varchar("email", { length: 255 }),
+  latitude: decimal("latitude", { precision: 10, scale: 8 }),
+  longitude: decimal("longitude", { precision: 11, scale: 8 }),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
@@ -194,6 +196,21 @@ export const otpVerifications = pgTable("otp_verifications", {
   verified: boolean("verified").default(false),
   verificationAttempts: integer("verification_attempts").default(0),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+});
+
+// Admin configurations for system-wide settings
+export const adminConfigurations = pgTable("admin_configurations", {
+  id: serial("id").primaryKey(),
+  configKey: varchar("config_key", { length: 100 }).notNull().unique(),
+  configValue: text("config_value").notNull(),
+  configType: varchar("config_type", { length: 20 }).notNull().default("string"), // string, number, boolean, json
+  description: text("description"),
+  category: varchar("category", { length: 50 }).notNull().default("general"), // general, nearby, ui, etc.
+  isEditable: boolean("is_editable").default(true),
+  createdBy: integer("created_by").references(() => users.id),
+  updatedBy: integer("updated_by").references(() => users.id),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
 // Patient Wallet System
@@ -489,6 +506,7 @@ export const insertDoctorScheduleSchema = createInsertSchema(doctorSchedules, {
 export const insertPatientFavoriteSchema = createInsertSchema(patientFavorites);
 export const insertNotificationSchema = createInsertSchema(notifications);
 export const insertOtpVerificationSchema = createInsertSchema(otpVerifications);
+export const insertAdminConfigurationSchema = createInsertSchema(adminConfigurations);
 
 // Wallet Schema Validations
 export const insertPatientWalletSchema = createInsertSchema(patientWallets);
@@ -517,6 +535,8 @@ export type Notification = typeof notifications.$inferSelect;
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type OtpVerification = typeof otpVerifications.$inferSelect;
 export type InsertOtpVerification = z.infer<typeof insertOtpVerificationSchema>;
+export type AdminConfiguration = typeof adminConfigurations.$inferSelect;
+export type InsertAdminConfiguration = z.infer<typeof insertAdminConfigurationSchema>;
 
 // Wallet Types
 export type PatientWallet = typeof patientWallets.$inferSelect;
