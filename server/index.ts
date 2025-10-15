@@ -85,10 +85,16 @@ app.use((req, res, next) => {
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
-  if (app.get("env") === "development") {
-    await setupVite(app, server);
+  
+  // Skip serving frontend if SKIP_FRONTEND_SERVE is set (for standalone backend deployment)
+  if (process.env.SKIP_FRONTEND_SERVE !== 'true') {
+    if (app.get("env") === "development") {
+      await setupVite(app, server);
+    } else {
+      serveStatic(app);
+    }
   } else {
-    serveStatic(app);
+    log('Skipping frontend serving - running as standalone backend API');
   }
 
   // Try to use port 5000, but find next available if taken
