@@ -11,6 +11,7 @@ import {
 import { LogOut, User, Calendar, UserPlus, Clock, Star, MapPin } from "lucide-react";
 import { NotificationPopover } from "./notifications/notification-popover";
 import { CompactNavigationButtons } from "./navigation-buttons";
+import { CompactWallet } from "./wallet/compact-wallet";
 import React from "react";
 
 export function NavHeader() {
@@ -87,12 +88,15 @@ export function NavHeader() {
                       Find Near Me
                     </Link>
                   </Button>
+                  <>
                   <Button variant="ghost" asChild className="hidden md:flex">
-                    <Link href="/patient/favorites">
-                      <Star className="mr-2 h-4 w-4" />
-                      Favorites
-                    </Link>
-                  </Button>
+                      <Link href="/patient/favorites">
+                        <Star className="mr-2 h-4 w-4" />
+                        Favorites
+                      </Link>
+                    </Button>
+                </>
+                  <CompactWallet />
                 </>
               )}
               

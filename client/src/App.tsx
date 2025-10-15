@@ -25,6 +25,7 @@ import ClinicAdminDashboard from "@/pages/clinic-admin-dashboard";
 import PatientDashboard from "@/pages/patient-dashboard";
 import PatientClinicDetails from "@/pages/patient-clinic-details";
 import PatientFavorites from "@/pages/patient-favorites";
+import PatientWallet from "@/pages/patient-wallet";
 import { ForcePasswordReset } from "@/components/ForcePasswordReset";
 // New auth portal imports
 import PortalSelection from "@/pages/auth/portal-selection";
@@ -129,6 +130,7 @@ function Router() {
       <Route path="/patient/clinics/:id" component={PatientClinicDetails} />
       <Route path="/patient/favorites" component={PatientFavorites} />
       <Route path="/map" component={MapPage} />
+      <Route path="/patient/wallet" component={PatientWallet} />
       
       {/* Policy and Help Pages */}
       <Route path="/policies/privacy-policy" component={PrivacyPolicy} />

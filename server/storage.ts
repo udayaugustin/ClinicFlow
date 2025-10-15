@@ -12,6 +12,9 @@ import {
   otpVerifications,
   loginAttempts,
   adminConfigurations,
+  patientWallets,
+  walletTransactions,
+  appointmentRefunds,
   type User,
   type AttenderDoctor,
   type InsertUser,
@@ -26,6 +29,9 @@ import {
   type InsertOtpVerification,
   type AdminConfiguration,
   type InsertAdminConfiguration,
+  type PatientWallet,
+  type WalletTransaction,
+  type AppointmentRefund
 } from "@shared/schema";
 import { eq, or, and, sql, inArray, lte, gte, count, not, gt, lt, getTableColumns, isNotNull ,ne } from "drizzle-orm";
 import { db } from "./db";
@@ -280,6 +286,9 @@ export interface IStorage {
     monthlyRevenue: number;
     totalClinics: number;
   }>;
+
+  // Appointment refund methods
+  markAppointmentAsRefunded(appointmentId: number, refundAmount: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1324,6 +1333,10 @@ export class DatabaseStorage implements IStorage {
       const result = await db
         .select({
           appointmentId: appointments.id,
+          patientId: appointments.patientId, // Add patient ID for refunds
+          consultationFee: appointments.consultationFee, // Add consultation fee for refunds
+          hasBeenRefunded: appointments.hasBeenRefunded, // Add refund status
+          refundAmount: appointments.refundAmount, // Add refund amount
           tokenStatus: appointments.status,
           // Patient info - handle both walk-in and registered patients
           patientName: sql<string>`CASE 
@@ -1348,7 +1361,11 @@ export class DatabaseStorage implements IStorage {
           sql`patient.id = ${appointments.patientId}`
         )
         .where(
-          eq(appointments.scheduleId, scheduleId)
+          and(
+            eq(appointments.scheduleId, scheduleId),
+            // Include all appointments from cancelled schedule
+            eq(appointments.isPaid, true)
+          )
         )
         .orderBy(appointments.tokenNumber);
 
@@ -1356,6 +1373,10 @@ export class DatabaseStorage implements IStorage {
 
       return result.map((appointment, index) => ({
         id: appointment.appointmentId,
+        patientId: appointment.patientId, // Include patient ID for refunds
+        consultationFee: appointment.consultationFee, // Include consultation fee for refunds
+        hasBeenRefunded: appointment.hasBeenRefunded, // Include refund status
+        refundAmount: appointment.refundAmount, // Include refund amount
         serialNumber: index + 1,
         patientName: appointment.patientName || 'Unknown Patient',
         mobileNumber: appointment.mobileNumber || 'Not available',
@@ -1364,6 +1385,12 @@ export class DatabaseStorage implements IStorage {
         scheduleDate: appointment.scheduleDate,
         cancelReason: appointment.cancelReason || 'Schedule cancelled',
         tokenStatus: appointment.tokenStatus || 'scheduled',
+        // Add eligibility information for frontend logic
+        isEligibleForRefund: (
+          !appointment.hasBeenRefunded && 
+          appointment.tokenStatus !== 'completed' && 
+          appointment.tokenStatus !== 'no_show'
+        )
       }));
     } catch (error) {
       console.error('Error fetching appointments for cancelled schedule:', error);
@@ -1613,6 +1640,88 @@ export class DatabaseStorage implements IStorage {
 
     return created;
   }
+
+  async createAppointmentWithWalletPayment(
+    appointment: Omit<Appointment, "id"> & { tokenNumber?: number },
+    platformFee: number,
+    gstAmount: number,
+    totalAmount: number
+  ): Promise<Appointment> {
+    // Use transaction to ensure data consistency
+    return await db.transaction(async (tx) => {
+      // Create the appointment first
+      const createdAppointment = await this.createAppointment(appointment);
+      
+      // Get or create patient wallet
+      let [wallet] = await tx
+        .select()
+        .from(patientWallets)
+        .where(eq(patientWallets.patientId, appointment.patientId));
+      
+      if (!wallet) {
+        throw new Error('Patient wallet not found');
+      }
+      
+      const currentBalance = parseFloat(wallet.balance);
+      const newBalance = currentBalance - totalAmount;
+      const newTotalSpent = parseFloat(wallet.totalSpent) + totalAmount;
+      
+      // Update wallet balance
+      await tx
+        .update(patientWallets)
+        .set({
+          balance: newBalance.toString(),
+          totalSpent: newTotalSpent.toString(),
+          updatedAt: new Date()
+        })
+        .where(eq(patientWallets.patientId, appointment.patientId));
+      
+      // Create wallet transaction record
+      const [walletTransaction] = await tx
+        .insert(walletTransactions)
+        .values({
+          walletId: wallet.id,
+          patientId: appointment.patientId,
+          appointmentId: createdAppointment.id,
+          scheduleId: appointment.scheduleId,
+          transactionType: 'appointment_payment',
+          amount: (-totalAmount).toString(), // Negative for deduction
+          previousBalance: currentBalance.toString(),
+          newBalance: newBalance.toString(),
+          description: `Platform fee (₹${platformFee}) + GST (₹${gstAmount.toFixed(2)}) for appointment booking`,
+          status: 'completed',
+          metadata: JSON.stringify({
+            platformFee,
+            gstAmount,
+            gstRate: 0.05,
+            totalAmount
+          })
+        })
+        .returning();
+      
+      // Update appointment with wallet transaction reference
+      const [finalAppointment] = await tx
+        .update(appointments)
+        .set({
+          walletTransactionId: walletTransaction.id,
+          consultationFee: totalAmount.toString()
+        })
+        .where(eq(appointments.id, createdAppointment.id))
+        .returning();
+      
+      return finalAppointment;
+    });
+  }
+
+  async getPatientWallet(patientId: number) {
+    const [wallet] = await db
+      .select()
+      .from(patientWallets)
+      .where(eq(patientWallets.patientId, patientId));
+    
+    return wallet;
+  }
+
 
   // async getAttenderDoctors(attenderId: number): Promise<(AttenderDoctor & { doctor: User })[]> {
   //   try {
@@ -4667,6 +4776,27 @@ export class DatabaseStorage implements IStorage {
       return created;
     } catch (error) {
       console.error('Error creating configuration:', error);
+      throw error;
+    }
+  }
+
+  // Mark appointment as refunded to prevent duplicate refunds
+  async markAppointmentAsRefunded(appointmentId: number, refundAmount: number): Promise<void> {
+    try {
+      console.log(`Marking appointment ${appointmentId} as refunded with amount ${refundAmount}`);
+      
+      await db
+        .update(appointments)
+        .set({
+          hasBeenRefunded: true,
+          refundAmount: refundAmount,
+          refundedAt: sql`CURRENT_TIMESTAMP`
+        })
+        .where(eq(appointments.id, appointmentId));
+      
+      console.log(`Successfully marked appointment ${appointmentId} as refunded`);
+    } catch (error) {
+      console.error(`Error marking appointment ${appointmentId} as refunded:`, error);
       throw error;
     }
   }

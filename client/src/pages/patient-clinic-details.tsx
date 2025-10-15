@@ -11,8 +11,9 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { NavHeader } from "@/components/nav-header";
+import { invalidateWalletQueries } from "@/utils/wallet-utils";
 import { NavigationButtons } from "@/components/navigation-buttons";
+import { NavHeader } from "@/components/nav-header";
 import axios from "axios";
 import React from "react";
 
@@ -161,6 +162,8 @@ export default function PatientClinicDetails() {
       queryClient.invalidateQueries({ queryKey: ["attender"] });
       // Invalidate user appointments to refresh the duplicate check
       queryClient.invalidateQueries({ queryKey: ["user-appointments", selectedDoctor] });
+      // Invalidate wallet queries to refresh wallet balance
+      invalidateWalletQueries(queryClient);
       toast({
         title: "Appointment Booked Successfully! ✅",
         description: "Your appointment has been confirmed. You cannot book another appointment for the same schedule.",
