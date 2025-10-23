@@ -3220,6 +3220,82 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ================ POLICY MANAGEMENT API ENDPOINTS ================
+
+  // Get policy content by key (public access for rendering policy pages)
+  app.get("/api/policies/:key", async (req, res) => {
+    try {
+      const { key } = req.params;
+      
+      const config = await storage.getConfiguration(key);
+      
+      if (!config) {
+        return res.status(404).json({ message: "Policy not found" });
+      }
+
+      res.json({ 
+        key: config.configKey, 
+        content: config.configValue,
+        updatedAt: config.updatedAt
+      });
+    } catch (error) {
+      console.error("Error fetching policy:", error);
+      res.status(500).json({ message: "Failed to fetch policy" });
+    }
+  });
+
+  // Get all editable policies (super admin only)
+  app.get("/api/admin/policies", async (req, res) => {
+    if (!req.user || req.user.role !== 'super_admin') {
+      return res.sendStatus(403);
+    }
+
+    try {
+      const policyConfigs = await storage.getConfigurationsByCategory('policy');
+      const helpConfigs = await storage.getConfigurationsByCategory('help');
+      
+      const allPolicies = [...policyConfigs, ...helpConfigs].filter(c => c.isEditable);
+      
+      res.json(allPolicies.map(p => ({
+        key: p.configKey,
+        content: p.configValue,
+        description: p.description,
+        category: p.category,
+        updatedAt: p.updatedAt
+      })));
+    } catch (error) {
+      console.error("Error fetching policies:", error);
+      res.status(500).json({ message: "Failed to fetch policies" });
+    }
+  });
+
+  // Update policy content (super admin only)
+  app.put("/api/admin/policies/:key", async (req, res) => {
+    if (!req.user || req.user.role !== 'super_admin') {
+      return res.sendStatus(403);
+    }
+
+    try {
+      const { key } = req.params;
+      const { content } = req.body;
+
+      if (!content) {
+        return res.status(400).json({ message: "Content is required" });
+      }
+
+      const updated = await storage.updateConfiguration(key, content, req.user.id);
+      
+      res.json({ 
+        message: "Policy updated successfully",
+        key: updated.configKey,
+        updatedAt: updated.updatedAt
+      });
+    } catch (error) {
+      console.error("Error updating policy:", error);
+      res.status(500).json({ message: "Failed to update policy" });
+    }
+  });
+
   // ================ WALLET API ENDPOINTS ================
 
   // Get patient wallet balance
