@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { DashboardHeader } from "@/components/dashboard-header";
-import { PlusCircle, Hospital, User, UserCog, Building2, Activity, Edit, Eye, Trash2, MapPin, Phone, Mail, Clock, Loader2, FileSpreadsheet, CreditCard, Search, Calendar, Stethoscope, RefreshCw, Settings } from "lucide-react";
+import { PlusCircle, Hospital, User, UserCog, Building2, Activity, Edit, Eye, Trash2, MapPin, Phone, Mail, Clock, Loader2, FileSpreadsheet, CreditCard, Search, Calendar, Stethoscope, RefreshCw, Settings, FileText } from "lucide-react";
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -23,6 +23,7 @@ import { Label } from "@/components/ui/label";
 import SuperAdminExportReports from "@/components/SuperAdminExportReports";
 import RefundManagement from "@/components/RefundManagement";
 import { useAdminConfig } from "@/hooks/use-app-config";
+import PolicyEditor from "@/components/super-admin/PolicyEditor";
 
 // Clinic schema with admin user fields
 const clinicSchema = z.object({
@@ -965,6 +966,10 @@ export default function SuperAdminDashboard() {
       return <RefundManagement />;
     }
 
+    if (selectedMenuItem === "policy-editor") {
+      return <PolicyEditor />;
+    }
+
     if (selectedMenuItem === "nearby-settings") {
       const NearbySettingsComponent = () => {
         const { configurations, isLoading, updateConfigurations, isUpdating } = useAdminConfig();
@@ -1552,6 +1557,28 @@ export default function SuperAdminDashboard() {
                 </p>
                 <p className={`text-xs ${selectedMenuItem === "refund" ? "text-blue-600" : "text-gray-500"}`}>
                   Process refunds
+                </p>
+              </div>
+            </button>
+
+            {/* Policy Editor Option */}
+            <button
+              onClick={() => setSelectedMenuItem("policy-editor")}
+              className={`w-full text-left px-3 py-3 rounded-lg mb-2 transition-all duration-200 flex items-center group ${
+                selectedMenuItem === "policy-editor"
+                  ? "bg-blue-50 text-blue-700 border-l-4 border-blue-600"
+                  : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
+              }`}
+            >
+              <span className={`mr-3 ${selectedMenuItem === "policy-editor" ? "text-blue-600" : "text-gray-500 group-hover:text-gray-700"}`}>
+                <FileText className="h-5 w-5" />
+              </span>
+              <div className="flex-1">
+                <p className={`font-medium text-sm ${selectedMenuItem === "policy-editor" ? "text-blue-700" : ""}`}>
+                  Policy Editor
+                </p>
+                <p className={`text-xs ${selectedMenuItem === "policy-editor" ? "text-blue-600" : "text-gray-500"}`}>
+                  Edit policies & content
                 </p>
               </div>
             </button>
