@@ -105,7 +105,7 @@ const PatientFooter: React.FC = () => {
                   className="text-gray-300 hover:text-blue-400 text-sm transition-colors duration-200 flex items-center space-x-2"
                 >
                   <FileText className="h-3 w-3" />
-                  <span>Additional Policies</span>
+                  <span>Disclaimer Policies</span>
                 </a>
               </li>
             </ul>

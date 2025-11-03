@@ -40,7 +40,7 @@ export function NavHeader() {
     <header className="border-b">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
         <Link href={user?.role === "attender" ? "/" : isClinicAdmin ? "/clinic-admin-dashboard" : "/"}>
-          <a className="text-2xl font-bold text-primary">MedClinic</a>
+          <a className="text-2xl font-bold text-primary">Clinik</a>
         </Link>
 
         <div className="flex items-center gap-4">

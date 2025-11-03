@@ -1429,7 +1429,7 @@ export default function SuperAdminDashboard() {
           <div className="flex items-center">
             <Building2 className="h-7 w-7 text-white mr-3" />
             <div>
-              <h1 className="text-lg font-bold text-white">MedClinic</h1>
+              <h1 className="text-lg font-bold text-white">Clinik</h1>
               <p className="text-blue-100 text-xs">Super Admin</p>
             </div>
           </div>

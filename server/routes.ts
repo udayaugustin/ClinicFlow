@@ -3251,8 +3251,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     try {
-      const policyConfigs = await storage.getConfigurationsByCategory('policy');
+      let policyConfigs = await storage.getConfigurationsByCategory('policy');
       const helpConfigs = await storage.getConfigurationsByCategory('help');
+
+      // Ensure Contact Us policy exists (some deployments may predate this entry)
+      const hasContactUs = policyConfigs.some(p => p.configKey === 'policy_contactUs');
+      if (!hasContactUs) {
+        try {
+          const created = await storage.createConfiguration({
+            configKey: 'policy_contactUs',
+            configValue: '<h1>Contact Us</h1><p>Email: support@clinicflow.com</p>',
+            configType: 'string',
+            description: 'Contact Us page content',
+            category: 'policy',
+            isEditable: true,
+          } as any);
+          // refresh policies list to include the newly created one
+          policyConfigs = await storage.getConfigurationsByCategory('policy');
+        } catch (e) {
+          console.warn('Could not auto-create policy_contactUs:', e);
+        }
+      }
       
       const allPolicies = [...policyConfigs, ...helpConfigs].filter(c => c.isEditable);
       
@@ -3269,7 +3288,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Update policy content (super admin only)
+  // Update or create policy content (super admin only)
   app.put("/api/admin/policies/:key", async (req, res) => {
     if (!req.user || req.user.role !== 'super_admin') {
       return res.sendStatus(403);
@@ -3281,6 +3300,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (!content) {
         return res.status(400).json({ message: "Content is required" });
+      }
+
+      // Try to fetch existing configuration
+      const existing = await storage.getConfiguration(key);
+      if (!existing) {
+        // Create on the fly if missing so new pages (like Contact Us) can be added from the portal
+        const category = key.startsWith('help_') ? 'help' : 'policy';
+        const created = await storage.createConfiguration({
+          configKey: key,
+          configValue: content,
+          configType: 'string',
+          description: 'Custom page content',
+          category,
+          isEditable: true,
+          createdBy: req.user.id,
+        } as any);
+        return res.json({
+          message: "Policy created successfully",
+          key: created.configKey,
+          updatedAt: created.updatedAt,
+        });
       }
 
       const updated = await storage.updateConfiguration(key, content, req.user.id);
