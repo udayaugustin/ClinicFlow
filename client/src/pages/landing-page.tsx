@@ -107,10 +107,10 @@ export default function LandingPage() {
       <section className="mx-auto w-full max-w-6xl px-4 py-4 grid gap-8 md:grid-cols-2">
         <Card className="bg-muted/20">
           <CardContent className="p-8">
-            <h2 className="text-2xl font-semibold">Why choose ClinicFlow</h2>
+            <h2 className="text-2xl font-semibold">Why choose Clinik</h2>
             <div className="prose prose-slate max-w-none mt-3 text-sm md:text-base">
               <p>
-                ClinicFlow simplifies hospital visits. Search doctors or hospitals, view real‑time schedules, and book in seconds.
+                Clinik simplifies hospital visits. Search doctors or hospitals, view real‑time schedules, and book in seconds.
                 We generate your token instantly and estimate when you will be seen. While you travel, token progress and ETA keep
                 updating so you can arrive just in time rather than wait in long queues.
               </p>
@@ -129,7 +129,7 @@ export default function LandingPage() {
 
         <Card className="bg-card">
           <CardContent className="p-8">
-            <h2 className="text-2xl font-semibold">How ClinicFlow works</h2>
+            <h2 className="text-2xl font-semibold">How Clinik works</h2>
             <div className="prose prose-slate max-w-none mt-3 text-sm md:text-base">
               <p>
                 1) Find a nearby clinic or search by doctor/specialty. 2) Pick a visible schedule that suits your time. 3) Confirm
@@ -208,7 +208,7 @@ export default function LandingPage() {
             <CardContent className="p-6">
               <h3 className="text-lg font-semibold">Clinical Disclaimer</h3>
               <ul className="mt-3 space-y-2 text-sm text-muted-foreground list-disc ml-5">
-                <li>ClinicFlow is not a medical provider</li>
+                <li>Clinik is not a medical provider</li>
                 <li>Hospitals/doctors are responsible for care</li>
                 <li>App provides booking, queueing and notifications</li>
               </ul>
