@@ -42,6 +42,7 @@ import AdditionalPolicies from "@/pages/policies/AdditionalPolicies";
 import FAQs from "@/pages/help/FAQs";
 import ContactUs from "@/pages/help/ContactUs";
 import MapPage from "@/pages/map-page";
+import LandingPage from "@/pages/landing-page";
 
 // Wrap DoctorManagementPage with ProtectedRoute
 const ProtectedDoctorManagement = () => (
@@ -85,16 +86,15 @@ function Router() {
   
   // Determine the appropriate landing page based on authentication status
   const getLandingPage = () => {
-    if (!user) {
-      return <PortalSelection />;
+    if (user) {
+      return <Redirect to="/home" />;
     }
-    // For logged-in users, show HomePage which renders role-specific dashboard
-    return <HomePage />;
+    return <LandingPage />;
   };
 
   return (
     <Switch>
-      {/* New Authentication Portal Routes */}
+      {/* Landing page at root */}
       <Route path="/" component={getLandingPage} />
       <Route path="/patient-login" component={PatientLogin} />
       <Route path="/patient-register" component={PatientRegister} />

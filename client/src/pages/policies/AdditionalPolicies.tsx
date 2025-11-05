@@ -7,7 +7,7 @@ const AdditionalPolicies: React.FC = () => {
     <PolicyPageRenderer
       policyKey="policy_additional"
       icon={<FileText className="h-6 w-6 text-blue-600" />}
-      title="Additional Policies"
+      title="Disclaimer Policy"
     />
   );
 };

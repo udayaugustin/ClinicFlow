@@ -60,7 +60,7 @@ export default function AuthPage() {
       <div className="flex items-center justify-center p-8">
         <Card className="w-full max-w-md">
           <CardHeader>
-            <CardTitle>Welcome to MedClinic</CardTitle>
+            <CardTitle>Welcome to Clinik</CardTitle>
           </CardHeader>
           <CardContent>
             <Tabs defaultValue="login">

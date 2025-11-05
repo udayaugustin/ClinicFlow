@@ -132,6 +132,27 @@ const policies = [
     isEditable: true
   },
   {
+    configKey: 'policy_contactUs',
+    configValue: `<h1>Contact Us</h1>
+<p>If you need help with bookings, refunds, or account access, reach us using the details below.</p>
+
+<h2>Email</h2>
+<p><a href="mailto:support@clinicflow.com">support@clinicflow.com</a></p>
+
+<h2>Phone</h2>
+<p>+91-XXXX-XXXXXX (Mon–Fri, 9:00 AM – 6:00 PM)</p>
+
+<h2>Address</h2>
+<p>India</p>
+
+<h2>Support Hours</h2>
+<p>24/7 online ticket support via the app</p>`,
+    configType: 'string',
+    description: 'Contact Us page content',
+    category: 'policy',
+    isEditable: true
+  },
+  {
     configKey: 'policy_additional',
     configValue: `<h1>Additional Policies</h1>
 <p>Comprehensive policies governing various aspects of ClinicFlow services.</p>

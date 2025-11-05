@@ -19,8 +19,9 @@ const policyLabels: Record<string, string> = {
   'policy_terms_conditions': 'Terms & Conditions',
   'policy_privacy': 'Privacy Policy',
   'policy_cancellation_refund': 'Cancellation & Refund',
-  'policy_additional': 'Additional Policies',
+  'policy_additional': 'Disclaimer Policies',
   'policy_about_us': 'About Us',
+  'policy_contactUs': 'Contact Us',
   'help_faqs': 'FAQs'
 };
 

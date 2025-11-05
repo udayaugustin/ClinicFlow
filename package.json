@@ -22,6 +22,7 @@
     "assign-doctor-to-attender": "tsx server/assign-doctor-to-attender.ts",
     "create-test-patient": "tsx server/create-test-patient.ts",
     "seed-data": "tsx server/seed-data.ts",
+    "seed-policies": "tsx server/seed-policies.ts",
     "add-chennai-hospitals": "tsx scripts/add-chennai-hospitals.ts"
   },
   "dependencies": {
@@ -96,6 +97,7 @@
     "passport": "^0.7.0",
     "passport-local": "^1.0.0",
     "pg": "^8.13.3",
+    "quill": "^2.0.3",
     "react": "^18.3.1",
     "react-day-picker": "^8.10.1",
     "react-dom": "^18.3.1",
