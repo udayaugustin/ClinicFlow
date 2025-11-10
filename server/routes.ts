@@ -3227,10 +3227,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { key } = req.params;
       
-      const config = await storage.getConfiguration(key);
+      let config = await storage.getConfiguration(key);
       
+      // Auto-create sane defaults for missing public pages so prod never 404s
       if (!config) {
-        return res.status(404).json({ message: "Policy not found" });
+        let defaultCategory: 'policy' | 'help' | undefined;
+        let defaultContent: string | undefined;
+        let defaultDescription = 'Auto-created default content';
+
+        switch (key) {
+          case 'policy_contactUs':
+            defaultCategory = 'policy';
+            defaultContent = `<h1>Contact Us</h1>
+<p>Email: <a href=\"mailto:support@clinicflow.com\">support@clinicflow.com</a></p>
+<p>Phone: +91-XXXX-XXXXXX</p>`;
+            defaultDescription = 'Contact Us page content';
+            break;
+          case 'policy_about_us':
+            defaultCategory = 'policy';
+            defaultContent = `<h1>About Us</h1><p>ClinicFlow helps patients book tokens and track queues in real time.</p>`;
+            defaultDescription = 'About Us page content';
+            break;
+          case 'policy_terms_conditions':
+            defaultCategory = 'policy';
+            defaultContent = `<h1>Terms & Conditions</h1><p>Standard terms placeholder.</p>`;
+            defaultDescription = 'Terms & Conditions content';
+            break;
+          case 'policy_privacy':
+            defaultCategory = 'policy';
+            defaultContent = `<h1>Privacy Policy</h1><p>Standard privacy placeholder.</p>`;
+            defaultDescription = 'Privacy policy content';
+            break;
+          case 'help_faqs':
+            defaultCategory = 'help';
+            defaultContent = `<h1>FAQs</h1><p>Common questions will appear here.</p>`;
+            defaultDescription = 'FAQs content';
+            break;
+          default:
+            // Unknown key, keep 404 behavior
+            break;
+        }
+
+        if (defaultCategory && defaultContent) {
+          try {
+            const created = await storage.createConfiguration({
+              configKey: key,
+              configValue: defaultContent,
+              configType: 'string',
+              description: defaultDescription,
+              category: defaultCategory,
+              isEditable: true,
+            } as any);
+            config = created as any;
+          } catch (e) {
+            console.warn(`Failed to auto-create missing policy ${key}:`, e);
+          }
+        }
+      }
+
+      if (!config) {
+        return res.status(404).json({ message: 'Policy not found' });
       }
 
       res.json({ 
