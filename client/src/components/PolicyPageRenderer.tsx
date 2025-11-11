@@ -3,7 +3,6 @@ import { useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ArrowLeft, Loader2 } from 'lucide-react';
-import PatientFooter from '@/components/PatientFooter';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 
@@ -98,7 +97,6 @@ const PolicyPageRenderer: React.FC<PolicyPageRendererProps> = ({ policyKey, icon
         </div>
       </div>
 
-      <PatientFooter />
     </div>
   );
 };
