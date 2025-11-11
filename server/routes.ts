@@ -3289,12 +3289,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Policy not found' });
       }
 
-      // Prevent CDN/browser caching of policy content
-      res.set({
-        'Cache-Control': 'no-store, max-age=0',
-        'Pragma': 'no-cache'
-      });
-
       res.json({ 
         key: config.configKey, 
         content: config.configValue,
