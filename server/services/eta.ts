@@ -629,8 +629,24 @@ export class ETAService {
           );
         const patientsAhead = aheadCount[0]?.count || 0;
         liveEstimatedStartTime = addMinutes(estimatedCurrentFinish, patientsAhead * avgConsultationTime);
+      } else if (completedTokenCount > 0) {
+        // No one in progress but queue has already started (someone completed before this patient)
+        // This patient is next — count only token_started patients ahead
+        const aheadCount = await db
+          .select({ count: sql<number>`COUNT(*)::integer` })
+          .from(appointments)
+          .where(
+            and(
+              eq(appointments.scheduleId, scheduleId),
+              eq(appointments.status, "token_started"),
+              sql`${appointments.tokenNumber} < ${tokenNumber}`
+            )
+          );
+        const patientsAhead = aheadCount[0]?.count || 0;
+        // Base = now (no one being seen, next patient should be called immediately)
+        liveEstimatedStartTime = addMinutes(now, patientsAhead * avgConsultationTime);
       } else {
-        // No one in progress — use stored value (set when token started or doctor arrived)
+        // Doctor hasn't started yet — use stored value (schedule/arrival based)
         liveEstimatedStartTime = estimatedStartTime || now;
       }
     }
