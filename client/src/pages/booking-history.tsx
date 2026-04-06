@@ -17,7 +17,7 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 const appointmentStatusBadgeVariant = (status: string) => {
   switch (status) {
     case "token_started": return "default";
-    case "start": return "secondary";
+    case "in_progress": return "secondary";
     case "hold": return "secondary";
     case "pause": return "destructive";
     case "cancel": return "destructive";
@@ -225,8 +225,8 @@ export default function BookingHistoryPage() {
                           // Define status priority (higher number = higher priority)
                           const getStatusPriority = (status: string): number => {
                             switch (status) {
-                              case "start": return 5;     // Currently in consultation (highest priority)
-                              case "scheduled": return 4; // Scheduled but not started (next in line)
+                              case "in_progress": return 5; // Currently in consultation (highest priority)
+                              case "token_started": return 4; // Waiting (next in line)
                               case "hold": return 3;      // On hold (temporarily waiting)
                               case "pause": return 2;     // Paused (longer wait)
                               case "completed": return 1; // Completed (low priority)
@@ -270,7 +270,7 @@ export default function BookingHistoryPage() {
                         return (
                           <Card key={appointment.id} className="overflow-hidden">
                             <CardContent className="p-4">
-                              {appointment.status === "start" && (
+                              {appointment.status === "in_progress" && (
                                 <div className="bg-blue-100 -mx-4 -mt-4 px-4 py-2 mb-3">
                                   <p className="text-blue-700 font-medium text-sm text-center">
                                     Currently in consultation
@@ -357,7 +357,7 @@ export default function BookingHistoryPage() {
                                     </div>
                                     <Progress value={(progress.currentToken / maxTokenNumber) * 100} className="h-2" />
                                     <div className="text-sm text-center mt-1">
-                                      {appointment.status === "start" ? (
+                                      {appointment.status === "in_progress" ? (
                                         <span className="text-blue-600 font-medium">Currently being consulted</span>
                                       ) : appointment.status === "hold" ? (
                                         <span className="text-yellow-600 font-medium">Appointment on hold</span>
