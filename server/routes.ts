@@ -10,7 +10,7 @@ import { notificationService } from './services/notification';
 import { ETAService } from './services/eta';
 import { walletService } from './services/wallet';
 import { db } from './db';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, sql, isNull, not } from 'drizzle-orm';
 import { scrypt, randomBytes } from "crypto";
 import { promisify } from "util";
 
@@ -2094,13 +2094,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
               "in_progress",
               "Doctor has arrived - appointment started"
             );
-            
-            // Send notification for status change
+
+            // Send notification with updated ETA time
             if (appointment.patientId) {
+              let etaMessage = "Doctor has arrived at the clinic.";
+              try {
+                const etaData = await ETAService.getAppointmentETA(appointment.id);
+                if (etaData?.estimatedStartTime) {
+                  const { format } = await import("date-fns");
+                  const etaTime = format(new Date(etaData.estimatedStartTime), "h:mm a");
+                  etaMessage = `Doctor has arrived. Your updated ETA: ${etaTime}`;
+                }
+              } catch (etaErr) {
+                console.error("Error getting ETA for notification:", etaErr);
+              }
               await notificationService.generateStatusNotification(
-                appointment, 
-                "in_progress", 
-                "Doctor has arrived"
+                appointment,
+                "in_progress",
+                etaMessage
               );
             }
           }
@@ -2151,6 +2162,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error resetting doctor presence:', error);
       res.status(500).json({ message: 'Failed to reset doctor presence' });
+    }
+  });
+
+  // Get moving average consultation time for a doctor on a specific date
+  app.get("/api/doctors/:id/moving-average", async (req, res) => {
+    try {
+      const doctorId = parseInt(req.params.id);
+      const { clinicId, date, scheduleId } = req.query;
+
+      if (!clinicId || !date) {
+        return res.status(400).json({ error: "clinicId and date are required" });
+      }
+
+      const dateObj = new Date(date as string);
+      const sid = scheduleId ? parseInt(scheduleId as string) : undefined;
+
+      // Get completed appointments for this doctor/clinic/date with actual times
+      const completedAppts = await db
+        .select({
+          actualStartTime: appointments.actualStartTime,
+          actualEndTime: appointments.actualEndTime,
+        })
+        .from(appointments)
+        .where(
+          and(
+            eq(appointments.doctorId, doctorId),
+            eq(appointments.clinicId, parseInt(clinicId as string)),
+            sid ? eq(appointments.scheduleId, sid) : sql`1=1`,
+            sql`DATE(${appointments.date}) = DATE(${dateObj.toISOString()})`,
+            eq(appointments.status, "completed"),
+            not(isNull(appointments.actualStartTime)),
+            not(isNull(appointments.actualEndTime))
+          )
+        );
+
+      let movingAverage = 15; // default
+      if (completedAppts.length > 0) {
+        const { differenceInMinutes } = await import("date-fns");
+        let total = 0;
+        let valid = 0;
+        for (const a of completedAppts) {
+          const dur = differenceInMinutes(new Date(a.actualEndTime!), new Date(a.actualStartTime!));
+          if (dur >= 1 && dur <= 120) { total += dur; valid++; }
+        }
+        if (valid > 0) movingAverage = Math.round(total / valid);
+      }
+
+      res.json({ movingAverage, basedOn: completedAppts.length });
+    } catch (error) {
+      console.error("Error getting moving average:", error);
+      res.status(500).json({ error: "Failed to get moving average" });
     }
   });
 

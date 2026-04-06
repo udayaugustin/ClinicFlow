@@ -11,14 +11,19 @@ interface ETADisplayProps {
   showDetails?: boolean;
 }
 
-function getStageInfo(status: string) {
+function getStageInfo(status: string, avgConsultationTime?: number) {
   switch (status) {
     case "token_started":
-      return { label: "Scheduled", variant: "outline" as const, description: "Based on scheduled start time" };
+      return { label: "Scheduled", variant: "outline" as const, description: "Based on scheduled start time", isLive: false };
     case "in_progress":
-      return { label: "Updated", variant: "secondary" as const, description: "Updated for doctor arrival" };
+      return { label: "Updated", variant: "secondary" as const, description: "Updated for doctor arrival", isLive: false };
     default:
-      return { label: "Live", variant: "default" as const, description: "Real-time estimate" };
+      return {
+        label: "Live",
+        variant: "default" as const,
+        description: avgConsultationTime ? `Based on ${avgConsultationTime}min avg consultation` : "Real-time estimate",
+        isLive: true,
+      };
   }
 }
 
@@ -49,7 +54,7 @@ export function ETADisplay({ appointmentId, tokenNumber, className = "", showDet
   }
 
   const etaDate = new Date(eta.estimatedStartTime);
-  const stageInfo = getStageInfo(eta.currentAppointmentStatus || "token_started");
+  const stageInfo = getStageInfo(eta.currentAppointmentStatus || "token_started", eta.avgConsultationTime);
 
   return (
     <div className={`flex flex-col gap-1 p-3 bg-gray-50 rounded-lg border ${className}`}>
@@ -57,6 +62,9 @@ export function ETADisplay({ appointmentId, tokenNumber, className = "", showDet
         <Timer className="h-4 w-4 text-blue-500" />
         <span className="font-medium">ETA: {format(etaDate, "h:mm a")}</span>
         <Badge variant={stageInfo.variant}>{stageInfo.label}</Badge>
+        {stageInfo.isLive && (
+          <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+        )}
       </div>
       <p className="text-xs text-muted-foreground">{stageInfo.description}</p>
       {showDetails && (
@@ -64,7 +72,7 @@ export function ETADisplay({ appointmentId, tokenNumber, className = "", showDet
           {eta.currentAppointmentStatus === "completed" ? (
             `Your Token: ${eta.tokenNumber} | Avg time: ${eta.avgConsultationTime} min`
           ) : (
-            `Current Token: ${eta.currentConsultingToken || "-"} | Completed: ${eta.completedTokenCount || "-"} | Avg time: ${eta.avgConsultationTime} min`
+            `Current Token: ${eta.currentConsultingToken || "-"} | Completed: ${eta.completedTokenCount ?? "-"} | Avg time: ${eta.avgConsultationTime} min`
           )}
         </div>
       )}
