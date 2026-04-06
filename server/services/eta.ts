@@ -551,9 +551,8 @@ export class ETAService {
         and(
           eq(doctorDailyPresence.doctorId, schedule[0].doctorId),
           eq(doctorDailyPresence.clinicId, schedule[0].clinicId),
-          eq(doctorDailyPresence.scheduleId, scheduleId),
-          // Check for the same date as the appointment
-          eq(doctorDailyPresence.date, date)
+          eq(doctorDailyPresence.scheduleId, scheduleId)
+          // scheduleId is already date-specific, no need for date filter
         )
       )
       .limit(1);

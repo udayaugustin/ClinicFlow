@@ -11,20 +11,22 @@ interface ETADisplayProps {
   showDetails?: boolean;
 }
 
-function getStageInfo(status: string, avgConsultationTime?: number) {
-  switch (status) {
-    case "token_started":
-      return { label: "Scheduled", variant: "outline" as const, description: "Based on scheduled start time", isLive: false };
-    case "in_progress":
-      return { label: "Updated", variant: "secondary" as const, description: "Updated for doctor arrival", isLive: false };
-    default:
-      return {
-        label: "Live",
-        variant: "default" as const,
-        description: avgConsultationTime ? `Based on ${avgConsultationTime}min avg consultation` : "Real-time estimate",
-        isLive: true,
-      };
+function getStageInfo(status: string, doctorHasArrived: boolean, avgConsultationTime?: number) {
+  if (status === "token_started" && !doctorHasArrived) {
+    return { label: "Scheduled", variant: "outline" as const, description: "Based on scheduled start time", isLive: false };
   }
+  if (status === "token_started" && doctorHasArrived) {
+    return { label: "Updated", variant: "secondary" as const, description: "Updated for doctor arrival", isLive: false };
+  }
+  if (status === "in_progress") {
+    return { label: "Updated", variant: "secondary" as const, description: "Updated for doctor arrival", isLive: false };
+  }
+  return {
+    label: "Live",
+    variant: "default" as const,
+    description: avgConsultationTime ? `Based on ${avgConsultationTime}min avg consultation` : "Real-time estimate",
+    isLive: true,
+  };
 }
 
 export function ETADisplay({ appointmentId, tokenNumber, className = "", showDetails = false }: ETADisplayProps) {
@@ -54,7 +56,11 @@ export function ETADisplay({ appointmentId, tokenNumber, className = "", showDet
   }
 
   const etaDate = new Date(eta.estimatedStartTime);
-  const stageInfo = getStageInfo(eta.currentAppointmentStatus || "token_started", eta.avgConsultationTime);
+  const stageInfo = getStageInfo(
+    eta.currentAppointmentStatus || "token_started",
+    !!eta.doctorHasArrived,
+    eta.avgConsultationTime
+  );
 
   return (
     <div className={`flex flex-col gap-1 p-3 bg-gray-50 rounded-lg border ${className}`}>
