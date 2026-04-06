@@ -4387,7 +4387,7 @@ export class DatabaseStorage implements IStorage {
           eq(otpVerifications.phone, phone),
           eq(otpVerifications.otpCode, otpCode),
           eq(otpVerifications.verified, false),
-          gte(otpVerifications.expiresAt, new Date())
+          sql`${otpVerifications.expiresAt} > NOW()`
         )
       );
     return otp;
@@ -4412,7 +4412,7 @@ export class DatabaseStorage implements IStorage {
   async cleanupExpiredOtps(): Promise<void> {
     await db
       .delete(otpVerifications)
-      .where(lt(otpVerifications.expiresAt, new Date()));
+      .where(sql`${otpVerifications.expiresAt} < NOW()`);
   }
 
   async canSendOtp(phone: string): Promise<boolean> {
@@ -4426,9 +4426,10 @@ export class DatabaseStorage implements IStorage {
 
     if (!user.lastOtpSentAt) return true;
 
-    // Check if at least 1 minute has passed since last OTP
-    const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
-    return user.lastOtpSentAt < oneMinuteAgo;
+    // In development, allow resend every 10 seconds; in production, every 60 seconds
+    const waitMs = process.env.NODE_ENV === 'production' ? 60 * 1000 : 10 * 1000;
+    const cutoff = new Date(Date.now() - waitMs);
+    return user.lastOtpSentAt < cutoff;
   }
 
   async updateLastOtpSentAt(phone: string): Promise<void> {

@@ -192,10 +192,10 @@ export const otpVerifications = pgTable("otp_verifications", {
   id: serial("id").primaryKey(),
   phone: varchar("phone", { length: 20 }).notNull(),
   otpCode: varchar("otp_code", { length: 6 }).notNull(),
-  expiresAt: timestamp("expires_at").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   verified: boolean("verified").default(false),
   verificationAttempts: integer("verification_attempts").default(0),
-  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+  createdAt: timestamp("created_at", { withTimezone: true }).default(sql`CURRENT_TIMESTAMP`),
 });
 
 // Admin configurations for system-wide settings

@@ -214,7 +214,7 @@ export function setupAuth(app: Express) {
       // Check rate limiting
       const canSend = await storage.canSendOtp(phone);
       if (!canSend) {
-        return res.status(429).json({ message: "Please wait 1 minute before requesting another OTP" });
+        return res.status(429).json({ message: process.env.NODE_ENV === 'production' ? "Please wait 1 minute before requesting another OTP" : "Please wait 10 seconds before requesting another OTP" });
       }
 
       // Cleanup expired OTPs
@@ -318,7 +318,7 @@ export function setupAuth(app: Express) {
       // Check rate limiting
       const canSend = await storage.canSendOtp(phone);
       if (!canSend) {
-        return res.status(429).json({ message: "Please wait 1 minute before requesting another OTP" });
+        return res.status(429).json({ message: process.env.NODE_ENV === 'production' ? "Please wait 1 minute before requesting another OTP" : "Please wait 10 seconds before requesting another OTP" });
       }
 
       // Cleanup expired OTPs

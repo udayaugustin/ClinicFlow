@@ -7,11 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { z } from "zod";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Phone, Lock, User, Mail, Loader2, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { MobileLoginFirebase } from "@/components/mobile-login-firebase";
@@ -281,6 +280,8 @@ function MobileLoginForm() {
   const [isLoading, setIsLoading] = useState(false);
   const [countdown, setCountdown] = useState(0);
   const [canResend, setCanResend] = useState(false);
+  const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
+  const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   // Countdown timer for OTP resend
   useEffect(() => {
@@ -326,6 +327,8 @@ function MobileLoginForm() {
 
       setPhone(data.phone);
       verifyForm.setValue('phone', data.phone);
+      verifyForm.setValue('otp', '');
+      setOtpDigits(['', '', '', '', '', '']);
       setStep('verify');
       setCountdown(60); // 60 seconds until resend
       setCanResend(false);
@@ -468,20 +471,47 @@ function MobileLoginForm() {
         <FormField
           control={verifyForm.control}
           name="otp"
-          render={({ field }) => (
+          render={({ field, fieldState }) => (
             <FormItem>
               <FormLabel>Verification Code</FormLabel>
               <FormControl>
-                <InputOTP maxLength={6} {...field}>
-                  <InputOTPGroup>
-                    <InputOTPSlot index={0} />
-                    <InputOTPSlot index={1} />
-                    <InputOTPSlot index={2} />
-                    <InputOTPSlot index={3} />
-                    <InputOTPSlot index={4} />
-                    <InputOTPSlot index={5} />
-                  </InputOTPGroup>
-                </InputOTP>
+                <div className="flex gap-2 justify-center">
+                  {otpDigits.map((digit, idx) => (
+                    <input
+                      key={idx}
+                      ref={el => { otpRefs.current[idx] = el; }}
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={1}
+                      autoComplete="off"
+                      value={digit}
+                      className="w-10 h-10 text-center border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                      onChange={e => {
+                        const val = e.target.value.replace(/\D/g, '').slice(-1);
+                        const next = [...otpDigits];
+                        next[idx] = val;
+                        setOtpDigits(next);
+                        field.onChange(next.join(''));
+                        if (val && idx < 5) otpRefs.current[idx + 1]?.focus();
+                      }}
+                      onKeyDown={e => {
+                        if (e.key === 'Backspace' && !otpDigits[idx] && idx > 0) {
+                          otpRefs.current[idx - 1]?.focus();
+                        }
+                      }}
+                      onPaste={e => {
+                        e.preventDefault();
+                        const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+                        const next = [...otpDigits];
+                        pasted.split('').forEach((ch, i) => { if (i < 6) next[i] = ch; });
+                        setOtpDigits(next);
+                        field.onChange(next.join(''));
+                        const focusIdx = Math.min(pasted.length, 5);
+                        otpRefs.current[focusIdx]?.focus();
+                      }}
+                    />
+                  ))}
+                </div>
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -526,6 +556,7 @@ function MobileLoginForm() {
               setStep('request');
               requestForm.reset();
               verifyForm.reset();
+              setOtpDigits(['', '', '', '', '', '']);
             }}
           >
             Change phone number

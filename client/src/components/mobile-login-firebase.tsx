@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -8,8 +8,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { firebaseAuth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"; // used by request form only
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Phone, Lock, Loader2, AlertCircle, Smartphone } from "lucide-react";
 
@@ -35,6 +34,9 @@ export function MobileLoginFirebase() {
   const [countdown, setCountdown] = useState(0);
   const [canResend, setCanResend] = useState(false);
   const [useFirebase, setUseFirebase] = useState(false);
+  const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
+  const [otpError, setOtpError] = useState('');
+  const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   // Check if Firebase is configured
   useEffect(() => {
@@ -108,8 +110,10 @@ export function MobileLoginFirebase() {
 
       setPhone(phoneNumber);
       verifyForm.setValue('phone', phoneNumber);
+      verifyForm.setValue('otp', '');
+      setOtpDigits(['', '', '', '', '', '']);
       setStep('verify');
-      setCountdown(60); // 60 seconds until resend
+      setCountdown(60);
       setCanResend(false);
     } catch (error) {
       toast({
@@ -122,40 +126,32 @@ export function MobileLoginFirebase() {
     }
   };
 
-  const handleVerifyOTP = async (data: MobileLoginVerifyData) => {
+  const handleVerifyOTP = async () => {
+    const otp = otpDigits.join('');
+    if (otp.length !== 6) {
+      setOtpError('OTP must be 6 digits');
+      return;
+    }
+    setOtpError('');
     setIsLoading(true);
     try {
       if (useFirebase) {
-        // Verify with Firebase
-        const user = await firebaseAuth.verifyOTP(data.otp);
+        const user = await firebaseAuth.verifyOTP(otp);
         const idToken = await firebaseAuth.getIdToken();
-
-        // Send Firebase token to backend for verification and login
-        const res = await apiRequest('POST', '/api/auth/firebase-verify', {
-          idToken,
-          phone: data.phone
-        });
-
+        const res = await apiRequest('POST', '/api/auth/firebase-verify', { idToken, phone });
         if (!res.ok) {
           const result = await res.json();
           throw new Error(result.message || 'Failed to verify with backend');
         }
       } else {
-        // Use existing backend verification
-        const res = await apiRequest('POST', '/api/auth/verify-otp', data);
+        const res = await apiRequest('POST', '/api/auth/verify-otp', { phone, otp });
         const result = await res.json();
-
         if (!res.ok) {
           throw new Error(result.message || 'Failed to verify OTP');
         }
       }
 
-      toast({
-        title: "Success!",
-        description: "Login successful",
-      });
-
-      // Navigate to home after successful login
+      toast({ title: "Success!", description: "Login successful" });
       setTimeout(() => navigate('/'), 500);
     } catch (error) {
       toast({
@@ -242,8 +238,8 @@ export function MobileLoginFirebase() {
   }
 
   return (
-    <Form {...verifyForm}>
-      <form onSubmit={verifyForm.handleSubmit(handleVerifyOTP)} className="space-y-4 mt-4">
+    <div className="space-y-4 mt-4">
+      <form onSubmit={e => { e.preventDefault(); handleVerifyOTP(); }} className="space-y-4">
         <div className="text-center mb-4">
           <Lock className="mx-auto h-12 w-12 text-primary mb-2" />
           <p className="text-sm text-muted-foreground">
@@ -251,28 +247,47 @@ export function MobileLoginFirebase() {
           </p>
         </div>
 
-        <FormField
-          control={verifyForm.control}
-          name="otp"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Verification Code</FormLabel>
-              <FormControl>
-                <InputOTP maxLength={6} {...field}>
-                  <InputOTPGroup>
-                    <InputOTPSlot index={0} />
-                    <InputOTPSlot index={1} />
-                    <InputOTPSlot index={2} />
-                    <InputOTPSlot index={3} />
-                    <InputOTPSlot index={4} />
-                    <InputOTPSlot index={5} />
-                  </InputOTPGroup>
-                </InputOTP>
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Verification Code</label>
+          <div className="flex gap-2 justify-center">
+            {otpDigits.map((digit, idx) => (
+              <input
+                key={idx}
+                ref={el => { otpRefs.current[idx] = el; }}
+                type="text"
+                inputMode="numeric"
+                maxLength={1}
+                autoComplete="off"
+                value={digit}
+                className="w-10 h-10 text-center border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                onChange={e => {
+                  const val = e.target.value.replace(/\D/g, '').slice(-1);
+                  const next = [...otpDigits];
+                  next[idx] = val;
+                  setOtpDigits(next);
+                  setOtpError('');
+                  if (val && idx < 5) otpRefs.current[idx + 1]?.focus();
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Backspace' && !otpDigits[idx] && idx > 0) {
+                    otpRefs.current[idx - 1]?.focus();
+                  }
+                }}
+                onPaste={e => {
+                  e.preventDefault();
+                  const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+                  const next = ['', '', '', '', '', ''];
+                  pasted.split('').forEach((ch, i) => { if (i < 6) next[i] = ch; });
+                  setOtpDigits(next);
+                  setOtpError('');
+                  const focusIdx = Math.min(pasted.length, 5);
+                  otpRefs.current[focusIdx]?.focus();
+                }}
+              />
+            ))}
+          </div>
+          {otpError && <p className="text-sm text-red-500">{otpError}</p>}
+        </div>
 
         {countdown > 0 && (
           <Alert>
@@ -312,12 +327,13 @@ export function MobileLoginFirebase() {
               setStep('request');
               requestForm.reset();
               verifyForm.reset();
+              setOtpDigits(['', '', '', '', '', '']);
             }}
           >
             Change phone number
           </Button>
         </div>
       </form>
-    </Form>
+    </div>
   );
 }
