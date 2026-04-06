@@ -501,7 +501,20 @@ export default function PatientClinicDetails() {
        // Check availability based on multiple conditions (colleague's logic)
        const isScheduleCompleted = schedule.scheduleStatus === 'completed';
        const isBookingClosed = schedule.bookingStatus === 'closed';
-       const isAvailable = schedule.isActive && !isScheduleCompleted && !isBookingClosed;
+
+       // Check if today's schedule end time has already passed
+       const now = new Date();
+       const schDate = new Date(schedule.date);
+       const isTodaySchedule = now.toDateString() === schDate.toDateString();
+       let isEndTimePassed = false;
+       if (isTodaySchedule && schedule.endTime) {
+         const [endHour, endMin] = schedule.endTime.split(':').map(Number);
+         const endTimeToday = new Date();
+         endTimeToday.setHours(endHour, endMin, 0, 0);
+         isEndTimePassed = now > endTimeToday;
+       }
+
+       const isAvailable = schedule.isActive && !isScheduleCompleted && !isBookingClosed && !isEndTimePassed;
 
        return {
          id: schedule.id.toString(),
@@ -517,7 +530,8 @@ export default function PatientClinicDetails() {
          isFavorite: schedule.isFavorite || false,
          isVisible: schedule.isVisible || false,
          statusMessage: isScheduleCompleted ? 'Schedule completed - doctor has finished' :
-                       isBookingClosed ? 'Booking closed - new tokens not accepted' : ''
+                       isBookingClosed ? 'Booking closed - new tokens not accepted' :
+                       isEndTimePassed ? `Schedule ended at ${schedule.endTime}` : ''
        };
      });
   }, [scheduleData]);

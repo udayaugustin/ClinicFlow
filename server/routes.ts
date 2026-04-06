@@ -555,15 +555,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Check if schedule is completed or booking is closed
       if (schedule.scheduleStatus === 'completed') {
-        return res.status(400).json({ 
-          message: 'Cannot book appointment: Schedule has been completed. The doctor has finished for this session.' 
+        return res.status(400).json({
+          message: 'Cannot book appointment: Schedule has been completed. The doctor has finished for this session.'
         });
       }
 
       if (schedule.bookingStatus === 'closed') {
-        return res.status(400).json({ 
-          message: 'Cannot book appointment: Booking is currently closed for this schedule.' 
+        return res.status(400).json({
+          message: 'Cannot book appointment: Booking is currently closed for this schedule.'
         });
+      }
+
+      // Check if current time has passed the schedule end time (for today's schedules)
+      const now = new Date();
+      const scheduleDate = new Date(schedule.date);
+      const isToday = now.toDateString() === scheduleDate.toDateString();
+      if (isToday && schedule.endTime) {
+        const [endHour, endMin] = schedule.endTime.split(':').map(Number);
+        const endTimeToday = new Date();
+        endTimeToday.setHours(endHour, endMin, 0, 0);
+        if (now > endTimeToday) {
+          return res.status(400).json({
+            message: `Cannot book appointment: This schedule has already ended at ${schedule.endTime}.`
+          });
+        }
       }
 
       // Get current token count for this date

@@ -193,10 +193,16 @@ export function setupAuth(app: Express) {
   // OTP Authentication endpoints
   app.post("/api/auth/request-otp", async (req, res) => {
     try {
-      const { phone } = req.body;
-      
+      let { phone } = req.body;
+
       if (!phone) {
         return res.status(400).json({ message: "Phone number is required" });
+      }
+
+      // Normalize phone: strip country code prefix (+1, +91, etc.) and non-digits
+      phone = phone.replace(/\D/g, ''); // remove all non-digits
+      if (phone.length > 10) {
+        phone = phone.slice(-10); // keep last 10 digits
       }
 
       // Check if user exists
@@ -242,11 +248,15 @@ export function setupAuth(app: Express) {
 
   app.post("/api/auth/verify-otp", async (req, res, next) => {
     try {
-      const { phone, otp } = req.body;
+      let { phone, otp } = req.body;
 
       if (!phone || !otp) {
         return res.status(400).json({ message: "Phone number and OTP are required" });
       }
+
+      // Normalize phone
+      phone = phone.replace(/\D/g, '');
+      if (phone.length > 10) phone = phone.slice(-10);
 
       // Get valid OTP from database
       const otpRecord = await storage.getValidOtp(phone, otp);
@@ -289,11 +299,15 @@ export function setupAuth(app: Express) {
   // OTP Registration endpoints
   app.post("/api/register/request-otp", async (req, res) => {
     try {
-      const { phone } = req.body;
-      
+      let { phone } = req.body;
+
       if (!phone) {
         return res.status(400).json({ message: "Phone number is required" });
       }
+
+      // Normalize phone
+      phone = phone.replace(/\D/g, '');
+      if (phone.length > 10) phone = phone.slice(-10);
 
       // Check if user already exists
       const existingUser = await storage.getUserByPhone(phone);
