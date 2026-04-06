@@ -84,17 +84,19 @@ export class ETAService {
       .where(
         and(
           eq(appointments.scheduleId, scheduleId),
-          eq(appointments.status, "scheduled")
+          eq(appointments.status, "token_started")
         )
       )
       .orderBy(asc(appointments.tokenNumber));
 
-    // Update ETA for each pending appointment
-    for (const appointment of pendingAppointments) {
-      // ETA = doctorArrivalTime + ((tokenNumber - 1) * avgConsultTime)
-      const estimatedMinutes = (appointment.tokenNumber - 1) * avgTime;
+    // Update ETA for each pending appointment using relative queue position
+    // (not absolute token number, since earlier tokens may be completed already)
+    for (let i = 0; i < pendingAppointments.length; i++) {
+      const appointment = pendingAppointments[i];
+      // ETA = doctorArrivalTime + (relativePosition * avgConsultTime)
+      const estimatedMinutes = i * avgTime;
       const newETA = addMinutes(actualArrivalTime, estimatedMinutes);
-      
+
       await db
         .update(appointments)
         .set({ estimatedStartTime: newETA })
@@ -139,8 +141,8 @@ export class ETAService {
           eq(appointments.scheduleId, scheduleId),
           lt(appointments.tokenNumber, tokenNumber),
           or(
-            eq(appointments.status, "scheduled"),
-            eq(appointments.status, "start")
+            eq(appointments.status, "token_started"),
+            eq(appointments.status, "in_progress")
           )
         )
       )
@@ -196,67 +198,73 @@ export class ETAService {
 
     const avgTime = schedule[0].averageConsultationTime || this.DEFAULT_CONSULTATION_TIME;
 
-    // Get current consulting token (in progress)
+    // Get current in_progress appointment with its actual start time
     const currentConsulting = await db
       .select({
-        tokenNumber: appointments.tokenNumber
+        tokenNumber: appointments.tokenNumber,
+        actualStartTime: appointments.actualStartTime
       })
       .from(appointments)
       .where(
         and(
           eq(appointments.scheduleId, scheduleId),
-          eq(appointments.status, "start")
+          eq(appointments.status, "in_progress")
         )
       )
       .orderBy(asc(appointments.tokenNumber))
       .limit(1);
 
-    let currentConsultingToken: number;
-    
+    const now = new Date();
+    let baseTime: Date; // = estimated time when current patient finishes (= start of next)
+
     if (currentConsulting.length === 0) {
       console.log(`⚠️ No token currently in progress for schedule ${scheduleId}`);
-      
-      // Find the next scheduled appointment
+
+      // Find the next token_started appointment
       const nextScheduled = await db
-        .select({
-          tokenNumber: appointments.tokenNumber
-        })
+        .select({ tokenNumber: appointments.tokenNumber })
         .from(appointments)
         .where(
           and(
             eq(appointments.scheduleId, scheduleId),
-            eq(appointments.status, "scheduled")
+            eq(appointments.status, "token_started")
           )
         )
         .orderBy(asc(appointments.tokenNumber))
         .limit(1);
-      
+
       if (nextScheduled.length === 0) {
         console.log(`❌ No scheduled appointments found for schedule ${scheduleId}`);
         return;
       }
-      
-      currentConsultingToken = nextScheduled[0].tokenNumber;
-      console.log(`📍 Next scheduled token will be: ${currentConsultingToken}`);
-    } else {
-      currentConsultingToken = currentConsulting[0].tokenNumber;
-    }
-    console.log(`👤 Current consulting token: ${currentConsultingToken}, avg time: ${avgTime} min`);
 
-    // Get all appointments to update (both scheduled and currently in progress)
+      // No one in progress — next patient starts now
+      baseTime = now;
+      console.log(`📍 No one in progress, base time = now (${format(baseTime, 'HH:mm')})`);
+    } else {
+      // Someone is in progress — estimated finish = actualStartTime + avgTime
+      const actualStart = currentConsulting[0].actualStartTime
+        ? new Date(currentConsulting[0].actualStartTime)
+        : now;
+      baseTime = addMinutes(actualStart, avgTime);
+      console.log(`👤 Token ${currentConsulting[0].tokenNumber} in progress since ${format(actualStart, 'HH:mm')}, estimated finish: ${format(baseTime, 'HH:mm')}`);
+    }
+
+    // Get all appointments to update (both token_started and currently in_progress)
     const appointmentsToUpdate = await db
       .select({
         id: appointments.id,
         tokenNumber: appointments.tokenNumber,
-        status: appointments.status
+        status: appointments.status,
+        actualStartTime: appointments.actualStartTime
       })
       .from(appointments)
       .where(
         and(
           eq(appointments.scheduleId, scheduleId),
           or(
-            eq(appointments.status, "scheduled"),
-            eq(appointments.status, "start")
+            eq(appointments.status, "token_started"),
+            eq(appointments.status, "in_progress")
           )
         )
       )
@@ -264,31 +272,28 @@ export class ETAService {
 
     console.log(`🔄 Updating ${appointmentsToUpdate.length} appointments`);
 
-    // Update ETAs for all relevant appointments
-    const baseTime = new Date();
-    
+    // in_progress gets baseTime (estimated finish), token_started patients queue after that
+    let waitingIndex = 0;
     for (const appointment of appointmentsToUpdate) {
-      // tokensBefore = tokenNumber - currentConsultingToken
-      const tokensBefore = appointment.tokenNumber - currentConsultingToken;
       let newETA: Date;
-      
-      if (appointment.status === "start") {
-        // Currently in progress - ETA is now
+
+      if (appointment.status === "in_progress") {
+        // ETA = estimated finish time of current consultation
         newETA = baseTime;
       } else {
-        // ETA = now + (tokensBefore * avgConsultTime)
-        const estimatedMinutes = Math.max(0, tokensBefore) * avgTime;
-        newETA = addMinutes(baseTime, estimatedMinutes);
+        // ETA = baseTime + (position in waiting queue * avgTime)
+        newETA = addMinutes(baseTime, waitingIndex * avgTime);
+        waitingIndex++;
       }
-      
-      console.log(`🕐 Token ${appointment.tokenNumber}: ETA = ${format(newETA, 'HH:mm')} (${tokensBefore} tokens before × ${avgTime} min)`);
-      
+
+      console.log(`🕐 Token ${appointment.tokenNumber} (${appointment.status}): ETA = ${format(newETA, 'HH:mm')}`);
+
       await db
         .update(appointments)
         .set({ estimatedStartTime: newETA })
         .where(eq(appointments.id, appointment.id));
     }
-    
+
     console.log(`✅ Progress-based ETA update complete`);
   }
 
@@ -430,56 +435,36 @@ export class ETAService {
       .set({ averageConsultationTime: newAverageTime })
       .where(eq(doctorSchedules.id, scheduleId));
 
-    // Get current consulting token (in progress)
+    // Get current in_progress appointment with actual start time
     const currentConsulting = await db
       .select({
-        tokenNumber: appointments.tokenNumber
+        tokenNumber: appointments.tokenNumber,
+        actualStartTime: appointments.actualStartTime
       })
       .from(appointments)
       .where(
         and(
           eq(appointments.scheduleId, scheduleId),
-          eq(appointments.status, "start")
+          eq(appointments.status, "in_progress")
         )
       )
       .orderBy(asc(appointments.tokenNumber))
       .limit(1);
 
-    // Current consulting token - if no one is currently consulting, find the next scheduled token
-    let currentConsultingToken: number;
-    
+    // baseTime = estimated finish of current patient = when next patient starts
+    let baseTime: Date;
     if (currentConsulting.length > 0) {
-      currentConsultingToken = currentConsulting[0].tokenNumber;
+      const actualStart = currentConsulting[0].actualStartTime
+        ? new Date(currentConsulting[0].actualStartTime)
+        : now;
+      baseTime = addMinutes(actualStart, newAverageTime);
+      console.log(`👤 Token ${currentConsulting[0].tokenNumber} in progress since ${format(actualStart, 'HH:mm')}, estimated finish: ${format(baseTime, 'HH:mm')}`);
     } else {
-      // Find the next scheduled appointment
-      const nextScheduled = await db
-        .select({
-          tokenNumber: appointments.tokenNumber
-        })
-        .from(appointments)
-        .where(
-          and(
-            eq(appointments.scheduleId, scheduleId),
-            eq(appointments.status, "scheduled")
-          )
-        )
-        .orderBy(asc(appointments.tokenNumber))
-        .limit(1);
-      
-      if (nextScheduled.length > 0) {
-        currentConsultingToken = nextScheduled[0].tokenNumber;
-        console.log(`📍 Next scheduled token will be: ${currentConsultingToken}`);
-      } else {
-        // If no scheduled appointments, use last completed + 1 as fallback
-        currentConsultingToken = completedAppointments.length > 0 
-          ? Math.max(...completedAppointments.map(a => a.tokenNumber)) + 1
-          : 1;
-      }
+      baseTime = now;
+      console.log(`📍 No one in progress, base time = now (${format(baseTime, 'HH:mm')})`);
     }
 
-    console.log(`👤 Current consulting token: ${currentConsultingToken}`);
-
-    // Get all pending AND currently progressing appointments to update ETAs
+    // Get all pending AND currently in_progress appointments to update ETAs
     const appointmentsToUpdate = await db
       .select({
         id: appointments.id,
@@ -490,10 +475,9 @@ export class ETAService {
       .where(
         and(
           eq(appointments.scheduleId, scheduleId),
-          // Include both scheduled and currently in progress
           or(
-            eq(appointments.status, "scheduled"),
-            eq(appointments.status, "start")
+            eq(appointments.status, "token_started"),
+            eq(appointments.status, "in_progress")
           )
         )
       )
@@ -501,32 +485,25 @@ export class ETAService {
 
     console.log(`🔄 Updating ETAs for ${appointmentsToUpdate.length} appointments`);
 
-    // Update ETAs for all relevant appointments
-    const baseTime = new Date(); // Current time as base
-    
+    let waitingIndex = 0;
     for (const appointment of appointmentsToUpdate) {
-      // Calculate tokens before this appointment
-      // tokensBefore = tokenNumber - currentConsultingToken
-      const tokensBefore = appointment.tokenNumber - currentConsultingToken;
       let newETA: Date;
-      
-      if (appointment.status === "start") {
-        // Currently in progress - ETA is now
-        newETA = baseTime;
+
+      if (appointment.status === "in_progress") {
+        newETA = baseTime; // estimated finish time
       } else {
-        // ETA = now + (tokensBefore * avgConsultTime)
-        const estimatedMinutes = Math.max(0, tokensBefore) * newAverageTime;
-        newETA = addMinutes(baseTime, estimatedMinutes);
+        newETA = addMinutes(baseTime, waitingIndex * newAverageTime);
+        waitingIndex++;
       }
-      
-      console.log(`🕐 Token ${appointment.tokenNumber}: ETA = ${format(newETA, 'HH:mm')} (${tokensBefore} tokens before × ${newAverageTime} min)`);
-      
+
+      console.log(`🕐 Token ${appointment.tokenNumber} (${appointment.status}): ETA = ${format(newETA, 'HH:mm')}`);
+
       await db
         .update(appointments)
         .set({ estimatedStartTime: newETA })
         .where(eq(appointments.id, appointment.id));
     }
-    
+
     console.log(`✅ ETA update complete for schedule ${scheduleId}`);
   }
 
@@ -583,67 +560,27 @@ export class ETAService {
 
     const doctorHasArrived = doctorPresence.length > 0 ? doctorPresence[0].hasArrived : false;
 
-    // Get current consulting token (in progress) - ONLY show if someone is actually consulting
+    // Get current in_progress appointment with actual start time
     const currentConsulting = await db
       .select({
-        tokenNumber: appointments.tokenNumber
+        tokenNumber: appointments.tokenNumber,
+        actualStartTime: appointments.actualStartTime
       })
       .from(appointments)
       .where(
         and(
           eq(appointments.scheduleId, scheduleId),
-          or(
-            eq(appointments.status, "start"),
-            eq(appointments.status, "in_progress")
-          )
+          eq(appointments.status, "in_progress")
         )
       )
       .orderBy(asc(appointments.tokenNumber))
       .limit(1);
 
-    // Current consulting token - ONLY if someone is actually being consulted right now
     const currentConsultingToken = currentConsulting.length > 0 ? currentConsulting[0].tokenNumber : null;
-
-    // Check if consultation has started (any appointment is in progress OR has been completed)
-    const consultationStartedCheck = await db
-      .select({
-        tokenNumber: appointments.tokenNumber
-      })
-      .from(appointments)
-      .where(
-        and(
-          eq(appointments.scheduleId, scheduleId),
-          or(
-            eq(appointments.status, "start"),
-            eq(appointments.status, "in_progress"),
-            eq(appointments.status, "completed")
-          )
-        )
-      )
-      .limit(1);
-
-    const consultationStarted = consultationStartedCheck.length > 0;
-
-    // Get completed appointments to determine next token if no one is currently consulting
-    const completedAppointments = await db
-      .select({
-        tokenNumber: appointments.tokenNumber
-      })
-      .from(appointments)
-      .where(
-        and(
-          eq(appointments.scheduleId, scheduleId),
-          eq(appointments.status, "completed")
-        )
-      )
-      .orderBy(desc(appointments.tokenNumber))
-      .limit(1);
 
     // Get count of completed appointments for display
     const completedAppointmentsCount = await db
-      .select({
-        count: sql<number>`COUNT(*)::integer`
-      })
+      .select({ count: sql<number>`COUNT(*)::integer` })
       .from(appointments)
       .where(
         and(
@@ -654,12 +591,59 @@ export class ETAService {
 
     const completedTokenCount = completedAppointmentsCount[0]?.count || 0;
 
-    console.log(`[ETA] Appointment ${appointmentId}: currentToken=${currentConsultingToken}, completed=${completedTokenCount}`);
+    // --- LIVE ETA CALCULATION ---
+    // Instead of returning the stale stored value, compute a fresh estimate now.
+    const now = new Date();
+    let liveEstimatedStartTime: Date;
+
+    if (appointment[0].status === "completed") {
+      // Completed — just show stored value (actual start time)
+      liveEstimatedStartTime = estimatedStartTime || now;
+    } else if (appointment[0].status === "in_progress") {
+      // Currently being seen — ETA = estimated finish = max(actualStart + avg, now)
+      const actualStart = currentConsulting[0]?.actualStartTime
+        ? new Date(currentConsulting[0].actualStartTime)
+        : now;
+      liveEstimatedStartTime = new Date(Math.max(
+        addMinutes(actualStart, avgConsultationTime).getTime(),
+        now.getTime()
+      ));
+    } else {
+      // token_started — calculate dynamically based on current in_progress state
+      if (currentConsulting.length > 0 && currentConsulting[0].actualStartTime) {
+        // Someone is being seen right now — estimate their finish then queue this patient
+        const actualStart = new Date(currentConsulting[0].actualStartTime);
+        const estimatedCurrentFinish = new Date(Math.max(
+          addMinutes(actualStart, avgConsultationTime).getTime(),
+          now.getTime()
+        ));
+        // Count how many token_started patients are ahead of this one
+        const aheadCount = await db
+          .select({ count: sql<number>`COUNT(*)::integer` })
+          .from(appointments)
+          .where(
+            and(
+              eq(appointments.scheduleId, scheduleId),
+              eq(appointments.status, "token_started"),
+              sql`${appointments.tokenNumber} < ${tokenNumber}`
+            )
+          );
+        const patientsAhead = aheadCount[0]?.count || 0;
+        liveEstimatedStartTime = addMinutes(estimatedCurrentFinish, patientsAhead * avgConsultationTime);
+      } else {
+        // No one in progress — use stored value (set when token started or doctor arrived)
+        liveEstimatedStartTime = estimatedStartTime || now;
+      }
+    }
+
+    const consultationStarted = currentConsulting.length > 0 || completedTokenCount > 0;
+
+    console.log(`[ETA] Appt ${appointmentId} (token ${tokenNumber}, ${appointment[0].status}): live ETA=${format(liveEstimatedStartTime, 'HH:mm')}`);
 
     return {
       appointmentId,
       tokenNumber,
-      estimatedStartTime: estimatedStartTime || new Date(),
+      estimatedStartTime: liveEstimatedStartTime,
       currentConsultingToken,
       completedTokenCount,
       avgConsultationTime,
@@ -727,48 +711,32 @@ export class ETAService {
       .set({ averageConsultationTime: newAverageTime })
       .where(eq(doctorSchedules.id, scheduleId));
 
-    // Get current consulting token
+    // Get current in_progress appointment with actual start time
     const currentConsulting = await db
-      .select({ tokenNumber: appointments.tokenNumber })
+      .select({ tokenNumber: appointments.tokenNumber, actualStartTime: appointments.actualStartTime })
       .from(appointments)
       .where(
         and(
           eq(appointments.scheduleId, scheduleId),
-          eq(appointments.status, "start")
+          eq(appointments.status, "in_progress")
         )
       )
       .limit(1);
 
-    let currentToken: number;
-    
-    if (currentConsulting.length > 0) {
-      currentToken = currentConsulting[0].tokenNumber;
-    } else {
-      // Find the next scheduled appointment
-      const nextScheduled = await db
-        .select({
-          tokenNumber: appointments.tokenNumber
-        })
-        .from(appointments)
-        .where(
-          and(
-            eq(appointments.scheduleId, scheduleId),
-            eq(appointments.status, "scheduled")
-          )
-        )
-        .orderBy(asc(appointments.tokenNumber))
-        .limit(1);
-      
-      if (nextScheduled.length > 0) {
-        currentToken = nextScheduled[0].tokenNumber;
-        console.log(`📍 Next scheduled token will be: ${currentToken}`);
-      } else {
-        // Fallback to last completed + 1
-        currentToken = validAppointments > 0 ? Math.max(...completedAppointments.map(a => a.tokenNumber)) + 1 : 1;
-      }
-    }
+    const now = new Date();
+    let baseTime: Date; // estimated finish time of current patient = start of next
 
-    console.log(`👤 Current consulting token: ${currentToken}`);
+    if (currentConsulting.length > 0) {
+      const actualStart = currentConsulting[0].actualStartTime
+        ? new Date(currentConsulting[0].actualStartTime)
+        : now;
+      baseTime = addMinutes(actualStart, newAverageTime);
+      console.log(`👤 Token ${currentConsulting[0].tokenNumber} in progress since ${format(actualStart, 'HH:mm')}, estimated finish: ${format(baseTime, 'HH:mm')}`);
+    } else {
+      // No one in progress — next patient starts now
+      baseTime = now;
+      console.log(`📍 No one in progress, base time = now (${format(baseTime, 'HH:mm')})`);
+    }
 
     // Update remaining appointments
     const pendingAppointments = await db
@@ -782,29 +750,28 @@ export class ETAService {
         and(
           eq(appointments.scheduleId, scheduleId),
           or(
-            eq(appointments.status, "scheduled"),
-            eq(appointments.status, "start")
+            eq(appointments.status, "token_started"),
+            eq(appointments.status, "in_progress")
           )
         )
       )
       .orderBy(asc(appointments.tokenNumber));
 
-    const now = new Date();
-    console.log(`🔄 Updating ${pendingAppointments.length} pending appointments from time ${format(now, 'HH:mm')}`);
+    console.log(`🔄 Updating ${pendingAppointments.length} pending appointments`);
 
+    let waitingIndex = 0;
     for (const appointment of pendingAppointments) {
-      const tokensBefore = appointment.tokenNumber - currentToken;
       let newETA: Date;
-      
-      if (appointment.status === "start") {
-        newETA = now;
+
+      if (appointment.status === "in_progress") {
+        newETA = baseTime; // estimated finish time
       } else {
-        const estimatedMinutes = Math.max(0, tokensBefore) * newAverageTime;
-        newETA = addMinutes(now, estimatedMinutes);
+        newETA = addMinutes(baseTime, waitingIndex * newAverageTime);
+        waitingIndex++;
       }
-      
-      console.log(`🕐 Token ${appointment.tokenNumber}: ETA = ${format(newETA, 'HH:mm')} (${tokensBefore} tokens × ${newAverageTime} min)`);
-      
+
+      console.log(`🕐 Token ${appointment.tokenNumber} (${appointment.status}): ETA = ${format(newETA, 'HH:mm')}`);
+
       await db
         .update(appointments)
         .set({ estimatedStartTime: newETA })
@@ -852,11 +819,12 @@ export class ETAService {
       )
       .orderBy(asc(appointments.tokenNumber));
 
-    // Update each appointment's ETA
-    for (const appointment of appointments) {
-      const estimatedMinutes = (appointment.tokenNumber - 1) * avgTime;
+    // Update each appointment's ETA using relative queue position
+    for (let i = 0; i < appointments.length; i++) {
+      const appointment = appointments[i];
+      const estimatedMinutes = i * avgTime;
       const newETA = addMinutes(baseTime, estimatedMinutes);
-      
+
       await db
         .update(appointments)
         .set({ estimatedStartTime: newETA })

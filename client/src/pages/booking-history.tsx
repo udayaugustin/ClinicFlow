@@ -16,7 +16,7 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 // Assuming this function exists in the appointment-status-badge component
 const appointmentStatusBadgeVariant = (status: string) => {
   switch (status) {
-    case "scheduled": return "default";
+    case "token_started": return "default";
     case "start": return "secondary";
     case "hold": return "secondary";
     case "pause": return "destructive";
@@ -98,7 +98,7 @@ export default function BookingHistoryPage() {
 
   // Create a stable string representation of today's scheduled appointments to use in dependency array
   const scheduledAppointmentsKey = todayAppointments
-    .filter(apt => apt.status === "scheduled")
+    .filter(apt => apt.status === "token_started")
     .map(apt => `${apt.doctorId}-${apt.clinicId}`)
     .sort()
     .join('|');
@@ -106,7 +106,7 @@ export default function BookingHistoryPage() {
   // Fetch doctor arrival status - memoize this function to avoid recreating it on every render
   const fetchDoctorArrivals = useCallback(async () => {
     // Skip if no scheduled appointments
-    const scheduledAppts = todayAppointments.filter(apt => apt.status === "scheduled");
+    const scheduledAppts = todayAppointments.filter(apt => apt.status === "token_started");
     if (scheduledAppts.length === 0) return;
     
     const arrivalsMap: Record<string, boolean> = {};
@@ -138,7 +138,7 @@ export default function BookingHistoryPage() {
   // Setup the initial fetch and interval
   useEffect(() => {
     // Only run this effect if we have scheduled appointments and haven't fetched yet
-    const hasScheduledAppointments = todayAppointments.some(apt => apt.status === "scheduled");
+    const hasScheduledAppointments = todayAppointments.some(apt => apt.status === "token_started");
     
     if (hasScheduledAppointments) {
       // Run the initial fetch if we haven't already
@@ -306,10 +306,10 @@ export default function BookingHistoryPage() {
                                   </div>
                                 </div>
                                 
-                                {/* ETA Display for all tokens */}
-                                {appointment.status === "scheduled" && (
-                                  <ETADisplay 
-                                    appointmentId={appointment.id} 
+                                {/* ETA Display for waiting and in-progress tokens */}
+                                {(appointment.status === "token_started" || appointment.status === "in_progress") && (
+                                  <ETADisplay
+                                    appointmentId={appointment.id}
                                     tokenNumber={appointment.tokenNumber}
                                     showDetails={true}
                                   />

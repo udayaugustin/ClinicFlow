@@ -113,10 +113,10 @@ export default function PatientBookingPage() {
       });
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (response: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/patient/appointments"] });
       // Also invalidate the available slots query to refresh token counts
-      queryClient.invalidateQueries({ 
+      queryClient.invalidateQueries({
         queryKey: [`/api/doctors/${doctorId}/available-slots`]
       });
       // Invalidate user appointments to refresh duplicate checks
@@ -127,9 +127,12 @@ export default function PatientBookingPage() {
       invalidateWalletQueries(queryClient);
       // Force an immediate refetch
       refetchSlots();
+      const etaText = response?.estimatedStartTime
+        ? ` Your estimated time: ${format(new Date(response.estimatedStartTime), "h:mm a")}.`
+        : "";
       toast({
         title: "Appointment Booked Successfully! ✅",
-        description: "Your appointment has been confirmed. You cannot book another appointment for the same schedule.",
+        description: `Your appointment has been confirmed.${etaText}`,
       });
     },
     onError: (error) => {

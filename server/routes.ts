@@ -645,7 +645,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error('Error calculating initial ETA:', etaError);
       }
       
-      res.status(201).json(appointment);
+      res.status(201).json({ ...appointment, etaStage: 1 });
     } catch (error) {
       console.error('Error creating appointment:', error);
       res.status(500).json({ message: 'Failed to create appointment' });
@@ -709,7 +709,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Handle ETA updates based on status - within the same transaction context
         console.log(`📋 Status Update: Appointment ${appointmentId} → ${status}, scheduleId: ${updatedAppointment.scheduleId}`);
         
-        if (status === "start") {
+        if (status === "in_progress") {
           console.log(`▶️ Starting appointment ${appointmentId}`);
           await ETAService.updateETAOnAppointmentStart(appointmentId);
         } else if (status === "completed") {
@@ -735,8 +735,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           await notificationService.generateStatusNotification(updatedAppointment, status, statusNotes);
         }
         
-        // If the appointment status is "start", notify the next patients
-        if (status === "start") {
+        // If the appointment status is "in_progress", notify the next patients
+        if (status === "in_progress") {
           await notificationService.notifyNextPatients(updatedAppointment);
         }
       } catch (notificationError) {
@@ -1577,8 +1577,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Get all appointments for this schedule that are scheduled or in progress
       const appointments = await storage.getAppointmentsBySchedule(scheduleId);
-      const affectedAppointments = appointments.filter(apt => 
-        ["scheduled", "start"].includes(apt.status || "")
+      const affectedAppointments = appointments.filter(apt =>
+        ["token_started", "in_progress"].includes(apt.status || "")
       );
 
       // Update all affected appointments to paused status
@@ -1620,8 +1620,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Update all paused appointments back to scheduled status
       for (const appointment of affectedAppointments) {
-        // Update the appointment status back to "scheduled"
-        await storage.updateAppointmentStatus(appointment.id, "scheduled", "Schedule resumed");
+        // Update the appointment status back to "token_started"
+        await storage.updateAppointmentStatus(appointment.id, "token_started", "Schedule resumed");
         
         if (appointment.patientId) {
           await notificationService.createNotification({
@@ -2062,7 +2062,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         try {
           await ETAService.updateETAOnDoctorArrival(
             parsedScheduleId,
-            dateObj
+            new Date() // Use actual current time when doctor arrives, not the date param
           );
           console.log(`Successfully updated ETAs for schedule ${parsedScheduleId}`);
         } catch (etaError) {
