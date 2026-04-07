@@ -723,6 +723,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           } else {
             console.log(`❌ No scheduleId found for appointment ${appointmentId}`);
           }
+        } else if (status === "cancel") {
+          // Auto-process refund if appointment is eligible
+          const refundResult = await walletService.processSingleAppointmentRefund(
+            appointmentId,
+            statusNotes || 'Cancelled by attender',
+            req.user!.id
+          );
+          if (refundResult.refunded) {
+            console.log(`💰 Refund of ₹${refundResult.refundAmount} processed for appointment ${appointmentId}`);
+          } else {
+            console.log(`ℹ️ No refund processed for appointment ${appointmentId} (not eligible or already refunded)`);
+          }
         }
       } catch (error) {
         console.error('❌ Error in status/ETA update transaction:', error);

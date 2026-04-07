@@ -1735,7 +1735,7 @@ export class DatabaseStorage implements IStorage {
         ...appointment,
         clinicId,
         tokenNumber,
-        status: appointment.status || "scheduled" as "scheduled" | "completed" | "cancelled" | "in_progress"
+        status: appointment.status || "token_started"
       })
       .returning();
 
@@ -2656,12 +2656,16 @@ export class DatabaseStorage implements IStorage {
 
   async getDoctorSchedules(doctorId: number, date?: Date, visibleOnly: boolean = false): Promise<(DoctorSchedule & { createdByUser?: { id: number; name: string } })[]> {
     let conditions = [eq(doctorSchedules.doctorId, doctorId)];
-    
+
     if (date) {
       // If date is provided, filter schedules for that specific date
       conditions.push(eq(doctorSchedules.date, date));
+    } else {
+      // By default, only show today and future schedules (not past dates)
+      const todayStr = new Date().toISOString().split('T')[0];
+      conditions.push(gte(doctorSchedules.date, todayStr));
     }
-    
+
     if (visibleOnly) {
       // For patient views, only show visible schedules
       conditions.push(eq(doctorSchedules.isVisible, true));
@@ -3120,10 +3124,10 @@ export class DatabaseStorage implements IStorage {
         guestName: appointment.guestName,
         guestPhone: appointment.guestPhone || null,
         isWalkIn: true,
-        status: appointment.status || "scheduled"
+        status: appointment.status || "token_started"
       })
       .returning();
-    
+
     return created;
   }
 

@@ -326,6 +326,76 @@ export class WalletService {
   }
 
   /**
+   * Process refund for a single cancelled appointment
+   */
+  async processSingleAppointmentRefund(
+    appointmentId: number,
+    cancelReason: string,
+    processedByUserId: number
+  ): Promise<{ refunded: boolean; refundAmount: number }> {
+    const [appt] = await db
+      .select({ appointment: appointments, doctorName: users.name })
+      .from(appointments)
+      .innerJoin(users, eq(appointments.doctorId, users.id))
+      .where(eq(appointments.id, appointmentId));
+
+    if (!appt) return { refunded: false, refundAmount: 0 };
+
+    const { appointment, doctorName } = appt;
+
+    // Only refund if eligible, paid, and not already refunded
+    if (!appointment.isRefundEligible || !appointment.isPaid || appointment.hasBeenRefunded || !appointment.patientId) {
+      return { refunded: false, refundAmount: 0 };
+    }
+
+    const consultationFee = parseFloat(appointment.consultationFee);
+
+    const walletTransaction = await this.processTransaction({
+      patientId: appointment.patientId,
+      amount: consultationFee,
+      transactionType: 'refund_schedule_cancel',
+      description: `Refund for cancelled appointment with Dr. ${doctorName} - ${cancelReason}`,
+      appointmentId: appointment.id,
+      scheduleId: appointment.scheduleId!,
+      processedBy: processedByUserId,
+      metadata: { originalAppointmentId: appointment.id, cancelReason, doctorName }
+    });
+
+    await db.insert(appointmentRefunds).values({
+      appointmentId: appointment.id,
+      patientId: appointment.patientId,
+      scheduleId: appointment.scheduleId!,
+      doctorId: appointment.doctorId!,
+      clinicId: appointment.clinicId!,
+      originalAmount: consultationFee.toFixed(2),
+      refundAmount: consultationFee.toFixed(2),
+      refundReason: cancelReason,
+      refundType: 'full',
+      walletTransactionId: walletTransaction.id,
+      processedBy: processedByUserId,
+      notes: 'Appointment cancelled by attender - full refund'
+    });
+
+    await db.update(appointments)
+      .set({ hasBeenRefunded: true, refundAmount: consultationFee.toFixed(2) })
+      .where(eq(appointments.id, appointment.id));
+
+    try {
+      await notificationService.createNotification({
+        userId: appointment.patientId,
+        appointmentId: appointment.id,
+        title: 'Refund Processed',
+        message: `₹${consultationFee} has been refunded to your wallet - ${cancelReason}`,
+        type: 'wallet_refund'
+      });
+    } catch (e) {
+      console.error('Error sending refund notification:', e);
+    }
+
+    return { refunded: true, refundAmount: consultationFee };
+  }
+
+  /**
    * Process partial refund when doctor leaves mid-session
    */
   async processPartialRefund(

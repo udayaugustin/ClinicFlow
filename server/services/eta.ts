@@ -47,8 +47,11 @@ export class ETAService {
     baseTime.setHours(hours, minutes, 0, 0);
     
     // Calculate ETA: scheduleStartTime + (tokenNumber - 1) * avgConsultTime
+    // If schedule start time is already past, use current time as base
+    const now = new Date();
+    const effectiveBase = baseTime > now ? baseTime : now;
     const estimatedMinutes = (tokenNumber - 1) * avgTime;
-    return addMinutes(baseTime, estimatedMinutes);
+    return addMinutes(effectiveBase, estimatedMinutes);
   }
 
   /**
@@ -646,8 +649,9 @@ export class ETAService {
         // Base = now (no one being seen, next patient should be called immediately)
         liveEstimatedStartTime = addMinutes(now, patientsAhead * avgConsultationTime);
       } else {
-        // Doctor hasn't started yet — use stored value (schedule/arrival based)
-        liveEstimatedStartTime = estimatedStartTime || now;
+        // Doctor hasn't started yet — use stored value, but never show a past time
+        const stored = estimatedStartTime ? new Date(estimatedStartTime) : null;
+        liveEstimatedStartTime = (stored && stored > now) ? stored : now;
       }
     }
 

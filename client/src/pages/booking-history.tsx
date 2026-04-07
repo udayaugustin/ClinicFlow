@@ -3,7 +3,6 @@ import { Appointment, User } from "@shared/schema";
 import { NavHeader } from "@/components/nav-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { Progress } from "@/components/ui/progress";
 import { Clock, ArrowRight, Users, Ticket, CheckCircle2 } from "lucide-react";
@@ -13,18 +12,6 @@ import { NavigationButtons } from "@/components/navigation-buttons";
 import { apiRequest } from "@/lib/queryClient";
 import React, { useEffect, useState, useRef, useCallback } from "react";
 
-// Assuming this function exists in the appointment-status-badge component
-const appointmentStatusBadgeVariant = (status: string) => {
-  switch (status) {
-    case "token_started": return "default";
-    case "in_progress": return "secondary";
-    case "hold": return "secondary";
-    case "pause": return "destructive";
-    case "cancel": return "destructive";
-    case "no_show": return "destructive";
-    default: return "outline";
-  }
-};
 
 type AppointmentWithDoctor = Appointment & {
   doctor: User;
@@ -284,14 +271,7 @@ export default function BookingHistoryPage() {
                                     {appointment.doctor.specialty}
                                   </p>
                                 </div>
-                                <Badge
-                                  variant={
-                                    appointment.status === "completed" ? "outline" :
-                                    appointmentStatusBadgeVariant(appointment.status)
-                                  }
-                                >
-                                  <AppointmentStatusBadge status={appointment.status} />
-                                </Badge>
+                                <AppointmentStatusBadge status={appointment.status} />
                               </div>
                               
                               <div className="space-y-4">
