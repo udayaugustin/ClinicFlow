@@ -1,15 +1,20 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Appointment, User } from "@shared/schema";
 import { NavHeader } from "@/components/nav-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
 import { Progress } from "@/components/ui/progress";
-import { Clock, ArrowRight, Users, Ticket, CheckCircle2 } from "lucide-react";
+import { Clock, Ticket, CheckCircle2, XCircle, RefreshCw } from "lucide-react";
 import { AppointmentStatusBadge } from "@/components/appointment-status-badge";
 import { ETADisplay } from "@/components/eta-display";
 import { NavigationButtons } from "@/components/navigation-buttons";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
 import React, { useEffect, useState, useRef, useCallback } from "react";
 
 
@@ -54,11 +59,39 @@ const calculateTokensAhead = (
 
 export default function BookingHistoryPage() {
   // State to store doctor arrival status
+  const { toast } = useToast();
   const [doctorArrivals, setDoctorArrivals] = useState<Record<string, boolean>>({});
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancellingId, setCancellingId] = useState<number | null>(null);
   // Ref to track if we've already fetched arrivals
   const arrivedFetchedRef = useRef(false);
   // Ref to store interval ID
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const cancelMutation = useMutation({
+    mutationFn: async ({ appointmentId, reason }: { appointmentId: number; reason: string }) => {
+      const res = await apiRequest('PATCH', `/api/appointments/${appointmentId}/cancel-patient`, { reason });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/patient/appointments'] });
+      setCancelReason('');
+      setCancellingId(null);
+      toast({
+        title: 'Appointment Cancelled',
+        description: data.refunded
+          ? `Your appointment has been cancelled and ₹${data.refundAmount} has been refunded to your wallet.`
+          : 'Your appointment has been cancelled.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Cancellation Failed',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
 
   const { data: appointments, isLoading } = useQuery<AppointmentWithDoctor[]>({
     queryKey: ["/api/patient/appointments"],
@@ -68,6 +101,8 @@ export default function BookingHistoryPage() {
 
   const todayAppointments = appointments?.filter(
     apt => format(new Date(apt.date), "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd")
+      && apt.status !== "cancel"
+      && apt.status !== "no_show"
   ) || [];
 
   // Group today's appointments by doctor and clinic
@@ -278,7 +313,7 @@ export default function BookingHistoryPage() {
                                 <div className="flex items-center justify-between text-sm">
                                   <div className="flex items-center gap-2">
                                     <Clock className="h-4 w-4 text-muted-foreground" />
-                                    <span>{format(new Date(appointment.date), "h:mm a")}</span>
+                                    <span>{format(new Date(appointment.date), "MMM d, yyyy")}</span>
                                   </div>
                                   <div className="flex items-center gap-2">
                                     <Ticket className="h-4 w-4 text-muted-foreground" />
@@ -365,6 +400,62 @@ export default function BookingHistoryPage() {
                                     Your doctor has arrived at the clinic
                                   </div>
                                 )}
+
+                                {/* Patient self-cancellation — only for token_started */}
+                                {appointment.status === "token_started" && (
+                                  <div className="mt-3 pt-3 border-t">
+                                    <Dialog open={cancellingId === appointment.id} onOpenChange={(open) => {
+                                      if (!open) { setCancellingId(null); setCancelReason(''); }
+                                    }}>
+                                      <DialogTrigger asChild>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="w-full border-red-300 text-red-600 hover:bg-red-50"
+                                          onClick={() => setCancellingId(appointment.id)}
+                                        >
+                                          <XCircle className="h-4 w-4 mr-2" />
+                                          Cancel Appointment
+                                        </Button>
+                                      </DialogTrigger>
+                                      <DialogContent>
+                                        <DialogHeader>
+                                          <DialogTitle>Cancel Appointment</DialogTitle>
+                                          <DialogDescription>
+                                            Cancel your appointment with {appointment.doctor.name} (Token #{appointment.tokenNumber})
+                                          </DialogDescription>
+                                        </DialogHeader>
+                                        <div className="space-y-4">
+                                          <div>
+                                            <Label htmlFor="cancelReason">Reason for cancellation *</Label>
+                                            <Textarea
+                                              id="cancelReason"
+                                              value={cancelReason}
+                                              onChange={(e) => setCancelReason(e.target.value)}
+                                              placeholder="e.g., Unable to attend, feeling better, etc."
+                                              className="mt-1"
+                                            />
+                                          </div>
+                                          {appointment.isPaid && appointment.isRefundEligible && (
+                                            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+                                              ₹{parseFloat(appointment.consultationFee || '21').toFixed(0)} will be refunded to your wallet.
+                                            </div>
+                                          )}
+                                        </div>
+                                        <DialogFooter>
+                                          <Button
+                                            onClick={() => cancelMutation.mutate({ appointmentId: appointment.id, reason: cancelReason })}
+                                            disabled={cancelMutation.isPending || !cancelReason.trim()}
+                                            className="bg-red-600 hover:bg-red-700"
+                                          >
+                                            {cancelMutation.isPending && <RefreshCw className="h-4 w-4 mr-2 animate-spin" />}
+                                            Confirm Cancellation
+                                          </Button>
+                                        </DialogFooter>
+                                      </DialogContent>
+                                    </Dialog>
+                                  </div>
+                                )}
                               </div>
                             </CardContent>
                           </Card>
@@ -387,8 +478,10 @@ export default function BookingHistoryPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {appointments?.filter(apt => 
+                        {appointments?.filter(apt =>
                           format(new Date(apt.date), "yyyy-MM-dd") !== format(new Date(), "yyyy-MM-dd")
+                          || apt.status === "cancel"
+                          || apt.status === "no_show"
                         ).map((appointment) => (
                           <tr key={appointment.id} className="border-b">
                             <td className="py-4 px-4">

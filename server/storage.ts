@@ -2317,7 +2317,9 @@ export class DatabaseStorage implements IStorage {
       const doctorsWithAppointments = await Promise.all(
         doctorRelations.map(async (relation) => {
           const { doctor } = relation;
-          const today = new Date();          
+          const todayStr = new Date().toISOString().split('T')[0]; // "2026-04-07"
+          const todayStart = new Date(todayStr + 'T00:00:00.000Z');
+          const todayEnd = new Date(todayStr + 'T23:59:59.999Z');
 
           // Get doctor's schedules for today
           const schedules = await db
@@ -2327,7 +2329,7 @@ export class DatabaseStorage implements IStorage {
               and(
                 eq(doctorSchedules.doctorId, doctor.id),
                 eq(doctorSchedules.isActive, true),
-                eq(doctorSchedules.date, today)
+                eq(doctorSchedules.date, todayStr)
               )
             )
             .orderBy(doctorSchedules.startTime);
@@ -2339,8 +2341,8 @@ export class DatabaseStorage implements IStorage {
             .where(
               and(
                 eq(appointments.doctorId, doctor.id),
-                gte(appointments.date, new Date(today.setHours(0, 0, 0, 0))),
-                lte(appointments.date, new Date(today.setHours(23, 59, 59, 999)))
+                gte(appointments.date, todayStart),
+                lte(appointments.date, todayEnd)
               )
             );
 
@@ -3812,7 +3814,9 @@ export class DatabaseStorage implements IStorage {
       const doctorsWithAppointments = await Promise.all(
         clinicDoctors.map(async (relation) => {
           const doctor = relation.users;
-          const today = new Date();          
+          const todayStr = new Date().toISOString().split('T')[0]; // "2026-04-07"
+          const todayStart = new Date(todayStr + 'T00:00:00.000Z');
+          const todayEnd = new Date(todayStr + 'T23:59:59.999Z');
 
           // Get doctor's schedules for today
           const schedules = await db
@@ -3822,7 +3826,7 @@ export class DatabaseStorage implements IStorage {
               and(
                 eq(doctorSchedules.doctorId, doctor.id),
                 eq(doctorSchedules.isActive, true),
-                eq(doctorSchedules.date, today)
+                eq(doctorSchedules.date, todayStr)
               )
             )
             .orderBy(doctorSchedules.startTime);
@@ -3834,8 +3838,8 @@ export class DatabaseStorage implements IStorage {
             .where(
               and(
                 eq(appointments.doctorId, doctor.id),
-                gte(appointments.date, new Date(today.setHours(0, 0, 0, 0))),
-                lte(appointments.date, new Date(today.setHours(23, 59, 59, 999)))
+                gte(appointments.date, todayStart),
+                lte(appointments.date, todayEnd)
               )
             );
 

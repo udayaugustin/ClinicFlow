@@ -60,6 +60,8 @@ export function EnhancedAppointmentActions({
 }: EnhancedAppointmentActionsProps) {
   const { toast } = useToast();
   const [cancelReason, setCancelReason] = useState('');
+  const [cancelApptReason, setCancelApptReason] = useState('');
+  const [cancelApptOpen, setCancelApptOpen] = useState(false);
   const [noShowNotes, setNoShowNotes] = useState('');
 
   // Mutation for updating appointment status
@@ -74,6 +76,8 @@ export function EnhancedAppointmentActions({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/appointments'] });
       onStatusUpdate?.();
+      setCancelApptOpen(false);
+      setCancelApptReason('');
       toast({
         title: 'Success',
         description: 'Appointment status updated successfully',
@@ -109,6 +113,35 @@ export function EnhancedAppointmentActions({
       toast({
         title: 'Error',
         description: error instanceof Error ? error.message : 'Failed to mark as no-show',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const [partialRefundReason, setPartialRefundReason] = useState('');
+
+  // Mutation for partial refund (doctor leaves mid-session)
+  const partialRefundMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest('POST', `/api/schedules/${appointment.scheduleId}/partial-refunds`, {
+        cancelReason: partialRefundReason,
+        completedAppointmentIds: [] // server determines from completed status
+      });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/appointments'] });
+      onStatusUpdate?.();
+      setPartialRefundReason('');
+      toast({
+        title: 'Partial Refunds Processed',
+        description: `${data.refundedAppointments} remaining patient(s) refunded. Total: ₹${data.totalRefundAmount}`,
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to process partial refunds',
         variant: 'destructive',
       });
     },
@@ -276,23 +309,121 @@ export function EnhancedAppointmentActions({
           )}
 
           {/* Cancel Individual Appointment */}
-          <Button
-            size="sm"
-            onClick={() => updateStatusMutation.mutate({ status: 'cancel', statusNotes: 'Cancelled by attender' })}
-            disabled={updateStatusMutation.isPending}
-            variant="outline"
-            className="border-red-500 text-red-700 hover:bg-red-50"
-          >
-            <XCircle className="h-3 w-3 mr-1" />
-            Cancel
-          </Button>
+          <Dialog open={cancelApptOpen} onOpenChange={(open) => { setCancelApptOpen(open); if (!open) setCancelApptReason(''); }}>
+            <DialogTrigger asChild>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-red-500 text-red-700 hover:bg-red-50"
+                disabled={updateStatusMutation.isPending}
+                onClick={() => setCancelApptOpen(true)}
+              >
+                <XCircle className="h-3 w-3 mr-1" />
+                Cancel
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Cancel Appointment</DialogTitle>
+                <DialogDescription>
+                  This will cancel the appointment and automatically refund the patient if eligible.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="cancelApptReason">Cancellation Reason *</Label>
+                  <Textarea
+                    id="cancelApptReason"
+                    value={cancelApptReason}
+                    onChange={(e) => setCancelApptReason(e.target.value)}
+                    placeholder="e.g., Patient request, Doctor unavailable, etc."
+                    className="mt-1"
+                  />
+                </div>
+                {appointment.isPaid && appointment.isRefundEligible && !appointment.hasBeenRefunded && (
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-sm text-blue-700">
+                      ₹{parseFloat(appointment.consultationFee).toFixed(0)} will be automatically refunded to the patient's wallet.
+                    </p>
+                  </div>
+                )}
+              </div>
+              <DialogFooter>
+                <Button
+                  onClick={() => {
+                    updateStatusMutation.mutate({
+                      status: 'cancel',
+                      statusNotes: cancelApptReason.trim() || 'Cancelled by attender'
+                    });
+                  }}
+                  disabled={updateStatusMutation.isPending || !cancelApptReason.trim()}
+                  className="bg-red-600 hover:bg-red-700"
+                >
+                  {updateStatusMutation.isPending && <RefreshCw className="h-3 w-3 mr-1 animate-spin" />}
+                  Confirm Cancellation
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       )}
 
       {/* Schedule-wide Actions */}
       <div className="pt-2 border-t">
         <p className="text-xs text-muted-foreground mb-2">Schedule Actions:</p>
-        
+
+        {/* Partial Refund — Doctor leaves mid-session */}
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-orange-500 text-orange-700 hover:bg-orange-50 mb-2 w-full"
+            >
+              <DollarSign className="h-3 w-3 mr-1" />
+              Doctor Left Early — Refund Remaining
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Process Partial Refunds</DialogTitle>
+              <DialogDescription>
+                Refund all remaining (not yet seen) patients in this schedule. Already completed appointments will not be refunded.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="partialRefundReason">Reason *</Label>
+                <Textarea
+                  id="partialRefundReason"
+                  value={partialRefundReason}
+                  onChange={(e) => setPartialRefundReason(e.target.value)}
+                  placeholder="e.g., Doctor had an emergency, had to leave early"
+                  className="mt-1"
+                />
+              </div>
+              <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                <p className="text-sm font-medium text-orange-800 mb-1">⚠️ This will:</p>
+                <p className="text-xs text-orange-700">
+                  • Refund all token_started patients in this schedule<br/>
+                  • Completed appointments will NOT be refunded<br/>
+                  • Patients will be notified
+                </p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                onClick={() => partialRefundMutation.mutate()}
+                disabled={partialRefundMutation.isPending || !partialRefundReason.trim()}
+                className="bg-orange-600 hover:bg-orange-700"
+              >
+                {partialRefundMutation.isPending && <RefreshCw className="h-3 w-3 mr-1 animate-spin" />}
+                Process Partial Refunds
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         {/* Cancel Entire Schedule with Refunds */}
         <Dialog>
           <DialogTrigger asChild>

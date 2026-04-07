@@ -425,7 +425,8 @@ export class WalletService {
             eq(appointments.isRefundEligible, true),
             eq(appointments.hasBeenRefunded, false),
             eq(appointments.isPaid, true),
-            sql`${appointments.id} NOT IN (${completedAppointmentIds.join(',') || '0'})`
+            // Only refund waiting patients — not completed/cancelled/no-show
+            eq(appointments.status, 'token_started')
           )
         );
       

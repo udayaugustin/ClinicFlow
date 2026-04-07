@@ -653,6 +653,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
 
+  // Patient self-cancellation with automatic refund
+  app.patch("/api/appointments/:id/cancel-patient", async (req, res) => {
+    if (!req.user || req.user.role !== 'patient') return res.sendStatus(403);
+    try {
+      const appointmentId = parseInt(req.params.id);
+      const { reason } = req.body;
+
+      if (!reason?.trim()) {
+        return res.status(400).json({ message: 'Cancellation reason is required' });
+      }
+
+      const appointment = await storage.getAppointment(appointmentId);
+      if (!appointment) return res.status(404).json({ message: 'Appointment not found' });
+
+      // Ensure this appointment belongs to the requesting patient
+      if (appointment.patientId !== req.user.id) return res.sendStatus(403);
+
+      // Only allow cancellation of token_started appointments
+      if (appointment.status !== 'token_started') {
+        return res.status(400).json({ message: `Cannot cancel appointment with status: ${appointment.status}` });
+      }
+
+      await storage.updateAppointmentStatus(appointmentId, 'cancel', reason.trim());
+
+      // Process refund if eligible
+      const refundResult = await walletService.processSingleAppointmentRefund(
+        appointmentId,
+        reason.trim(),
+        req.user.id
+      );
+
+      // Notify patient
+      try {
+        await notificationService.generateStatusNotification(
+          { ...appointment, status: 'cancel' },
+          'cancel',
+          reason.trim()
+        );
+      } catch (e) {
+        console.error('Error sending cancellation notification:', e);
+      }
+
+      res.json({
+        message: 'Appointment cancelled successfully',
+        refunded: refundResult.refunded,
+        refundAmount: refundResult.refundAmount,
+      });
+    } catch (error) {
+      console.error('Error cancelling appointment:', error);
+      res.status(500).json({ message: 'Failed to cancel appointment' });
+    }
+  });
+
   app.patch("/api/appointments/:id/status", async (req, res) => {
     if (!req.user || !['attender', 'clinic_admin'].includes(req.user.role)) return res.sendStatus(403);
     try {
