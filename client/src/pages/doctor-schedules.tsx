@@ -547,14 +547,28 @@ export default function DoctorSchedulesPage() {
                         <TableCell>{schedule.endTime}</TableCell>
                         <TableCell>{schedule.maxTokens}</TableCell>
                         <TableCell>
-                          <div className="flex flex-col gap-1">
-                            <span className={schedule.isActive ? "text-green-600" : "text-red-600"}>
-                              {schedule.isActive ? "Active" : "Inactive"}
-                            </span>
-                            <span className={schedule.isVisible ? "text-blue-600 text-sm" : "text-gray-400 text-sm"}>
-                              {schedule.isVisible ? "Visible" : "Hidden"}
-                            </span>
-                          </div>
+                          {(() => {
+                            const now = new Date();
+                            const schDate = new Date(schedule.date);
+                            const isToday = now.toDateString() === schDate.toDateString();
+                            let isEndTimePassed = false;
+                            if (isToday && schedule.endTime) {
+                              const [endHour, endMin] = schedule.endTime.split(':').map(Number);
+                              const endTimeToday = new Date();
+                              endTimeToday.setHours(endHour, endMin, 0, 0);
+                              isEndTimePassed = now > endTimeToday;
+                            }
+                            return (
+                              <div className="flex flex-col gap-1">
+                                <span className={isEndTimePassed ? "text-orange-500" : schedule.isActive ? "text-green-600" : "text-red-600"}>
+                                  {isEndTimePassed ? "Ended" : schedule.isActive ? "Active" : "Inactive"}
+                                </span>
+                                <span className={schedule.isVisible ? "text-blue-600 text-sm" : "text-gray-400 text-sm"}>
+                                  {schedule.isVisible ? "Visible" : "Hidden"}
+                                </span>
+                              </div>
+                            );
+                          })()}
                         </TableCell>
                         <TableCell>{schedule.createdByUser?.name || "Unknown"}</TableCell>
                         <TableCell className="text-right space-x-2">

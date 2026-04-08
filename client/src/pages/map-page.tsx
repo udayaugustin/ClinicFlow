@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { MapPin, Navigation, AlertCircle, CheckCircle, Settings, AlertTriangle } from 'lucide-react';
@@ -10,6 +11,7 @@ import { useNearbyClinics } from '@/hooks/use-nearby-clinics';
 
 export default function MapPage() {
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [, navigate] = useLocation();
   
   const {
     status,
@@ -285,7 +287,7 @@ export default function MapPage() {
                           <p className="text-sm text-muted-foreground">{clinic.address}, {clinic.city}</p>
                           <p className="text-xs text-green-600 font-medium">{clinic.distance.toFixed(1)} km away</p>
                         </div>
-                        <Button variant="outline" size="sm">
+                        <Button variant="outline" size="sm" onClick={() => navigate(`/patient/clinics/${clinic.id}`)}>
                           View Doctors
                         </Button>
                       </div>

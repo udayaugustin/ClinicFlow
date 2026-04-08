@@ -9,7 +9,7 @@ async function findAvailablePort(startPort: number): Promise<number> {
   const isPortAvailable = (port: number): Promise<boolean> => {
     return new Promise((resolve) => {
       const server = createServer()
-        .listen(port, "0.0.0.0")
+        .listen(port, "127.0.0.1")
         .once("error", () => {
           resolve(false);
         })
@@ -85,11 +85,7 @@ app.use((req, res, next) => {
 const desiredPort = process.env.PORT ? parseInt(process.env.PORT) : 5001;
 const port = await findAvailablePort(desiredPort);
   
-  server.listen({
-    port,
-    host: "0.0.0.0",
-    reusePort: true,
-  }, () => {
+  server.listen(port, "0.0.0.0", () => {
     log(`serving on port ${port}${port !== desiredPort ? ` (fallback from ${desiredPort})` : ''}`);
   });
 })();

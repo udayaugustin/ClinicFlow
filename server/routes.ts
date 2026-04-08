@@ -10,7 +10,7 @@ import { notificationService } from './services/notification';
 import { ETAService } from './services/eta';
 import { walletService } from './services/wallet';
 import { db } from './db';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, sql, isNull, not } from 'drizzle-orm';
 import { scrypt, randomBytes } from "crypto";
 import { promisify } from "util";
 
@@ -555,15 +555,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Check if schedule is completed or booking is closed
       if (schedule.scheduleStatus === 'completed') {
-        return res.status(400).json({ 
-          message: 'Cannot book appointment: Schedule has been completed. The doctor has finished for this session.' 
+        return res.status(400).json({
+          message: 'Cannot book appointment: Schedule has been completed. The doctor has finished for this session.'
         });
       }
 
       if (schedule.bookingStatus === 'closed') {
-        return res.status(400).json({ 
-          message: 'Cannot book appointment: Booking is currently closed for this schedule.' 
+        return res.status(400).json({
+          message: 'Cannot book appointment: Booking is currently closed for this schedule.'
         });
+      }
+
+      // Check if current time has passed the schedule end time (for today's schedules)
+      const now = new Date();
+      const scheduleDate = new Date(schedule.date);
+      const isToday = now.toDateString() === scheduleDate.toDateString();
+      if (isToday && schedule.endTime) {
+        const [endHour, endMin] = schedule.endTime.split(':').map(Number);
+        const endTimeToday = new Date();
+        endTimeToday.setHours(endHour, endMin, 0, 0);
+        if (now > endTimeToday) {
+          return res.status(400).json({
+            message: `Cannot book appointment: This schedule has already ended at ${schedule.endTime}.`
+          });
+        }
       }
 
       // Get current token count for this date
@@ -630,13 +645,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error('Error calculating initial ETA:', etaError);
       }
       
-      res.status(201).json(appointment);
+      res.status(201).json({ ...appointment, etaStage: 1 });
     } catch (error) {
       console.error('Error creating appointment:', error);
       res.status(500).json({ message: 'Failed to create appointment' });
     }
   });
 
+
+  // Patient self-cancellation with automatic refund
+  app.patch("/api/appointments/:id/cancel-patient", async (req, res) => {
+    if (!req.user || req.user.role !== 'patient') return res.sendStatus(403);
+    try {
+      const appointmentId = parseInt(req.params.id);
+      const { reason } = req.body;
+
+      if (!reason?.trim()) {
+        return res.status(400).json({ message: 'Cancellation reason is required' });
+      }
+
+      const appointment = await storage.getAppointment(appointmentId);
+      if (!appointment) return res.status(404).json({ message: 'Appointment not found' });
+
+      // Ensure this appointment belongs to the requesting patient
+      if (appointment.patientId !== req.user.id) return res.sendStatus(403);
+
+      // Only allow cancellation of token_started appointments
+      if (appointment.status !== 'token_started') {
+        return res.status(400).json({ message: `Cannot cancel appointment with status: ${appointment.status}` });
+      }
+
+      await storage.updateAppointmentStatus(appointmentId, 'cancel', reason.trim());
+
+      // Process refund if eligible
+      const refundResult = await walletService.processSingleAppointmentRefund(
+        appointmentId,
+        reason.trim(),
+        req.user.id
+      );
+
+      // Notify patient
+      try {
+        await notificationService.generateStatusNotification(
+          { ...appointment, status: 'cancel' },
+          'cancel',
+          reason.trim()
+        );
+      } catch (e) {
+        console.error('Error sending cancellation notification:', e);
+      }
+
+      res.json({
+        message: 'Appointment cancelled successfully',
+        refunded: refundResult.refunded,
+        refundAmount: refundResult.refundAmount,
+      });
+    } catch (error) {
+      console.error('Error cancelling appointment:', error);
+      res.status(500).json({ message: 'Failed to cancel appointment' });
+    }
+  });
 
   app.patch("/api/appointments/:id/status", async (req, res) => {
     if (!req.user || !['attender', 'clinic_admin'].includes(req.user.role)) return res.sendStatus(403);
@@ -694,7 +762,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Handle ETA updates based on status - within the same transaction context
         console.log(`📋 Status Update: Appointment ${appointmentId} → ${status}, scheduleId: ${updatedAppointment.scheduleId}`);
         
-        if (status === "start") {
+        if (status === "in_progress") {
           console.log(`▶️ Starting appointment ${appointmentId}`);
           await ETAService.updateETAOnAppointmentStart(appointmentId);
         } else if (status === "completed") {
@@ -708,6 +776,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           } else {
             console.log(`❌ No scheduleId found for appointment ${appointmentId}`);
           }
+        } else if (status === "cancel") {
+          // Auto-process refund if appointment is eligible
+          const refundResult = await walletService.processSingleAppointmentRefund(
+            appointmentId,
+            statusNotes || 'Cancelled by attender',
+            req.user!.id
+          );
+          if (refundResult.refunded) {
+            console.log(`💰 Refund of ₹${refundResult.refundAmount} processed for appointment ${appointmentId}`);
+          } else {
+            console.log(`ℹ️ No refund processed for appointment ${appointmentId} (not eligible or already refunded)`);
+          }
         }
       } catch (error) {
         console.error('❌ Error in status/ETA update transaction:', error);
@@ -720,8 +800,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           await notificationService.generateStatusNotification(updatedAppointment, status, statusNotes);
         }
         
-        // If the appointment status is "start", notify the next patients
-        if (status === "start") {
+        // If the appointment status is "in_progress", notify the next patients
+        if (status === "in_progress") {
           await notificationService.notifyNextPatients(updatedAppointment);
         }
       } catch (notificationError) {
@@ -1562,8 +1642,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Get all appointments for this schedule that are scheduled or in progress
       const appointments = await storage.getAppointmentsBySchedule(scheduleId);
-      const affectedAppointments = appointments.filter(apt => 
-        ["scheduled", "start"].includes(apt.status || "")
+      const affectedAppointments = appointments.filter(apt =>
+        ["token_started", "in_progress"].includes(apt.status || "")
       );
 
       // Update all affected appointments to paused status
@@ -1605,8 +1685,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Update all paused appointments back to scheduled status
       for (const appointment of affectedAppointments) {
-        // Update the appointment status back to "scheduled"
-        await storage.updateAppointmentStatus(appointment.id, "scheduled", "Schedule resumed");
+        // Update the appointment status back to "token_started"
+        await storage.updateAppointmentStatus(appointment.id, "token_started", "Schedule resumed");
         
         if (appointment.patientId) {
           await notificationService.createNotification({
@@ -2047,7 +2127,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         try {
           await ETAService.updateETAOnDoctorArrival(
             parsedScheduleId,
-            dateObj
+            new Date() // Use actual current time when doctor arrives, not the date param
           );
           console.log(`Successfully updated ETAs for schedule ${parsedScheduleId}`);
         } catch (etaError) {
@@ -2079,13 +2159,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
               "in_progress",
               "Doctor has arrived - appointment started"
             );
-            
-            // Send notification for status change
+
+            // Send notification with updated ETA time
             if (appointment.patientId) {
+              let etaMessage = "Doctor has arrived at the clinic.";
+              try {
+                const etaData = await ETAService.getAppointmentETA(appointment.id);
+                if (etaData?.estimatedStartTime) {
+                  const { format } = await import("date-fns");
+                  const etaTime = format(new Date(etaData.estimatedStartTime), "h:mm a");
+                  etaMessage = `Doctor has arrived. Your updated ETA: ${etaTime}`;
+                }
+              } catch (etaErr) {
+                console.error("Error getting ETA for notification:", etaErr);
+              }
               await notificationService.generateStatusNotification(
-                appointment, 
-                "in_progress", 
-                "Doctor has arrived"
+                appointment,
+                "in_progress",
+                etaMessage
               );
             }
           }
@@ -2136,6 +2227,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error resetting doctor presence:', error);
       res.status(500).json({ message: 'Failed to reset doctor presence' });
+    }
+  });
+
+  // Get moving average consultation time for a doctor on a specific date
+  app.get("/api/doctors/:id/moving-average", async (req, res) => {
+    try {
+      const doctorId = parseInt(req.params.id);
+      const { clinicId, date, scheduleId } = req.query;
+
+      if (!clinicId || !date) {
+        return res.status(400).json({ error: "clinicId and date are required" });
+      }
+
+      const dateObj = new Date(date as string);
+      const sid = scheduleId ? parseInt(scheduleId as string) : undefined;
+
+      // Get completed appointments for this doctor/clinic/date with actual times
+      const completedAppts = await db
+        .select({
+          actualStartTime: appointments.actualStartTime,
+          actualEndTime: appointments.actualEndTime,
+        })
+        .from(appointments)
+        .where(
+          and(
+            eq(appointments.doctorId, doctorId),
+            eq(appointments.clinicId, parseInt(clinicId as string)),
+            sid ? eq(appointments.scheduleId, sid) : sql`1=1`,
+            sql`DATE(${appointments.date}) = DATE(${dateObj.toISOString()})`,
+            eq(appointments.status, "completed"),
+            not(isNull(appointments.actualStartTime)),
+            not(isNull(appointments.actualEndTime))
+          )
+        );
+
+      let movingAverage = 15; // default
+      if (completedAppts.length > 0) {
+        const { differenceInMinutes } = await import("date-fns");
+        let total = 0;
+        let valid = 0;
+        for (const a of completedAppts) {
+          const dur = differenceInMinutes(new Date(a.actualEndTime!), new Date(a.actualStartTime!));
+          if (dur >= 1 && dur <= 120) { total += dur; valid++; }
+        }
+        if (valid > 0) movingAverage = Math.round(total / valid);
+      }
+
+      res.json({ movingAverage, basedOn: completedAppts.length });
+    } catch (error) {
+      console.error("Error getting moving average:", error);
+      res.status(500).json({ error: "Failed to get moving average" });
     }
   });
 

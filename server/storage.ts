@@ -1735,7 +1735,7 @@ export class DatabaseStorage implements IStorage {
         ...appointment,
         clinicId,
         tokenNumber,
-        status: appointment.status || "scheduled" as "scheduled" | "completed" | "cancelled" | "in_progress"
+        status: appointment.status || "token_started"
       })
       .returning();
 
@@ -2317,7 +2317,9 @@ export class DatabaseStorage implements IStorage {
       const doctorsWithAppointments = await Promise.all(
         doctorRelations.map(async (relation) => {
           const { doctor } = relation;
-          const today = new Date();          
+          const todayStr = new Date().toISOString().split('T')[0]; // "2026-04-07"
+          const todayStart = new Date(todayStr + 'T00:00:00.000Z');
+          const todayEnd = new Date(todayStr + 'T23:59:59.999Z');
 
           // Get doctor's schedules for today
           const schedules = await db
@@ -2327,7 +2329,7 @@ export class DatabaseStorage implements IStorage {
               and(
                 eq(doctorSchedules.doctorId, doctor.id),
                 eq(doctorSchedules.isActive, true),
-                eq(doctorSchedules.date, today)
+                eq(doctorSchedules.date, todayStr)
               )
             )
             .orderBy(doctorSchedules.startTime);
@@ -2339,8 +2341,8 @@ export class DatabaseStorage implements IStorage {
             .where(
               and(
                 eq(appointments.doctorId, doctor.id),
-                gte(appointments.date, new Date(today.setHours(0, 0, 0, 0))),
-                lte(appointments.date, new Date(today.setHours(23, 59, 59, 999)))
+                gte(appointments.date, todayStart),
+                lte(appointments.date, todayEnd)
               )
             );
 
@@ -2656,12 +2658,16 @@ export class DatabaseStorage implements IStorage {
 
   async getDoctorSchedules(doctorId: number, date?: Date, visibleOnly: boolean = false): Promise<(DoctorSchedule & { createdByUser?: { id: number; name: string } })[]> {
     let conditions = [eq(doctorSchedules.doctorId, doctorId)];
-    
+
     if (date) {
       // If date is provided, filter schedules for that specific date
       conditions.push(eq(doctorSchedules.date, date));
+    } else {
+      // By default, only show today and future schedules (not past dates)
+      const todayStr = new Date().toISOString().split('T')[0];
+      conditions.push(gte(doctorSchedules.date, todayStr));
     }
-    
+
     if (visibleOnly) {
       // For patient views, only show visible schedules
       conditions.push(eq(doctorSchedules.isVisible, true));
@@ -3120,10 +3126,10 @@ export class DatabaseStorage implements IStorage {
         guestName: appointment.guestName,
         guestPhone: appointment.guestPhone || null,
         isWalkIn: true,
-        status: appointment.status || "scheduled"
+        status: appointment.status || "token_started"
       })
       .returning();
-    
+
     return created;
   }
 
@@ -3808,7 +3814,9 @@ export class DatabaseStorage implements IStorage {
       const doctorsWithAppointments = await Promise.all(
         clinicDoctors.map(async (relation) => {
           const doctor = relation.users;
-          const today = new Date();          
+          const todayStr = new Date().toISOString().split('T')[0]; // "2026-04-07"
+          const todayStart = new Date(todayStr + 'T00:00:00.000Z');
+          const todayEnd = new Date(todayStr + 'T23:59:59.999Z');
 
           // Get doctor's schedules for today
           const schedules = await db
@@ -3818,7 +3826,7 @@ export class DatabaseStorage implements IStorage {
               and(
                 eq(doctorSchedules.doctorId, doctor.id),
                 eq(doctorSchedules.isActive, true),
-                eq(doctorSchedules.date, today)
+                eq(doctorSchedules.date, todayStr)
               )
             )
             .orderBy(doctorSchedules.startTime);
@@ -3830,8 +3838,8 @@ export class DatabaseStorage implements IStorage {
             .where(
               and(
                 eq(appointments.doctorId, doctor.id),
-                gte(appointments.date, new Date(today.setHours(0, 0, 0, 0))),
-                lte(appointments.date, new Date(today.setHours(23, 59, 59, 999)))
+                gte(appointments.date, todayStart),
+                lte(appointments.date, todayEnd)
               )
             );
 
@@ -4387,7 +4395,7 @@ export class DatabaseStorage implements IStorage {
           eq(otpVerifications.phone, phone),
           eq(otpVerifications.otpCode, otpCode),
           eq(otpVerifications.verified, false),
-          gte(otpVerifications.expiresAt, new Date())
+          sql`${otpVerifications.expiresAt} > NOW()`
         )
       );
     return otp;
@@ -4412,7 +4420,7 @@ export class DatabaseStorage implements IStorage {
   async cleanupExpiredOtps(): Promise<void> {
     await db
       .delete(otpVerifications)
-      .where(lt(otpVerifications.expiresAt, new Date()));
+      .where(sql`${otpVerifications.expiresAt} < NOW()`);
   }
 
   async canSendOtp(phone: string): Promise<boolean> {
@@ -4426,9 +4434,10 @@ export class DatabaseStorage implements IStorage {
 
     if (!user.lastOtpSentAt) return true;
 
-    // Check if at least 1 minute has passed since last OTP
-    const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
-    return user.lastOtpSentAt < oneMinuteAgo;
+    // In development, allow resend every 10 seconds; in production, every 60 seconds
+    const waitMs = process.env.NODE_ENV === 'production' ? 60 * 1000 : 10 * 1000;
+    const cutoff = new Date(Date.now() - waitMs);
+    return user.lastOtpSentAt < cutoff;
   }
 
   async updateLastOtpSentAt(phone: string): Promise<void> {

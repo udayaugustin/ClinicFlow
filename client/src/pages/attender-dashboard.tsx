@@ -377,25 +377,25 @@ export default function AttenderDashboard() {
     }
   });
 
-  // Mutation for canceling a schedule
+  // Mutation for canceling a schedule with automatic refunds
   const cancelScheduleMutation = useMutation({
-    mutationFn: async ({ 
+    mutationFn: async ({
       scheduleId,
-      cancelReason 
-    }: { 
+      cancelReason
+    }: {
       scheduleId: number;
-      cancelReason?: string;
+      cancelReason: string;
     }) => {
-      const res = await apiRequest("PATCH", `/api/schedules/${scheduleId}/cancel`, { 
-        cancelReason 
+      const res = await apiRequest("POST", `/api/schedules/${scheduleId}/cancel-with-refunds`, {
+        cancelReason
       });
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries([`/api/attender/${user?.id}/doctors/appointments`]);
       toast({
         title: "Schedule cancelled",
-        description: "The schedule has been cancelled and affected patients have been notified."
+        description: `Schedule cancelled. ${data.refundedAppointments} patient(s) refunded ₹${data.totalRefundAmount}.`
       });
     },
     onError: (error: Error) => {
@@ -462,14 +462,19 @@ export default function AttenderDashboard() {
 
   // Handler for canceling a schedule
   const handleCancelSchedule = async (scheduleId: number) => {
-    if (!confirm("Are you sure you want to cancel this schedule? All pending appointments will be cancelled.")) {
+    if (!confirm("Are you sure you want to cancel this schedule? All pending appointments will be cancelled and eligible patients will be refunded.")) {
       return;
     }
 
-    const reason = prompt("Please enter a reason for cancellation (optional):");
-    await cancelScheduleMutation.mutate({ 
+    const reason = prompt("Please enter a reason for cancellation (required):");
+    if (!reason || !reason.trim()) {
+      toast({ title: "Cancellation reason required", description: "Please provide a reason to cancel the schedule.", variant: "destructive" });
+      return;
+    }
+
+    await cancelScheduleMutation.mutate({
       scheduleId,
-      cancelReason: reason || undefined
+      cancelReason: reason.trim()
     });
   };
 
