@@ -2323,6 +2323,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Reserve next token number instantly for walk-in (step 1 of 2-step flow)
+  app.post("/api/schedules/:scheduleId/reserve-token", async (req, res) => {
+    if (!req.user || !['attender', 'clinic_admin'].includes(req.user.role)) return res.sendStatus(403);
+    try {
+      const scheduleId = parseInt(req.params.scheduleId);
+      const reservation = await storage.reserveNextToken(scheduleId, req.user.id);
+      res.status(201).json(reservation);
+    } catch (error) {
+      console.error('Error reserving token:', error);
+      res.status(500).json({ message: error instanceof Error ? error.message : 'Failed to reserve token' });
+    }
+  });
+
+  // Confirm walk-in with reserved token (step 2 of 2-step flow)
+  app.post("/api/schedules/:scheduleId/confirm-walkin", async (req, res) => {
+    if (!req.user || !['attender', 'clinic_admin'].includes(req.user.role)) return res.sendStatus(403);
+    try {
+      const scheduleId = parseInt(req.params.scheduleId);
+      const { reservationId, guestName, guestPhone } = req.body;
+      if (!reservationId || !guestName) {
+        return res.status(400).json({ message: 'reservationId and guestName are required' });
+      }
+      const appointment = await storage.confirmTokenReservation(Number(reservationId), guestName, guestPhone);
+      res.status(201).json(appointment);
+    } catch (error) {
+      console.error('Error confirming walk-in:', error);
+      res.status(400).json({ message: error instanceof Error ? error.message : 'Failed to confirm walk-in' });
+    }
+  });
+
+  // Cancel a token reservation
+  app.delete("/api/schedules/:scheduleId/reservation/:reservationId", async (req, res) => {
+    if (!req.user || !['attender', 'clinic_admin'].includes(req.user.role)) return res.sendStatus(403);
+    try {
+      await storage.cancelTokenReservation(parseInt(req.params.reservationId), req.user.id);
+      res.json({ message: 'Reservation cancelled' });
+    } catch (error) {
+      res.status(500).json({ message: 'Failed to cancel reservation' });
+    }
+  });
+
   // Add a new endpoint for attenders to create walk-in appointments
   app.post("/api/attender/walk-in-appointments", async (req, res) => {
     if (!req.user || !['attender', 'clinic_admin'].includes(req.user.role)) return res.sendStatus(403);

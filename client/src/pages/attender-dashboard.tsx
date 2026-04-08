@@ -77,6 +77,14 @@ export default function AttenderDashboard() {
     scheduleId: number;
     date: Date;
   } | null>(null);
+  const [walkInReservation, setWalkInReservation] = useState<{
+    id: number;
+    tokenNumber: number;
+    expiresAt: string;
+    scheduleId: number;
+  } | null>(null);
+  const [walkInStep, setWalkInStep] = useState<'idle' | 'reserving' | 'filling'>('idle');
+  const [reservationSecondsLeft, setReservationSecondsLeft] = useState(300);
 
   // Main query for fetching doctor data with schedules and appointments  
   const { data: managedDoctors, isLoading, error } = useQuery<DoctorWithAppointments[]>({
@@ -251,12 +259,41 @@ export default function AttenderDashboard() {
     }
   });
 
+  // Reset all walk-in dialog state (defined early so useEffects can reference it)
+  const resetWalkInDialog = () => {
+    setWalkInStep('idle');
+    setWalkInReservation(null);
+    setWalkInCurrentDoctor(null);
+    setWalkInFormValues({ doctorId: 0, clinicId: 0, scheduleId: 0, guestName: '', guestPhone: '' });
+    setReservationSecondsLeft(300);
+  };
+
   // Auto-select the first doctor when data loads
   useEffect(() => {
     if (managedDoctors && managedDoctors.length > 0 && !selectedDoctorId) {
       setSelectedDoctorId(managedDoctors[0].doctor.id.toString());
     }
   }, [managedDoctors, selectedDoctorId]);
+
+  // Countdown timer for walk-in reservation
+  useEffect(() => {
+    if (walkInStep !== 'filling') return;
+    if (reservationSecondsLeft <= 0) {
+      toast({ title: "Reservation expired. Please try again.", variant: "destructive" });
+      // Cancel the reservation so the token is freed immediately
+      if (walkInReservation) {
+        cancelReservationMutation.mutate({
+          scheduleId: walkInReservation.scheduleId,
+          reservationId: walkInReservation.id
+        });
+      }
+      resetWalkInDialog();
+      setIsWalkInDialogOpen(false);
+      return;
+    }
+    const timer = setInterval(() => setReservationSecondsLeft(s => s - 1), 1000);
+    return () => clearInterval(timer);
+  }, [walkInStep, reservationSecondsLeft]);
 
   // Helper function to get presence data for a doctor's schedule
   const getPresenceData = (doctorId: number, scheduleId: number) => {
@@ -374,6 +411,58 @@ export default function AttenderDashboard() {
         description: error.message,
         variant: "destructive"
       });
+    }
+  });
+
+  const reserveTokenMutation = useMutation({
+    mutationFn: async (scheduleId: number) => {
+      const res = await apiRequest("POST", `/api/schedules/${scheduleId}/reserve-token`, {});
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setWalkInReservation(data);
+      setWalkInStep('filling');
+      setReservationSecondsLeft(300);
+    },
+    onError: () => {
+      toast({ title: "Failed to reserve token", variant: "destructive" });
+      setWalkInStep('idle');
+    }
+  });
+
+  const confirmWalkInMutation = useMutation({
+    mutationFn: async ({ scheduleId, reservationId, guestName, guestPhone }: {
+      scheduleId: number; reservationId: number; guestName: string; guestPhone: string;
+    }) => {
+      const res = await apiRequest("POST", `/api/schedules/${scheduleId}/confirm-walkin`, {
+        reservationId, guestName, guestPhone
+      });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      const reservedToken = walkInReservation?.tokenNumber;
+      const confirmedToken = data?.tokenNumber;
+      if (reservedToken && confirmedToken && reservedToken !== confirmedToken) {
+        toast({
+          title: `Walk-in assigned Token #${confirmedToken}`,
+          description: `Reserved slot #${reservedToken} was taken; reassigned to #${confirmedToken}.`,
+          variant: "destructive"
+        });
+      } else {
+        toast({ title: `Walk-in Token #${confirmedToken ?? reservedToken} confirmed!` });
+      }
+      resetWalkInDialog();
+      setIsWalkInDialogOpen(false);
+      queryClient.invalidateQueries({ queryKey: [`/api/attender/${user?.id}/doctors/appointments`] });
+    },
+    onError: (error: any) => {
+      toast({ title: error.message || "Failed to confirm walk-in", variant: "destructive" });
+    }
+  });
+
+  const cancelReservationMutation = useMutation({
+    mutationFn: async ({ scheduleId, reservationId }: { scheduleId: number; reservationId: number }) => {
+      await apiRequest("DELETE", `/api/schedules/${scheduleId}/reservation/${reservationId}`, {});
     }
   });
 
@@ -501,7 +590,7 @@ export default function AttenderDashboard() {
 
   const handleCreateWalkInAppointment = () => {
     if (!walkInCurrentDoctor) return;
-    
+
     if (!walkInFormValues.guestName.trim()) {
       toast({
         title: "Error",
@@ -510,7 +599,7 @@ export default function AttenderDashboard() {
       });
       return;
     }
-    
+
     createWalkInAppointmentMutation.mutate({
       doctorId: walkInCurrentDoctor.doctorId,
       clinicId: walkInCurrentDoctor.clinicId,
@@ -521,31 +610,25 @@ export default function AttenderDashboard() {
     });
   };
 
-  // Add this function to open the walk-in dialog with doctor info
+  const handleWalkInDialogClose = (open: boolean) => {
+    if (!open && walkInReservation && walkInStep === 'filling') {
+      cancelReservationMutation.mutate({
+        scheduleId: walkInReservation.scheduleId,
+        reservationId: walkInReservation.id
+      });
+    }
+    if (!open) resetWalkInDialog();
+    setIsWalkInDialogOpen(open);
+  };
+
+  // Open the walk-in dialog — immediately reserve a token (2-step flow)
   const openWalkInDialog = (doctorId: number, doctorName: string, clinicId: number, scheduleId: number) => {
-    // Create a date object for the current date
     const appointmentDate = new Date(selectedDate);
-    
-    // Set the doctor info
-    setWalkInCurrentDoctor({
-      doctorId,
-      doctorName,
-      clinicId,
-      scheduleId,
-      date: appointmentDate
-    });
-    
-    // Update form values
-    setWalkInFormValues({
-      doctorId,
-      clinicId,
-      scheduleId,
-      guestName: "",
-      guestPhone: ""
-    });
-    
-    // Open the dialog
+    setWalkInCurrentDoctor({ doctorId, doctorName, clinicId, scheduleId, date: appointmentDate });
+    setWalkInFormValues({ doctorId, clinicId, scheduleId, guestName: "", guestPhone: "" });
     setIsWalkInDialogOpen(true);
+    setWalkInStep('reserving');
+    reserveTokenMutation.mutate(scheduleId);
   };
 
   // Handler for toggling schedule pause
@@ -1008,60 +1091,79 @@ export default function AttenderDashboard() {
             </Card>
         </main>
       </TooltipProvider>
-      <Dialog open={isWalkInDialogOpen} onOpenChange={setIsWalkInDialogOpen}>
+      <Dialog open={isWalkInDialogOpen} onOpenChange={handleWalkInDialogClose}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>Create Walk-in Token</DialogTitle>
             <DialogDescription>
               {walkInCurrentDoctor && (
-                <p>Creating Token for Dr. {walkInCurrentDoctor.doctorName} on {format(selectedDate, "PPP")}</p>
+                <span>Creating Token for Dr. {walkInCurrentDoctor.doctorName} on {format(selectedDate, "PPP")}</span>
               )}
             </DialogDescription>
           </DialogHeader>
-          
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="guestName" className="text-right col-span-1">
-                Patient Name
-              </Label>
-              <Input
-                id="guestName"
-                placeholder="Enter patient name"
-                className="col-span-3"
-                value={walkInFormValues.guestName}
-                onChange={(e) => setWalkInFormValues({
-                  ...walkInFormValues,
-                  guestName: e.target.value
-                })}
-              />
+
+          {/* Step: Reserving (loading state) */}
+          {walkInStep === 'reserving' && (
+            <div className="flex flex-col items-center gap-4 py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+              <p className="text-muted-foreground">Reserving your token...</p>
             </div>
-            
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="guestPhone" className="text-right col-span-1">
-                Phone Number
-              </Label>
-              <Input
-                id="guestPhone"
-                placeholder="Enter phone number (optional)"
-                className="col-span-3"
-                value={walkInFormValues.guestPhone}
-                onChange={(e) => setWalkInFormValues({
-                  ...walkInFormValues,
-                  guestPhone: e.target.value
-                })}
-              />
+          )}
+
+          {/* Step: Filling details */}
+          {walkInStep === 'filling' && walkInReservation && (
+            <div className="space-y-4">
+              {/* Reserved token badge */}
+              <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <div>
+                  <p className="text-sm text-blue-600 font-medium">Token Reserved</p>
+                  <p className="text-2xl font-bold text-blue-700">#{walkInReservation.tokenNumber}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">Expires in</p>
+                  <p className={`text-lg font-bold ${reservationSecondsLeft < 60 ? 'text-red-500' : 'text-orange-500'}`}>
+                    {Math.floor(reservationSecondsLeft / 60)}:{String(reservationSecondsLeft % 60).padStart(2, '0')}
+                  </p>
+                </div>
+              </div>
+
+              {/* Guest details form */}
+              <div className="space-y-3">
+                <div>
+                  <Label>Patient Name *</Label>
+                  <Input
+                    placeholder="Enter patient name"
+                    value={walkInFormValues.guestName}
+                    onChange={e => setWalkInFormValues(v => ({ ...v, guestName: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <Label>Phone Number (optional)</Label>
+                  <Input
+                    placeholder="Enter phone number"
+                    value={walkInFormValues.guestPhone}
+                    onChange={e => setWalkInFormValues(v => ({ ...v, guestPhone: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <Button
+                className="w-full"
+                disabled={!walkInFormValues.guestName.trim() || confirmWalkInMutation.isPending}
+                onClick={() => {
+                  if (!walkInReservation || !walkInCurrentDoctor) return;
+                  confirmWalkInMutation.mutate({
+                    scheduleId: walkInReservation.scheduleId,
+                    reservationId: walkInReservation.id,
+                    guestName: walkInFormValues.guestName,
+                    guestPhone: walkInFormValues.guestPhone
+                  });
+                }}
+              >
+                {confirmWalkInMutation.isPending ? "Confirming..." : "Confirm Walk-in"}
+              </Button>
             </div>
-          </div>
-          
-          <DialogFooter>
-            <Button
-              type="submit"
-              onClick={handleCreateWalkInAppointment}
-              disabled={createWalkInAppointmentMutation.isPending}
-            >
-              {createWalkInAppointmentMutation.isPending ? "Creating..." : "Create Token"}
-            </Button>
-          </DialogFooter>
+          )}
         </DialogContent>
       </Dialog>
     </div>

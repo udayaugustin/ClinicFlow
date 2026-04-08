@@ -276,6 +276,16 @@ export const appointmentRefunds = pgTable("appointment_refunds", {
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
+export const tokenReservations = pgTable("token_reservations", {
+  id: serial("id").primaryKey(),
+  scheduleId: integer("schedule_id").notNull().references(() => doctorSchedules.id),
+  tokenNumber: integer("token_number").notNull(),
+  reservedByUserId: integer("reserved_by_user_id").notNull().references(() => users.id),
+  status: varchar("status", { length: 20 }).default("pending"), // pending | confirmed | cancelled | expired
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});
+
 // Define relations
 export const usersRelations = relations(users, ({ one, many }) => ({
   clinic: one(clinics, {
@@ -545,6 +555,9 @@ export type WalletTransaction = typeof walletTransactions.$inferSelect;
 export type InsertWalletTransaction = z.infer<typeof insertWalletTransactionSchema>;
 export type AppointmentRefund = typeof appointmentRefunds.$inferSelect;
 export type InsertAppointmentRefund = z.infer<typeof insertAppointmentRefundSchema>;
+
+export type TokenReservation = typeof tokenReservations.$inferSelect;
+export type InsertTokenReservation = typeof tokenReservations.$inferInsert;
 
 export const specialties = [
   "Cardiologist",

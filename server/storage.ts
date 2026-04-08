@@ -15,6 +15,7 @@ import {
   patientWallets,
   walletTransactions,
   appointmentRefunds,
+  tokenReservations,
   type User,
   type AttenderDoctor,
   type InsertUser,
@@ -31,9 +32,10 @@ import {
   type InsertAdminConfiguration,
   type PatientWallet,
   type WalletTransaction,
-  type AppointmentRefund
+  type AppointmentRefund,
+  type TokenReservation
 } from "@shared/schema";
-import { eq, or, and, sql, inArray, lte, gte, count, not, gt, lt, getTableColumns, isNotNull ,ne } from "drizzle-orm";
+import { eq, or, and, sql, inArray, lte, gte, count, not, gt, lt, getTableColumns, isNotNull, ne, max } from "drizzle-orm";
 import { db } from "./db";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
@@ -238,6 +240,13 @@ export interface IStorage {
     currentToken: number,
     patientToken: number
   ): Promise<number>;
+
+  // Token reservation methods for walk-in flow
+  reserveNextToken(scheduleId: number, reservedByUserId: number): Promise<TokenReservation>;
+  confirmTokenReservation(reservationId: number, guestName: string, guestPhone: string | undefined): Promise<Appointment>;
+  cancelTokenReservation(reservationId: number, userId: number): Promise<void>;
+  expireStaleReservations(): Promise<void>;
+  getActiveReservationsForSchedule(scheduleId: number): Promise<TokenReservation[]>;
 
   updateDoctor(
     doctorId: number,
@@ -1627,9 +1636,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getNextTokenNumber(doctorId: number, clinicId: number, scheduleId: number): Promise<number> {
-    // Add some debugging
     console.log(`Getting next token for doctor ${doctorId}, clinic ${clinicId}, schedule ${scheduleId}`);
-    
+
+    // Expire stale reservations first so they don't block online bookings
+    await this.expireStaleReservations();
+
     const [result] = await db
       .select({
         maxToken: sql<number>`COALESCE(MAX(token_number), 0)`,
@@ -1645,9 +1656,19 @@ export class DatabaseStorage implements IStorage {
         )
       );
 
-    const nextToken = (result?.maxToken || 0) + 1;
-    console.log(`Next token number will be: ${nextToken} (max found: ${result?.maxToken || 0})`);
-    
+    const maxAppt = result?.maxToken || 0;
+    // Account for pending, non-expired reservations so online bookings skip reserved tokens
+    const resResult = await db.select({ maxToken: max(tokenReservations.tokenNumber) })
+      .from(tokenReservations)
+      .where(and(
+        eq(tokenReservations.scheduleId, scheduleId),
+        eq(tokenReservations.status, "pending"),
+        gt(tokenReservations.expiresAt, new Date())
+      ));
+    const maxRes = resResult[0]?.maxToken || 0;
+    const nextToken = Math.max(maxAppt, maxRes) + 1;
+    console.log(`Next token number will be: ${nextToken} (maxAppt: ${maxAppt}, maxRes: ${maxRes})`);
+
     return nextToken;
   }
 
@@ -1703,7 +1724,8 @@ export class DatabaseStorage implements IStorage {
       throw new Error("You already have an appointment booked with this doctor for this schedule. Please check your existing appointments.");
     }
     
-    // Get current token count
+    // Get current token count — exclude cancelled appointments so cancellations
+    // don't eat into the doctor's capacity (only attended patients count)
     const [tokenCount] = await db
       .select({
         count: count(),
@@ -1713,10 +1735,11 @@ export class DatabaseStorage implements IStorage {
         and(
           eq(appointments.doctorId, appointment.doctorId),
           eq(appointments.clinicId, clinicId),
-          eq(appointments.scheduleId, schedule.id)
+          eq(appointments.scheduleId, schedule.id),
+          ne(appointments.status, "cancel")
         )
       );
-      
+
     // Check if token limit has been reached
     if (schedule.maxTokens !== null && tokenCount.count >= schedule.maxTokens) {
       throw new Error(`Maximum number of tokens (${schedule.maxTokens}) has been reached for this schedule`);
@@ -2945,8 +2968,19 @@ export class DatabaseStorage implements IStorage {
             ne(appointments.status, "cancel")
           )
         );
-      
-      return result?.count || 0;
+
+      // Also count pending non-expired reservations so the maxTokens check
+      // blocks online bookings while a walk-in token is reserved
+      const [resResult] = await db
+        .select({ count: count() })
+        .from(tokenReservations)
+        .where(and(
+          eq(tokenReservations.scheduleId, scheduleId),
+          eq(tokenReservations.status, "pending"),
+          gt(tokenReservations.expiresAt, new Date())
+        ));
+
+      return (result?.count || 0) + (resResult?.count || 0);
     } catch (error) {
       console.error('Error counting appointments:', error);
       throw error;
@@ -3077,7 +3111,8 @@ export class DatabaseStorage implements IStorage {
       scheduleId = schedule.id;
     }
     
-    // Get current token count
+    // Get current token count — exclude cancelled appointments so cancellations
+    // don't eat into the doctor's capacity (only attended patients count)
     const [tokenCount] = await db
       .select({
         count: count(),
@@ -3087,10 +3122,11 @@ export class DatabaseStorage implements IStorage {
         and(
           eq(appointments.doctorId, appointment.doctorId),
           eq(appointments.clinicId, appointment.clinicId),
-          eq(appointments.scheduleId, scheduleId)
+          eq(appointments.scheduleId, scheduleId),
+          ne(appointments.status, "cancel")
         )
       );
-      
+
     // Get the schedule to check token limit
     const [scheduleData] = await db
       .select()
@@ -4894,7 +4930,7 @@ export class DatabaseStorage implements IStorage {
   async markAppointmentAsRefunded(appointmentId: number, refundAmount: number): Promise<void> {
     try {
       console.log(`Marking appointment ${appointmentId} as refunded with amount ${refundAmount}`);
-      
+
       await db
         .update(appointments)
         .set({
@@ -4903,12 +4939,117 @@ export class DatabaseStorage implements IStorage {
           refundedAt: sql`CURRENT_TIMESTAMP`
         })
         .where(eq(appointments.id, appointmentId));
-      
+
       console.log(`Successfully marked appointment ${appointmentId} as refunded`);
     } catch (error) {
       console.error(`Error marking appointment ${appointmentId} as refunded:`, error);
       throw error;
     }
+  }
+
+  // --- Token Reservation Methods ---
+
+  async expireStaleReservations(): Promise<void> {
+    await db.update(tokenReservations)
+      .set({ status: "expired" })
+      .where(and(eq(tokenReservations.status, "pending"), lt(tokenReservations.expiresAt, new Date())));
+  }
+
+  async reserveNextToken(scheduleId: number, reservedByUserId: number): Promise<TokenReservation> {
+    // 1. Expire any old reservations first
+    await this.expireStaleReservations();
+
+    // 2. Get max token from appointments (non-cancelled)
+    const apptResult = await db.select({ maxToken: max(appointments.tokenNumber) })
+      .from(appointments)
+      .where(and(eq(appointments.scheduleId, scheduleId), ne(appointments.status, "cancel")));
+
+    // 3. Get max token from active reservations on this schedule
+    const resResult = await db.select({ maxToken: max(tokenReservations.tokenNumber) })
+      .from(tokenReservations)
+      .where(and(eq(tokenReservations.scheduleId, scheduleId), eq(tokenReservations.status, "pending")));
+
+    const maxAppt = apptResult[0]?.maxToken || 0;
+    const maxRes = resResult[0]?.maxToken || 0;
+    const nextToken = Math.max(maxAppt, maxRes) + 1;
+
+    // 4. Create reservation with 5-minute expiry
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    const [reservation] = await db.insert(tokenReservations).values({
+      scheduleId,
+      tokenNumber: nextToken,
+      reservedByUserId,
+      status: "pending",
+      expiresAt,
+    }).returning();
+
+    return reservation;
+  }
+
+  async confirmTokenReservation(reservationId: number, guestName: string, guestPhone: string | undefined): Promise<Appointment> {
+    // 1. Get the reservation
+    const [reservation] = await db.select().from(tokenReservations)
+      .where(and(eq(tokenReservations.id, reservationId), eq(tokenReservations.status, "pending")));
+
+    if (!reservation) throw new Error("Reservation not found or already expired");
+    if (new Date() > reservation.expiresAt) {
+      await db.update(tokenReservations).set({ status: "expired" }).where(eq(tokenReservations.id, reservationId));
+      throw new Error("Reservation has expired. Please reserve again.");
+    }
+
+    // 2. Get schedule details
+    const [schedule] = await db.select().from(doctorSchedules).where(eq(doctorSchedules.id, reservation.scheduleId));
+    if (!schedule) throw new Error("Schedule not found");
+
+    // 3. Check if reserved token was stolen by a race condition — reassign if needed
+    const [collision] = await db.select().from(appointments)
+      .where(and(
+        eq(appointments.scheduleId, reservation.scheduleId),
+        eq(appointments.tokenNumber, reservation.tokenNumber),
+        ne(appointments.status, "cancel")
+      ));
+
+    let finalTokenNumber = reservation.tokenNumber;
+    if (collision) {
+      // Token was taken — recalculate next available
+      const [maxResult] = await db.select({ maxToken: sql<number>`COALESCE(MAX(token_number), 0)` })
+        .from(appointments)
+        .where(and(eq(appointments.scheduleId, reservation.scheduleId), ne(appointments.status, "cancel")));
+      finalTokenNumber = (maxResult?.maxToken || 0) + 1;
+    }
+
+    // 4. Create the appointment with the final token number
+    const [appointment] = await db.insert(appointments).values({
+      doctorId: schedule.doctorId,
+      clinicId: schedule.clinicId,
+      scheduleId: reservation.scheduleId,
+      date: new Date(schedule.date + 'T00:00:00.000Z'),
+      tokenNumber: finalTokenNumber,
+      guestName,
+      guestPhone: guestPhone || null,
+      isWalkIn: true,
+      status: "token_started",
+      isPaid: false,
+      isRefundEligible: false,
+      hasBeenRefunded: false,
+    }).returning();
+
+    // 5. Mark reservation as confirmed
+    await db.update(tokenReservations).set({ status: "confirmed" }).where(eq(tokenReservations.id, reservationId));
+
+    return appointment;
+  }
+
+  async cancelTokenReservation(reservationId: number, userId: number): Promise<void> {
+    await db.update(tokenReservations)
+      .set({ status: "cancelled" })
+      .where(and(eq(tokenReservations.id, reservationId), eq(tokenReservations.reservedByUserId, userId)));
+  }
+
+  async getActiveReservationsForSchedule(scheduleId: number): Promise<TokenReservation[]> {
+    await this.expireStaleReservations();
+    return db.select().from(tokenReservations)
+      .where(and(eq(tokenReservations.scheduleId, scheduleId), eq(tokenReservations.status, "pending")));
   }
 }
 
