@@ -675,6 +675,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: `Cannot cancel appointment with status: ${appointment.status}` });
       }
 
+      // Block cancellation once the doctor has arrived at the clinic
+      const arrivalStatus = await storage.getDoctorArrivalStatus(
+        appointment.doctorId,
+        appointment.clinicId,
+        new Date()
+      );
+      if (arrivalStatus?.hasArrived) {
+        return res.status(400).json({ message: 'Cancellation is not allowed after the doctor has arrived at the clinic.' });
+      }
+
       await storage.updateAppointmentStatus(appointmentId, 'cancel', reason.trim());
 
       // Process refund if eligible

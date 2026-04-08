@@ -405,8 +405,15 @@ export default function BookingHistoryPage() {
                                   </div>
                                 )}
 
-                                {/* Patient self-cancellation — only for token_started */}
-                                {appointment.status === "token_started" && (
+                                {/* Doctor arrived — cancellation blocked */}
+                                {appointment.status === "token_started" && doctorHasArrived && (
+                                  <div className="mt-3 pt-3 border-t text-sm text-center text-muted-foreground">
+                                    Cancellation unavailable — doctor has arrived
+                                  </div>
+                                )}
+
+                                {/* Patient self-cancellation — only before doctor arrives */}
+                                {appointment.status === "token_started" && !doctorHasArrived && (
                                   <div className="mt-3 pt-3 border-t">
                                     <Dialog open={cancellingId === appointment.id} onOpenChange={(open) => {
                                       if (!open) { setCancellingId(null); setCancelReason(''); }
