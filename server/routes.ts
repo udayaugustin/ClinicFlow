@@ -581,17 +581,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Get current token count for this date
+      // Get current token count for this date (includes pending walk-in reservations)
       const appointments = await storage.getAppointmentCountForDoctor(
         Number(req.body.doctorId),
         clinicId,
         schedule.id
       );
-      
+
       // Check if token limit has been reached
       if (schedule.maxTokens !== null && schedule.maxTokens !== undefined && appointments >= schedule.maxTokens) {
-        return res.status(400).json({ 
-          message: `Maximum number of tokens (${schedule.maxTokens}) has been reached for this schedule` 
+        return res.status(400).json({
+          message: `Maximum number of tokens (${schedule.maxTokens}) has been reached for this schedule`
         });
       }
 
@@ -2320,6 +2320,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error fetching doctor arrival status:', error);
       res.status(500).json({ message: 'Failed to fetch doctor arrival status' });
+    }
+  });
+
+  // Reserve next token number instantly for walk-in (step 1 of 2-step flow)
+  app.post("/api/schedules/:scheduleId/reserve-token", async (req, res) => {
+    if (!req.user || !['attender', 'clinic_admin'].includes(req.user.role)) return res.sendStatus(403);
+    try {
+      const scheduleId = parseInt(req.params.scheduleId);
+      const reservation = await storage.reserveNextToken(scheduleId, req.user.id);
+      res.status(201).json(reservation);
+    } catch (error) {
+      console.error('Error reserving token:', error);
+      res.status(500).json({ message: error instanceof Error ? error.message : 'Failed to reserve token' });
+    }
+  });
+
+  // Confirm walk-in with reserved token (step 2 of 2-step flow)
+  app.post("/api/schedules/:scheduleId/confirm-walkin", async (req, res) => {
+    if (!req.user || !['attender', 'clinic_admin'].includes(req.user.role)) return res.sendStatus(403);
+    try {
+      const scheduleId = parseInt(req.params.scheduleId);
+      const { reservationId, guestName, guestPhone } = req.body;
+      if (!reservationId || !guestName) {
+        return res.status(400).json({ message: 'reservationId and guestName are required' });
+      }
+      const appointment = await storage.confirmTokenReservation(Number(reservationId), guestName, guestPhone);
+      res.status(201).json(appointment);
+    } catch (error) {
+      console.error('Error confirming walk-in:', error);
+      res.status(400).json({ message: error instanceof Error ? error.message : 'Failed to confirm walk-in' });
+    }
+  });
+
+  // Cancel a token reservation
+  app.delete("/api/schedules/:scheduleId/reservation/:reservationId", async (req, res) => {
+    if (!req.user || !['attender', 'clinic_admin'].includes(req.user.role)) return res.sendStatus(403);
+    try {
+      await storage.cancelTokenReservation(parseInt(req.params.reservationId), req.user.id);
+      res.json({ message: 'Reservation cancelled' });
+    } catch (error) {
+      res.status(500).json({ message: 'Failed to cancel reservation' });
     }
   });
 

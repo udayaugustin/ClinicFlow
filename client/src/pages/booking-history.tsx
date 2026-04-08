@@ -127,8 +127,10 @@ export default function BookingHistoryPage() {
 
   // Fetch doctor arrival status - memoize this function to avoid recreating it on every render
   const fetchDoctorArrivals = useCallback(async () => {
-    // Skip if no scheduled appointments
-    const scheduledAppts = todayAppointments.filter(apt => apt.status === "token_started");
+    // Skip if no active appointments
+    const scheduledAppts = todayAppointments.filter(
+      apt => !["cancel", "completed", "no_show"].includes(apt.status)
+    );
     if (scheduledAppts.length === 0) return;
     
     const arrivalsMap: Record<string, boolean> = {};
@@ -159,8 +161,10 @@ export default function BookingHistoryPage() {
 
   // Setup the initial fetch and interval
   useEffect(() => {
-    // Only run this effect if we have scheduled appointments and haven't fetched yet
-    const hasScheduledAppointments = todayAppointments.some(apt => apt.status === "token_started");
+    // Only run this effect if we have active appointments (any non-terminal status) and haven't fetched yet
+    const hasScheduledAppointments = todayAppointments.some(
+      apt => !["cancel", "completed", "no_show"].includes(apt.status)
+    );
     
     if (hasScheduledAppointments) {
       // Run the initial fetch if we haven't already
