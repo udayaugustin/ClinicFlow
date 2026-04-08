@@ -190,6 +190,26 @@ export function setupAuth(app: Express) {
     res.json(req.user);
   });
 
+  app.patch("/api/user", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    try {
+      const allowed = ["name", "email", "phone", "address", "city", "state", "zipCode", "imageUrl", "bio", "specialty"];
+      const updates: Record<string, string> = {};
+      for (const field of allowed) {
+        if (req.body[field] !== undefined) updates[field] = req.body[field];
+      }
+      if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ message: "No valid fields to update" });
+      }
+      const updatedUser = await storage.updateUser(req.user.id, updates);
+      const { password: _pw, ...safeUser } = updatedUser;
+      res.json(safeUser);
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      res.status(500).json({ message: "Failed to update profile" });
+    }
+  });
+
   // OTP Authentication endpoints
   app.post("/api/auth/request-otp", async (req, res) => {
     try {

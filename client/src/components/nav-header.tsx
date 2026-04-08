@@ -118,9 +118,11 @@ export function NavHeader() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem className="gap-2">
-                    <User size={16} />
-                    <span>{user.name}</span>
+                  <DropdownMenuItem asChild>
+                    <Link href="/profile" className="gap-2">
+                      <User size={16} />
+                      <span>My Profile</span>
+                    </Link>
                   </DropdownMenuItem>
                   {!isAttenderDashboard && !isClinicAdmin && !isSuperAdmin && (
                     <DropdownMenuItem asChild>
