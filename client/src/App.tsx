@@ -43,6 +43,7 @@ import FAQs from "@/pages/help/FAQs";
 import ContactUs from "@/pages/help/ContactUs";
 import MapPage from "@/pages/map-page";
 import LandingPage from "@/pages/landing-page";
+import UserProfile from "@/pages/user-profile";
 
 // Wrap DoctorManagementPage with ProtectedRoute
 const ProtectedDoctorManagement = () => (
@@ -131,6 +132,7 @@ function Router() {
       <Route path="/patient/favorites" component={PatientFavorites} />
       <Route path="/map" component={MapPage} />
       <Route path="/patient/wallet" component={PatientWallet} />
+      <Route path="/profile" component={UserProfile} />
       
       {/* Policy and Help Pages */}
       <Route path="/policies/privacy-policy" component={PrivacyPolicy} />
