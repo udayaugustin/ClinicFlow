@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { appointments, doctorSchedules } from "@shared/schema";
-import { eq, and, lt, gte, desc, asc, ne, isNull, not, or, sql } from "drizzle-orm";
+import { eq, and, lt, gte, desc, asc, ne, isNull, not, or, sql, inArray } from "drizzle-orm";
 import { format, parse, addMinutes, differenceInMinutes, setHours, setMinutes } from "date-fns";
 
 export interface ETACalculationResult {
@@ -520,6 +520,7 @@ export class ETAService {
         tokenNumber: appointments.tokenNumber,
         scheduleId: appointments.scheduleId,
         estimatedStartTime: appointments.estimatedStartTime,
+        actualEndTime: appointments.actualEndTime,
         status: appointments.status,
         date: appointments.date
       })
@@ -599,8 +600,9 @@ export class ETAService {
     let liveEstimatedStartTime: Date;
 
     if (appointment[0].status === "completed") {
-      // Completed — just show stored value (actual start time)
-      liveEstimatedStartTime = estimatedStartTime || now;
+      // Completed — show actual end time if available, otherwise fall back to stored estimate
+      const actualEnd = appointment[0].actualEndTime ? new Date(appointment[0].actualEndTime) : null;
+      liveEstimatedStartTime = actualEnd || (estimatedStartTime ? new Date(estimatedStartTime) : now);
     } else if (appointment[0].status === "in_progress") {
       // Currently being seen — ETA = estimated finish = max(actualStart + avg, now)
       const actualStart = currentConsulting[0]?.actualStartTime
@@ -619,29 +621,28 @@ export class ETAService {
           addMinutes(actualStart, avgConsultationTime).getTime(),
           now.getTime()
         ));
-        // Count how many token_started patients are ahead of this one
+        // Count how many waiting patients (token_started or scheduled) are ahead of this one
         const aheadCount = await db
           .select({ count: sql<number>`COUNT(*)::integer` })
           .from(appointments)
           .where(
             and(
               eq(appointments.scheduleId, scheduleId),
-              eq(appointments.status, "token_started"),
+              inArray(appointments.status, ["token_started", "scheduled"]),
               sql`${appointments.tokenNumber} < ${tokenNumber}`
             )
           );
         const patientsAhead = aheadCount[0]?.count || 0;
         liveEstimatedStartTime = addMinutes(estimatedCurrentFinish, patientsAhead * avgConsultationTime);
       } else if (completedTokenCount > 0) {
-        // No one in progress but queue has already started (someone completed before this patient)
-        // This patient is next — count only token_started patients ahead
+        // No one in progress but queue has already started — count waiting patients ahead
         const aheadCount = await db
           .select({ count: sql<number>`COUNT(*)::integer` })
           .from(appointments)
           .where(
             and(
               eq(appointments.scheduleId, scheduleId),
-              eq(appointments.status, "token_started"),
+              inArray(appointments.status, ["token_started", "scheduled"]),
               sql`${appointments.tokenNumber} < ${tokenNumber}`
             )
           );

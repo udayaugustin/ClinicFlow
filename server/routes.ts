@@ -581,17 +581,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Get current token count for this date
+      // Get current token count for this date (includes pending walk-in reservations)
       const appointments = await storage.getAppointmentCountForDoctor(
         Number(req.body.doctorId),
         clinicId,
         schedule.id
       );
-      
+
       // Check if token limit has been reached
       if (schedule.maxTokens !== null && schedule.maxTokens !== undefined && appointments >= schedule.maxTokens) {
-        return res.status(400).json({ 
-          message: `Maximum number of tokens (${schedule.maxTokens}) has been reached for this schedule` 
+        return res.status(400).json({
+          message: `Maximum number of tokens (${schedule.maxTokens}) has been reached for this schedule`
         });
       }
 

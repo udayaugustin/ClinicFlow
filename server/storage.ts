@@ -1745,12 +1745,34 @@ export class DatabaseStorage implements IStorage {
       throw new Error(`Maximum number of tokens (${schedule.maxTokens}) has been reached for this schedule`);
     }
     
-    // Use provided tokenNumber or generate a new one
-    const tokenNumber = appointment.tokenNumber ?? await this.getNextTokenNumber(
+    // Generate next token and guard against race condition with walk-in reservations.
+    // After getNextTokenNumber runs, a pending reservation for that exact token
+    // may have just committed — check and skip past it if so.
+    let tokenNumber = appointment.tokenNumber ?? await this.getNextTokenNumber(
       appointment.doctorId,
       clinicId,
       schedule.id
     );
+    const [reservationConflict] = await db
+      .select({ tokenNumber: tokenReservations.tokenNumber })
+      .from(tokenReservations)
+      .where(and(
+        eq(tokenReservations.scheduleId, schedule.id),
+        eq(tokenReservations.tokenNumber, tokenNumber),
+        eq(tokenReservations.status, "pending"),
+        gt(tokenReservations.expiresAt, new Date())
+      ));
+    if (reservationConflict) {
+      // A reservation was created between our getNextTokenNumber call and now — skip past it
+      const [maxResult] = await db.select({ maxToken: max(tokenReservations.tokenNumber) })
+        .from(tokenReservations)
+        .where(and(
+          eq(tokenReservations.scheduleId, schedule.id),
+          eq(tokenReservations.status, "pending"),
+          gt(tokenReservations.expiresAt, new Date())
+        ));
+      tokenNumber = (maxResult?.maxToken || tokenNumber) + 1;
+    }
 
     const [created] = await db
       .insert(appointments)
@@ -2557,10 +2579,20 @@ export class DatabaseStorage implements IStorage {
         };
       }
 
-      // If no token_started appointments, find the last appointment in any other state
+      // If no token_started appointments, check if all remaining are unstarted (scheduled/cancel/no_show)
       const lastAppointment = todayAppointments[todayAppointments.length - 1];
-      
+
       console.log('Last appointment in any state:', lastAppointment);
+
+      // If all appointments are in a non-active state, queue hasn't started yet
+      const inactiveStatuses = ['scheduled', 'cancel', 'no_show'];
+      if (inactiveStatuses.includes(lastAppointment.status)) {
+        return {
+          currentToken: 0,
+          status: 'not_started' as any,
+        };
+      }
+
       return {
         currentToken: lastAppointment.tokenNumber,
         status: lastAppointment.status as any,
@@ -5028,7 +5060,7 @@ export class DatabaseStorage implements IStorage {
       guestName,
       guestPhone: guestPhone || null,
       isWalkIn: true,
-      status: "token_started",
+      status: "scheduled",
       isPaid: false,
       isRefundEligible: false,
       hasBeenRefunded: false,
