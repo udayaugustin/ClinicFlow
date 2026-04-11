@@ -1106,11 +1106,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const clinicId = parseInt(req.params.id);
       const clinic = await storage.getClinic(clinicId);
-      
+
       if (!clinic) {
         return res.status(404).json({ message: 'Clinic not found' });
       }
-      
+
+      // Include admin user data for super_admin (excluding password)
+      if (req.user?.role === 'super_admin') {
+        const admin = await storage.getClinicAdminByClinicId(clinicId);
+        return res.json({ ...clinic, admin: admin || null });
+      }
+
       res.json(clinic);
     } catch (error) {
       console.error('Error fetching clinic:', error);
@@ -1135,13 +1141,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const clinicId = parseInt(req.params.id);
       const clinic = await storage.getClinic(clinicId);
-      
+
       if (!clinic) {
         return res.status(404).json({ message: 'Clinic not found' });
       }
-      
+
       const updatedClinic = await storage.updateClinic(clinicId, req.body);
-      res.json(updatedClinic);
+
+      // Update admin user fields if provided
+      const { adminName, adminPhone, adminEmail, adminUsername, adminPassword } = req.body;
+      if (adminName || adminPhone || adminEmail || adminUsername || adminPassword) {
+        const admin = await storage.getClinicAdminByClinicId(clinicId);
+        if (admin) {
+          const adminUpdates: Record<string, any> = {};
+          if (adminName) adminUpdates.name = adminName;
+          if (adminPhone) adminUpdates.phone = adminPhone;
+          if (adminEmail) adminUpdates.email = adminEmail;
+          if (adminUsername) adminUpdates.username = adminUsername;
+          if (adminPassword) {
+            const { scrypt, randomBytes } = await import('crypto');
+            const { promisify } = await import('util');
+            const scryptAsync = promisify(scrypt);
+            const salt = randomBytes(16).toString('hex');
+            const buf = (await scryptAsync(adminPassword, salt, 64)) as Buffer;
+            adminUpdates.password = `${buf.toString('hex')}.${salt}`;
+          }
+          await storage.updateUser(admin.id, adminUpdates);
+        }
+      }
+
+      const updatedAdmin = await storage.getClinicAdminByClinicId(clinicId);
+      res.json({ ...updatedClinic, admin: updatedAdmin || null });
     } catch (error) {
       console.error('Error updating clinic:', error);
       res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid clinic data' });
