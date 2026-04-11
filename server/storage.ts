@@ -2391,12 +2391,12 @@ export class DatabaseStorage implements IStorage {
               )
             );
 
-          // Get patient data for these appointments
-          const patientIds = Array.from(new Set(appointmentsForDoctor.map(apt => apt.patientId)));
-          const patients = await db
+          // Get patient data for these appointments (filter out nulls from walk-ins)
+          const patientIds = Array.from(new Set(appointmentsForDoctor.map(apt => apt.patientId).filter((id): id is number => id != null)));
+          const patients = patientIds.length > 0 ? await db
             .select()
             .from(users)
-            .where(inArray(users.id, patientIds));
+            .where(inArray(users.id, patientIds)) : [];
 
           const patientsMap = new Map(patients.map(p => [p.id, p]));
 

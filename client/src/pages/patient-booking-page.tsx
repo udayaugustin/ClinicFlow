@@ -11,11 +11,15 @@ import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { format, startOfDay } from "date-fns";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, Clock, UserCheck, UserX, Building, Calendar as CalendarIcon } from "lucide-react";
+import { AlertCircle, Clock, UserCheck, UserX, Building, Calendar as CalendarIcon, Users } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { NavigationButtons } from "@/components/navigation-buttons";
 import { invalidateWalletQueries } from "@/utils/wallet-utils";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 
 // Define types
 type Clinic = {
@@ -54,6 +58,11 @@ export default function PatientBookingPage() {
   const { toast } = useToast();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [selectedSchedule, setSelectedSchedule] = useState<DoctorSchedule | null>(null);
+  const [showBookingDialog, setShowBookingDialog] = useState(false);
+  const [pendingSchedule, setPendingSchedule] = useState<DoctorSchedule | null>(null);
+  const [isOnBehalf, setIsOnBehalf] = useState(false);
+  const [beneficiaryName, setBeneficiaryName] = useState("");
+  const [beneficiaryPhone, setBeneficiaryPhone] = useState("");
 
   const { data: doctor, isLoading: isLoadingDoctor } = useQuery<User>({
     queryKey: [`/api/doctors/${doctorId}`],
@@ -97,7 +106,7 @@ export default function PatientBookingPage() {
   };
 
   const bookAppointmentMutation = useMutation({
-    mutationFn: async (schedule: DoctorSchedule) => {
+    mutationFn: async ({ schedule, onBehalf, guestName, guestPhone }: { schedule: DoctorSchedule; onBehalf: boolean; guestName?: string; guestPhone?: string }) => {
       if (!schedule) throw new Error("Please select a clinic schedule");
 
       // Create appointment date by combining selected date with schedule start time
@@ -110,6 +119,9 @@ export default function PatientBookingPage() {
         date: appointmentDate.toISOString(),
         clinicId: schedule.clinicId,
         scheduleId: schedule.id,
+        isOnBehalf: onBehalf,
+        guestName: onBehalf ? guestName : undefined,
+        guestPhone: onBehalf ? guestPhone : undefined,
       });
       return res.json();
     },
@@ -130,9 +142,10 @@ export default function PatientBookingPage() {
       const etaText = response?.estimatedStartTime
         ? ` Your estimated time: ${format(new Date(response.estimatedStartTime), "h:mm a")}.`
         : "";
+      const onBehalfText = response?.guestName ? ` Booked for ${response.guestName}.` : "";
       toast({
         title: "Appointment Booked Successfully! ✅",
-        description: `Your appointment has been confirmed.${etaText}`,
+        description: `Your appointment has been confirmed.${onBehalfText}${etaText}`,
       });
     },
     onError: (error) => {
@@ -145,9 +158,8 @@ export default function PatientBookingPage() {
     },
   });
 
-  // Direct booking function
+  // Open dialog before booking
   const bookAppointment = (schedule: DoctorSchedule) => {
-    // Check for duplicate booking first
     if (hasExistingAppointment(schedule.id)) {
       toast({
         title: "Appointment Already Exists",
@@ -156,8 +168,27 @@ export default function PatientBookingPage() {
       });
       return;
     }
-    
-    bookAppointmentMutation.mutate(schedule);
+    setPendingSchedule(schedule);
+    setIsOnBehalf(false);
+    setBeneficiaryName("");
+    setBeneficiaryPhone("");
+    setShowBookingDialog(true);
+  };
+
+  const confirmBooking = () => {
+    if (!pendingSchedule) return;
+    if (isOnBehalf) {
+      if (!beneficiaryName.trim()) {
+        toast({ title: "Patient name is required", variant: "destructive" });
+        return;
+      }
+      if (!/^\d{10}$/.test(beneficiaryPhone.trim())) {
+        toast({ title: "Enter a valid 10-digit phone number", variant: "destructive" });
+        return;
+      }
+    }
+    setShowBookingDialog(false);
+    bookAppointmentMutation.mutate({ schedule: pendingSchedule, onBehalf: isOnBehalf, guestName: beneficiaryName, guestPhone: beneficiaryPhone });
   };
 
   // Add this useEffect near the top of the component
@@ -365,6 +396,57 @@ export default function PatientBookingPage() {
           </Card>
         </div>
       </main>
+
+      <Dialog open={showBookingDialog} onOpenChange={setShowBookingDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Booking</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="flex items-center gap-3">
+              <Checkbox
+                id="onBehalf"
+                checked={isOnBehalf}
+                onCheckedChange={(v) => setIsOnBehalf(!!v)}
+              />
+              <Label htmlFor="onBehalf" className="flex items-center gap-2 cursor-pointer">
+                <Users className="h-4 w-4 text-muted-foreground" />
+                Booking for someone else?
+              </Label>
+            </div>
+            {isOnBehalf && (
+              <div className="space-y-3 pl-7">
+                <div>
+                  <Label htmlFor="beneficiaryName">Patient Name</Label>
+                  <Input
+                    id="beneficiaryName"
+                    placeholder="Enter patient's full name"
+                    value={beneficiaryName}
+                    onChange={(e) => setBeneficiaryName(e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="beneficiaryPhone">Patient Phone</Label>
+                  <Input
+                    id="beneficiaryPhone"
+                    placeholder="10-digit mobile number"
+                    value={beneficiaryPhone}
+                    onChange={(e) => setBeneficiaryPhone(e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowBookingDialog(false)}>Cancel</Button>
+            <Button onClick={confirmBooking} disabled={bookAppointmentMutation.isPending}>
+              {bookAppointmentMutation.isPending ? "Booking..." : "Confirm Booking"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

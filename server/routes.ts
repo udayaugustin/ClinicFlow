@@ -609,6 +609,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      // Validate on-behalf fields when booking for someone else
+      if (req.body.isOnBehalf) {
+        if (!req.body.guestName?.trim()) {
+          return res.status(400).json({ message: 'Patient name is required when booking for someone else' });
+        }
+        if (!/^\d{10}$/.test(req.body.guestPhone?.trim() || '')) {
+          return res.status(400).json({ message: 'A valid 10-digit phone number is required when booking for someone else' });
+        }
+      }
+
       const appointmentData = {
         ...req.body,
         patientId: req.user.id,
@@ -619,7 +629,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         consultationFee: totalAmount, // Store total amount as consultation fee
         isPaid: true,
         paymentMethod: 'wallet',
-        isRefundEligible: true
+        isRefundEligible: true,
+        isOnBehalf: req.body.isOnBehalf || false,
+        guestName: req.body.isOnBehalf ? req.body.guestName?.trim() : null,
+        guestPhone: req.body.isOnBehalf ? req.body.guestPhone?.trim() : null,
       };
 
       // Create appointment and process wallet payment

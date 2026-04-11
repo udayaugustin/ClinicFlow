@@ -1005,6 +1005,14 @@ export default function AttenderDashboard() {
                                                         <div className="font-medium">{appointment.guestName}</div>
                                                         <Badge variant="outline" className="mt-1">Walk-in</Badge>
                                                       </div>
+                                                    ) : appointment.isOnBehalf ? (
+                                                      <div>
+                                                        <div className="font-medium">{appointment.guestName}</div>
+                                                        <Badge variant="secondary" className="mt-1">On behalf</Badge>
+                                                        {appointment.patient?.name && (
+                                                          <div className="text-xs text-muted-foreground mt-1">by {appointment.patient.name}</div>
+                                                        )}
+                                                      </div>
                                                     ) : (
                                                       <div className="font-medium">{appointment.patient?.name}</div>
                                                     )}

@@ -4,9 +4,19 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { CalendarDays, Search, Clock, Calendar, Loader2, Star, StarOff, Navigation } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { CalendarDays, Search, Clock, Calendar, Loader2, Star, StarOff, Navigation, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -52,6 +62,11 @@ export default function PatientClinicDetails() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedDoctor, setSelectedDoctor] = useState<string | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<{ day: string, time: string } | null>(null);
+  const [showBookingDialog, setShowBookingDialog] = useState(false);
+  const [pendingBookingData, setPendingBookingData] = useState<any>(null);
+  const [isOnBehalf, setIsOnBehalf] = useState(false);
+  const [beneficiaryName, setBeneficiaryName] = useState("");
+  const [beneficiaryPhone, setBeneficiaryPhone] = useState("");
   
   // Auto-select doctor from URL parameter when doctors data loads
   useEffect(() => {
@@ -93,7 +108,7 @@ export default function PatientClinicDetails() {
   
   // Booking mutation for appointment creation
   const bookingMutation = useMutation({
-    mutationFn: async (appointmentData: { doctorId: number; clinicId: number; scheduleId: number; date: string; time: string }) => {
+    mutationFn: async (appointmentData: { doctorId: number; clinicId: number; scheduleId: number; date: string; time: string; isOnBehalf?: boolean; guestName?: string; guestPhone?: string }) => {
       if (!user) {
         throw new Error("You must be logged in to book an appointment");
       }
@@ -142,7 +157,10 @@ export default function PatientClinicDetails() {
           scheduleId: appointmentData.scheduleId,
           date: appointmentDate.toISOString(),
           tokenNumber: tokenNumber,
-          status: "scheduled"
+          status: "scheduled",
+          isOnBehalf: appointmentData.isOnBehalf || false,
+          guestName: appointmentData.guestName || null,
+          guestPhone: appointmentData.guestPhone || null,
         })
       });
       
@@ -343,13 +361,17 @@ export default function PatientClinicDetails() {
         time: selectedSlot.time
       });
       
-      bookingMutation.mutate({
+      setPendingBookingData({
         doctorId: doctorIdNum,
         clinicId: clinicIdNum,
         scheduleId: scheduleIdNum,
         date: appointmentDate.toISOString(),
-        time: selectedSlot.time
+        time: selectedSlot.time,
       });
+      setIsOnBehalf(false);
+      setBeneficiaryName("");
+      setBeneficiaryPhone("");
+      setShowBookingDialog(true);
     } catch (error) {
       toast({
         title: "Error",
@@ -358,6 +380,26 @@ export default function PatientClinicDetails() {
       });
       console.error("Date parsing error:", error);
     }
+  };
+
+  const confirmBooking = () => {
+    if (isOnBehalf) {
+      if (!beneficiaryName.trim()) {
+        toast({ title: "Error", description: "Patient name is required", variant: "destructive" });
+        return;
+      }
+      if (!/^\d{10}$/.test(beneficiaryPhone.trim())) {
+        toast({ title: "Error", description: "Enter a valid 10-digit phone number", variant: "destructive" });
+        return;
+      }
+    }
+    setShowBookingDialog(false);
+    bookingMutation.mutate({
+      ...pendingBookingData,
+      isOnBehalf,
+      guestName: isOnBehalf ? beneficiaryName.trim() : undefined,
+      guestPhone: isOnBehalf ? beneficiaryPhone.trim() : undefined,
+    });
   };
 
   // Check for schedule status changes and show notifications
@@ -860,6 +902,70 @@ export default function PatientClinicDetails() {
         </div>
       </div>
       </div>
+
+      {/* Booking confirmation dialog with "Book for someone else" toggle */}
+      <Dialog open={showBookingDialog} onOpenChange={(open) => { if (!open) setShowBookingDialog(false); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Appointment</DialogTitle>
+            <DialogDescription>
+              ₹21 will be deducted from your wallet.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="flex items-center gap-3">
+              <Checkbox
+                id="onBehalf"
+                checked={isOnBehalf}
+                onCheckedChange={(v) => setIsOnBehalf(!!v)}
+              />
+              <Label htmlFor="onBehalf" className="flex items-center gap-2 cursor-pointer">
+                <Users className="h-4 w-4 text-muted-foreground" />
+                Booking for someone else
+              </Label>
+            </div>
+
+            {isOnBehalf && (
+              <div className="space-y-3 pl-7 border-l-2 border-primary/20 ml-1">
+                <div className="space-y-1">
+                  <Label htmlFor="beneficiaryName">Patient Name <span className="text-red-500">*</span></Label>
+                  <Input
+                    id="beneficiaryName"
+                    value={beneficiaryName}
+                    onChange={(e) => setBeneficiaryName(e.target.value)}
+                    placeholder="Full name of the patient"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="beneficiaryPhone">Patient Phone <span className="text-red-500">*</span></Label>
+                  <Input
+                    id="beneficiaryPhone"
+                    value={beneficiaryPhone}
+                    onChange={(e) => setBeneficiaryPhone(e.target.value)}
+                    placeholder="10-digit mobile number"
+                    maxLength={10}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowBookingDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={confirmBooking} disabled={bookingMutation.isPending}>
+              {bookingMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Calendar className="mr-2 h-4 w-4" />
+              )}
+              Confirm Booking
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

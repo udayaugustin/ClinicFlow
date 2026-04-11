@@ -309,6 +309,11 @@ export default function BookingHistoryPage() {
                                   <p className="text-sm text-muted-foreground">
                                     {appointment.doctor.specialty}
                                   </p>
+                                  {appointment.isOnBehalf && appointment.guestName && (
+                                    <p className="text-sm text-blue-600 font-medium mt-1">
+                                      Patient: {appointment.guestName}
+                                    </p>
+                                  )}
                                 </div>
                                 <AppointmentStatusBadge status={appointment.status} />
                               </div>

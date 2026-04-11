@@ -119,10 +119,11 @@ export const appointments = pgTable("appointments", {
   tokenNumber: integer("token_number").notNull(),
   status: varchar("status", { length: 50 }).default("token_started"),
   statusNotes: text("status_notes"), // For recording reasons for status changes
-  // Guest patient fields for walk-in appointments
+  // Guest patient fields for walk-in and on-behalf appointments
   guestName: varchar("guest_name", { length: 255 }),
   guestPhone: varchar("guest_phone", { length: 20 }),
   isWalkIn: boolean("is_walk_in").default(false),
+  isOnBehalf: boolean("is_on_behalf").default(false),
   // ETA tracking fields
   estimatedStartTime: timestamp("estimated_start_time"),
   actualStartTime: timestamp("actual_start_time"),
