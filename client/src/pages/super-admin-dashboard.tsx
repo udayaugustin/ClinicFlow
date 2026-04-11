@@ -329,7 +329,7 @@ export default function SuperAdminDashboard() {
 
   // Form for creating clinics with admin
   const form = useForm<ClinicData>({
-    resolver: zodResolver(clinicSchema),
+    resolver: zodResolver(editClinicSchema),
     defaultValues: {
       name: "",
       address: "",
@@ -455,6 +455,29 @@ export default function SuperAdminDashboard() {
   };
 
   const onCreateSubmit = (data: ClinicData) => {
+    // Manually validate required admin fields for clinic creation
+    let hasError = false;
+    if (!data.adminUsername?.trim()) {
+      form.setError('adminUsername', { message: 'Admin username is required' });
+      hasError = true;
+    }
+    if (!data.adminPassword || data.adminPassword.length < 6) {
+      form.setError('adminPassword', { message: 'Admin password must be at least 6 characters' });
+      hasError = true;
+    }
+    if (!data.adminName?.trim()) {
+      form.setError('adminName', { message: 'Admin full name is required' });
+      hasError = true;
+    }
+    if (!data.adminPhone?.trim()) {
+      form.setError('adminPhone', { message: 'Admin phone number is required' });
+      hasError = true;
+    }
+    if (!data.adminEmail?.trim()) {
+      form.setError('adminEmail', { message: 'Admin email is required' });
+      hasError = true;
+    }
+    if (hasError) return;
     createClinicMutation.mutate(data);
   };
 
@@ -472,7 +495,7 @@ export default function SuperAdminDashboard() {
   };
 
   // Handler for Edit button
-  const handleEdit = (clinic: any) => {
+  const handleEdit = async (clinic: any) => {
     setSelectedClinic(clinic);
     // Populate form with clinic data for editing
     form.setValue('name', clinic.name);
@@ -485,12 +508,22 @@ export default function SuperAdminDashboard() {
     form.setValue('openingHours', clinic.openingHours);
     form.setValue('description', clinic.description || '');
     form.setValue('imageUrl', clinic.imageUrl || '');
-    // Reset admin fields for security
-    form.setValue('adminUsername', '');
-    form.setValue('adminPassword', '');
-    form.setValue('adminName', '');
-    form.setValue('adminPhone', '');
-    form.setValue('adminEmail', '');
+    // Fetch clinic with admin data to pre-populate admin fields (password intentionally left blank)
+    try {
+      const res = await apiRequest('GET', `/api/clinics/${clinic.id}`);
+      const data = await res.json();
+      const admin = data.admin;
+      form.setValue('adminUsername', admin?.username || '');
+      form.setValue('adminName', admin?.name || '');
+      form.setValue('adminPhone', admin?.phone || '');
+      form.setValue('adminEmail', admin?.email || '');
+    } catch {
+      form.setValue('adminUsername', '');
+      form.setValue('adminName', '');
+      form.setValue('adminPhone', '');
+      form.setValue('adminEmail', '');
+    }
+    form.setValue('adminPassword', ''); // Always blank — only fill to change password
     setShowEditForm(true);
   };
 

@@ -124,6 +124,7 @@ export interface IStorage {
   getDoctorsNearLocation(lat: number, lng: number, radiusInMiles?: number): Promise<User[]>;
   getClinicsNearLocation(lat: number, lng: number, radiusInKm?: number): Promise<(Clinic & { distance: number })[]>;
   getClinicAdmins(): Promise<(User & { clinic?: Clinic })[]>;
+  getClinicAdminByClinicId(clinicId: number): Promise<Omit<User, 'password'> | undefined>;
   getClinics(): Promise<Clinic[]>;
   getClinic(id: number): Promise<Clinic | undefined>;
   createClinic(clinic: typeof clinics.$inferInsert): Promise<Clinic>;
@@ -538,6 +539,33 @@ export class DatabaseStorage implements IStorage {
         clinic: clinic || undefined,
       };
     });
+  }
+
+  async getClinicAdminByClinicId(clinicId: number): Promise<Omit<User, 'password'> | undefined> {
+    const [result] = await db
+      .select({
+        id: users.id,
+        username: users.username,
+        name: users.name,
+        role: users.role,
+        phone: users.phone,
+        email: users.email,
+        specialty: users.specialty,
+        bio: users.bio,
+        imageUrl: users.imageUrl,
+        address: users.address,
+        city: users.city,
+        state: users.state,
+        zipCode: users.zipCode,
+        latitude: users.latitude,
+        longitude: users.longitude,
+        clinicId: users.clinicId,
+        createdAt: users.createdAt,
+      })
+      .from(users)
+      .where(and(eq(users.role, 'clinic_admin'), eq(users.clinicId, clinicId)))
+      .limit(1);
+    return result;
   }
 
   async getDoctorWithClinic(id: number): Promise<(User & { clinic?: Clinic }) | undefined> {
