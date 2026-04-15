@@ -4986,6 +4986,25 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  async upsertConfiguration(config: InsertAdminConfiguration): Promise<AdminConfiguration> {
+    const [result] = await db
+      .insert(adminConfigurations)
+      .values(config)
+      .onConflictDoUpdate({
+        target: adminConfigurations.configKey,
+        // Update value and type — seed is the authoritative source for configType
+        set: {
+          configValue: config.configValue,
+          configType: config.configType,
+          description: config.description,
+          category: config.category,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return result;
+  }
+
   // Mark appointment as refunded to prevent duplicate refunds
   async markAppointmentAsRefunded(appointmentId: number, refundAmount: number): Promise<void> {
     try {
@@ -5033,8 +5052,10 @@ export class DatabaseStorage implements IStorage {
     const maxRes = resResult[0]?.maxToken || 0;
     const nextToken = Math.max(maxAppt, maxRes) + 1;
 
-    // 4. Create reservation with 5-minute expiry
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    // 4. Read timeout from config (default 300 seconds)
+    const timeoutConfig = await this.getConfiguration('token_reservation_timeout_seconds');
+    const timeoutSeconds = timeoutConfig ? parseInt(timeoutConfig.configValue) : 300;
+    const expiresAt = new Date(Date.now() + timeoutSeconds * 1000);
     const [reservation] = await db.insert(tokenReservations).values({
       scheduleId,
       tokenNumber: nextToken,

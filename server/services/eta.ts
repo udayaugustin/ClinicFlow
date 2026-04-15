@@ -650,9 +650,26 @@ export class ETAService {
         // Base = now (no one being seen, next patient should be called immediately)
         liveEstimatedStartTime = addMinutes(now, patientsAhead * avgConsultationTime);
       } else {
-        // Doctor hasn't started yet — use stored value, but never show a past time
-        const stored = estimatedStartTime ? new Date(estimatedStartTime) : null;
-        liveEstimatedStartTime = (stored && stored > now) ? stored : now;
+        // Doctor hasn't started yet, nothing in progress, nothing completed
+        // Still need to count token_started patients ahead in the queue
+        const aheadCount = await db
+          .select({ count: sql<number>`COUNT(*)::integer` })
+          .from(appointments)
+          .where(
+            and(
+              eq(appointments.scheduleId, scheduleId),
+              inArray(appointments.status, ["token_started", "scheduled"]),
+              sql`${appointments.tokenNumber} < ${tokenNumber}`
+            )
+          );
+        const patientsAhead = aheadCount[0]?.count || 0;
+        if (patientsAhead > 0) {
+          liveEstimatedStartTime = addMinutes(now, patientsAhead * avgConsultationTime);
+        } else {
+          // No one ahead — use stored value, but never show a past time
+          const stored = estimatedStartTime ? new Date(estimatedStartTime) : null;
+          liveEstimatedStartTime = (stored && stored > now) ? stored : now;
+        }
       }
     }
 

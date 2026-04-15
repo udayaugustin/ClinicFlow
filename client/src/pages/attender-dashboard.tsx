@@ -28,6 +28,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { NavigationButtons } from "@/components/navigation-buttons";
+import { useBookingConfig } from "@/hooks/use-app-config";
 import React, { useEffect } from "react";
 
 // Updated type definition without presence info in schedules
@@ -59,6 +60,7 @@ type DoctorWithAppointments = {
 export default function AttenderDashboard() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { reservationTimeoutSeconds } = useBookingConfig();
   const [isPaused, setIsPaused] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [selectedDoctorId, setSelectedDoctorId] = useState<string>("");
@@ -84,7 +86,7 @@ export default function AttenderDashboard() {
     scheduleId: number;
   } | null>(null);
   const [walkInStep, setWalkInStep] = useState<'idle' | 'reserving' | 'filling'>('idle');
-  const [reservationSecondsLeft, setReservationSecondsLeft] = useState(300);
+  const [reservationSecondsLeft, setReservationSecondsLeft] = useState(0);
 
   // Main query for fetching doctor data with schedules and appointments  
   const { data: managedDoctors, isLoading, error } = useQuery<DoctorWithAppointments[]>({
@@ -265,7 +267,7 @@ export default function AttenderDashboard() {
     setWalkInReservation(null);
     setWalkInCurrentDoctor(null);
     setWalkInFormValues({ doctorId: 0, clinicId: 0, scheduleId: 0, guestName: '', guestPhone: '' });
-    setReservationSecondsLeft(300);
+    setReservationSecondsLeft(reservationTimeoutSeconds);
   };
 
   // Auto-select the first doctor when data loads
@@ -422,7 +424,7 @@ export default function AttenderDashboard() {
     onSuccess: (data) => {
       setWalkInReservation(data);
       setWalkInStep('filling');
-      setReservationSecondsLeft(300);
+      setReservationSecondsLeft(reservationTimeoutSeconds);
     },
     onError: () => {
       toast({ title: "Failed to reserve token", variant: "destructive" });

@@ -136,6 +136,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Seed default system configurations (runs once on startup)
+  (async () => {
+    try {
+      await storage.upsertConfiguration({
+        configKey: 'token_reservation_timeout_seconds',
+        configValue: '300',
+        configType: 'number',
+        description: 'How long (in seconds) a walk-in token reservation is held before it expires',
+        category: 'booking',
+        isEditable: true,
+      });
+    } catch (err) {
+      console.error('Failed to seed default configurations:', err);
+    }
+  })();
+
   // Get public configurations (no authentication required)
   app.get("/api/configurations/public", async (req, res) => {
     try {
@@ -1201,9 +1217,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!req.user || req.user.role !== "super_admin") return res.sendStatus(403);
     try {
       // Validate the combined data
-      const { 
+      const {
         name, address, city, state, zipCode, phone, email, openingHours, description, imageUrl,
-        adminUsername, adminPassword, adminName, adminPhone, adminEmail 
+        latitude, longitude,
+        adminUsername, adminPassword, adminName, adminPhone, adminEmail
       } = req.body;
 
       // Validate required fields
@@ -1217,7 +1234,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Create clinic first
       const clinicData = {
-        name, address, city, state, zipCode, phone, email, openingHours, description, imageUrl
+        name, address, city, state, zipCode, phone, email, openingHours, description, imageUrl,
+        latitude: latitude || null,
+        longitude: longitude || null
       };
       
       const clinic = await storage.createClinic(clinicData);

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { DashboardHeader } from "@/components/dashboard-header";
 import { PlusCircle, Hospital, User, UserCog, Building2, Activity, Edit, Eye, Trash2, MapPin, Phone, Mail, Clock, Loader2, FileSpreadsheet, CreditCard, Search, Calendar, Stethoscope, RefreshCw, Settings, FileText } from "lucide-react";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -22,7 +22,7 @@ import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
 import SuperAdminExportReports from "@/components/SuperAdminExportReports";
 import RefundManagement from "@/components/RefundManagement";
-import { useAdminConfig } from "@/hooks/use-app-config";
+import { useAdminConfig, useAdminBookingConfig } from "@/hooks/use-app-config";
 import PolicyEditor from "@/components/super-admin/PolicyEditor";
 
 // Clinic schema with admin user fields
@@ -36,9 +36,11 @@ const clinicSchema = z.object({
   phone: z.string().min(1, "Phone number is required"),
   email: z.string().email("Invalid email address"),
   openingHours: z.string().min(1, "Opening hours are required"),
+  latitude: z.string().min(1, "Latitude is required"),
+  longitude: z.string().min(1, "Longitude is required"),
   description: z.string().optional(),
   imageUrl: z.string().optional(),
-  
+
   // Clinic admin user fields
   adminUsername: z.string().min(1, "Admin username is required"),
   adminPassword: z.string().min(6, "Admin password must be at least 6 characters"),
@@ -58,9 +60,11 @@ const editClinicSchema = z.object({
   phone: z.string().min(1, "Phone number is required"),
   email: z.string().email("Invalid email address"),
   openingHours: z.string().min(1, "Opening hours are required"),
+  latitude: z.string().min(1, "Latitude is required"),
+  longitude: z.string().min(1, "Longitude is required"),
   description: z.string().optional(),
   imageUrl: z.string().optional(),
-  
+
   // Clinic admin user fields (optional for updates)
   adminUsername: z.string().optional(),
   adminPassword: z.string().optional(),
@@ -339,6 +343,8 @@ export default function SuperAdminDashboard() {
       phone: "",
       email: "",
       openingHours: "",
+      latitude: "",
+      longitude: "",
       description: "",
       imageUrl: "",
       adminUsername: "",
@@ -506,6 +512,8 @@ export default function SuperAdminDashboard() {
     form.setValue('phone', clinic.phone);
     form.setValue('email', clinic.email);
     form.setValue('openingHours', clinic.openingHours);
+    form.setValue('latitude', clinic.latitude || '');
+    form.setValue('longitude', clinic.longitude || '');
     form.setValue('description', clinic.description || '');
     form.setValue('imageUrl', clinic.imageUrl || '');
     // Fetch clinic with admin data to pre-populate admin fields (password intentionally left blank)
@@ -665,6 +673,35 @@ export default function SuperAdminDashboard() {
                               <FormLabel>Zip Code</FormLabel>
                               <FormControl>
                                 <Input placeholder="Zip Code" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <FormField
+                          control={form.control}
+                          name="latitude"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Latitude</FormLabel>
+                              <FormControl>
+                                <Input placeholder="e.g. 9.9252" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name="longitude"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Longitude</FormLabel>
+                              <FormControl>
+                                <Input placeholder="e.g. 78.1198" {...field} />
                               </FormControl>
                               <FormMessage />
                             </FormItem>
@@ -1241,6 +1278,85 @@ export default function SuperAdminDashboard() {
       return <NearbySettingsComponent />;
     }
 
+    if (selectedMenuItem === "booking-settings") {
+      const BookingSettingsComponent = () => {
+        const { configurations, isLoading, updateConfigurations, isUpdating } = useAdminBookingConfig();
+        const [timeoutSeconds, setTimeoutSeconds] = useState(300);
+        const { toast } = useToast();
+
+        useEffect(() => {
+          if (configurations && configurations.length > 0) {
+            const timeoutConfig = configurations.find((c: any) => c.configKey === 'token_reservation_timeout_seconds');
+            if (timeoutConfig) setTimeoutSeconds(parseInt(timeoutConfig.configValue));
+          }
+        }, [configurations]);
+
+        const handleSave = async () => {
+          try {
+            await updateConfigurations({ token_reservation_timeout_seconds: timeoutSeconds.toString() });
+            toast({ title: "Settings saved", description: `Reservation timeout updated to ${timeoutSeconds}s` });
+          } catch (err) {
+            toast({ title: "Failed to save", description: "Could not update settings. Please try again.", variant: "destructive" });
+          }
+        };
+
+        if (isLoading) {
+          return <div className="p-6 flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin" /></div>;
+        }
+
+        return (
+          <div className="p-6 max-w-2xl">
+            <div className="mb-6">
+              <h1 className="text-2xl font-bold text-gray-900">Booking Settings</h1>
+              <p className="text-gray-600 mt-1">Configure token reservation and booking timing</p>
+            </div>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Walk-in Token Reservation</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div>
+                  <Label className="text-base font-medium">Reservation Timeout (seconds)</Label>
+                  <p className="text-sm text-muted-foreground mt-1 mb-3">
+                    How long a walk-in token is held before it expires if the attender doesn't confirm the booking. Currently: <strong>{timeoutSeconds}s ({Math.floor(timeoutSeconds / 60)}m {timeoutSeconds % 60}s)</strong>
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <Input
+                      type="number"
+                      min={30}
+                      max={1800}
+                      value={timeoutSeconds}
+                      onChange={(e) => setTimeoutSeconds(Math.max(30, Math.min(1800, parseInt(e.target.value) || 300)))}
+                      className="w-40"
+                    />
+                    <span className="text-sm text-muted-foreground">seconds (min: 30, max: 1800)</span>
+                  </div>
+                  <div className="flex gap-2 mt-3">
+                    {[60, 120, 180, 300, 600].map(s => (
+                      <Button key={s} variant={timeoutSeconds === s ? "default" : "outline"} size="sm" onClick={() => setTimeoutSeconds(s)}>
+                        {s < 60 ? `${s}s` : `${s / 60}m`}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+              <CardFooter className="border-t pt-4">
+                <Button onClick={handleSave} disabled={isUpdating}>
+                  {isUpdating ? (
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving...</>
+                  ) : (
+                    <><Settings className="mr-2 h-4 w-4" />Save Settings</>
+                  )}
+                </Button>
+              </CardFooter>
+            </Card>
+          </div>
+        );
+      };
+
+      return <BookingSettingsComponent />;
+    }
+
     // Default dashboard view
     return (
       <div className="p-6">
@@ -1634,6 +1750,28 @@ export default function SuperAdminDashboard() {
                 </p>
                 <p className={`text-xs ${selectedMenuItem === "nearby-settings" ? "text-blue-600" : "text-gray-500"}`}>
                   Configure nearby mode
+                </p>
+              </div>
+            </button>
+
+            {/* Booking Settings Option */}
+            <button
+              onClick={() => setSelectedMenuItem("booking-settings")}
+              className={`w-full text-left px-3 py-3 rounded-lg mb-2 transition-all duration-200 flex items-center group ${
+                selectedMenuItem === "booking-settings"
+                  ? "bg-blue-50 text-blue-700 border-l-4 border-blue-600"
+                  : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
+              }`}
+            >
+              <span className={`mr-3 ${selectedMenuItem === "booking-settings" ? "text-blue-600" : "text-gray-500 group-hover:text-gray-700"}`}>
+                <Settings className="h-5 w-5" />
+              </span>
+              <div className="flex-1">
+                <p className={`font-medium text-sm ${selectedMenuItem === "booking-settings" ? "text-blue-700" : ""}`}>
+                  Booking Settings
+                </p>
+                <p className={`text-xs ${selectedMenuItem === "booking-settings" ? "text-blue-600" : "text-gray-500"}`}>
+                  Token reservation & timing
                 </p>
               </div>
             </button>

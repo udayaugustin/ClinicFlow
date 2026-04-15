@@ -39,6 +39,66 @@ export function useAppConfig() {
   };
 }
 
+export function useBookingConfig() {
+  const { data, isLoading } = useQuery({
+    queryKey: ['app-config-booking'],
+    queryFn: async () => {
+      const response = await fetch('/api/configurations/public?category=booking');
+      if (!response.ok) throw new Error('Failed to fetch booking configurations');
+      const result = await response.json();
+      return result.configurations as Record<string, any>;
+    },
+    staleTime: 60 * 1000,
+  });
+
+  return {
+    reservationTimeoutSeconds: (data?.token_reservation_timeout_seconds as number) ?? 300,
+    isLoading,
+  };
+}
+
+export function useAdminBookingConfig() {
+  const queryClient = useQueryClient();
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['admin-config-booking'],
+    queryFn: async () => {
+      const response = await fetch('/api/admin/configurations?category=booking');
+      if (!response.ok) throw new Error('Failed to fetch booking configurations');
+      return response.json();
+    },
+    staleTime: 60 * 1000,
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async (configurations: Record<string, any>) => {
+      const response = await fetch('/api/admin/configurations', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ configurations }),
+      });
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.message || 'Failed to update configurations');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-config-booking'] });
+      queryClient.invalidateQueries({ queryKey: ['app-config-booking'] });
+    },
+  });
+
+  return {
+    configurations: data?.configurations || [],
+    isLoading,
+    error,
+    updateConfigurations: updateMutation.mutateAsync,
+    isUpdating: updateMutation.isPending,
+    updateError: updateMutation.error,
+  };
+}
+
 export function useAdminConfig() {
   const queryClient = useQueryClient();
 
