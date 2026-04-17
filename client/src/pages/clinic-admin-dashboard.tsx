@@ -43,6 +43,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { specialties } from '@shared/schema';
 import { ExportReport } from '@/components/ExportReport';
+import { EtaConfigDialog } from '@/components/clinic-admin/EtaConfigDialog';
 
 // Define interfaces for the data types
 interface Clinic {
@@ -187,6 +188,10 @@ export default function ClinicAdminDashboard() {
   const [selectedAttender, setSelectedAttender] = useState<Attender | null>(null);
   const [attenderId, setAttenderId] = useState<number | null>(null);
   
+  // ETA config dialog state
+  const [isEtaDialogOpen, setIsEtaDialogOpen] = useState(false);
+  const [etaDoctor, setEtaDoctor] = useState<Doctor | null>(null);
+
   // File upload state
   const [doctorImageFile, setDoctorImageFile] = useState<File | null>(null);
   const [doctorImagePreview, setDoctorImagePreview] = useState<string>("");
@@ -1195,8 +1200,19 @@ export default function ClinicAdminDashboard() {
                         </div>
                       </div>
                         <div className="flex gap-2">
-                          <Button 
-                            variant="outline" 
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-blue-600 hover:bg-blue-50"
+                            onClick={() => {
+                              setEtaDoctor(doctor);
+                              setIsEtaDialogOpen(true);
+                            }}
+                          >
+                            <Clock className="h-4 w-4 mr-1" /> ETA
+                          </Button>
+                          <Button
+                            variant="outline"
                             size="sm"
                             onClick={() => {
                               setSelectedDoctor(doctor);
@@ -1215,8 +1231,8 @@ export default function ClinicAdminDashboard() {
                           >
                             <Edit className="h-4 w-4 mr-1" /> Edit
                           </Button>
-                          <Button 
-                            variant="outline" 
+                          <Button
+                            variant="outline"
                             size="sm"
                             className="text-red-600 hover:bg-red-50"
                             onClick={() => {
@@ -1666,6 +1682,13 @@ export default function ClinicAdminDashboard() {
       </Dialog>
       
       {/* Delete Doctor Dialog */}
+      <EtaConfigDialog
+        open={isEtaDialogOpen}
+        onOpenChange={setIsEtaDialogOpen}
+        doctor={etaDoctor}
+        clinicId={params?.id ? parseInt(params.id) : user?.clinicId || 0}
+      />
+
       <Dialog open={isDeleteDoctorDialogOpen} onOpenChange={setIsDeleteDoctorDialogOpen}>
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>

@@ -349,13 +349,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async completeSchedule(scheduleId: number): Promise<void> {
-    await db
-      .update(doctorSchedules)
-      .set({
-        scheduleStatus: 'completed',
-        completedAt: sql`CURRENT_TIMESTAMP`
-      })
-      .where(eq(doctorSchedules.id, scheduleId));
+    await db.transaction(async (tx) => {
+      // Cancel any remaining non-terminal appointments (walk-ins, unpaid, etc.)
+      await tx.update(appointments)
+        .set({ status: 'cancel', statusNotes: 'Schedule completed' })
+        .where(and(
+          eq(appointments.scheduleId, scheduleId),
+          sql`${appointments.status} NOT IN ('completed', 'no_show', 'cancel')`
+        ));
+
+      await tx.update(doctorSchedules)
+        .set({ scheduleStatus: 'completed', completedAt: sql`CURRENT_TIMESTAMP` })
+        .where(eq(doctorSchedules.id, scheduleId));
+    });
   }
 
   async closeScheduleBooking(scheduleId: number): Promise<void> {
@@ -2693,7 +2699,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateDoctorDetails(
-    doctorId: number, 
+    doctorId: number,
     details: Partial<{
       consultationFee: number | string;
       consultationDuration: number;
@@ -2702,10 +2708,22 @@ export class DatabaseStorage implements IStorage {
       registrationNumber: string;
     }>
   ): Promise<DoctorDetail> {
-    // Convert consultationFee to string if it's a number
     const updatedDetails = { ...details };
     if (typeof updatedDetails.consultationFee === 'number') {
       updatedDetails.consultationFee = updatedDetails.consultationFee.toString();
+    }
+
+    const existing = await this.getDoctorDetails(doctorId);
+    if (!existing) {
+      const [inserted] = await db.insert(doctorDetails).values({
+        doctorId,
+        consultationFee: (updatedDetails.consultationFee as string) ?? "0",
+        consultationDuration: updatedDetails.consultationDuration ?? 15,
+        qualifications: updatedDetails.qualifications,
+        experience: updatedDetails.experience,
+        registrationNumber: updatedDetails.registrationNumber,
+      }).returning();
+      return inserted;
     }
 
     const [updated] = await db

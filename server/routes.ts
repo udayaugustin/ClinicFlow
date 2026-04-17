@@ -4,13 +4,13 @@ import cors from 'cors';
 import { storage, getTokens } from './storage';
 import { createSessionMiddleware, setupAuth } from './auth';
 import { insertAppointmentSchema, insertAttenderDoctorSchema, insertClinicSchema, insertUserSchema, type AttenderDoctor, type User } from "../shared/schema";
-import { insertDoctorDetailSchema, appointments } from "../shared/schema";
+import { insertDoctorDetailSchema, appointments, doctorSchedules } from "../shared/schema";
 import { z } from "zod";
 import { notificationService } from './services/notification';
 import { ETAService } from './services/eta';
 import { walletService } from './services/wallet';
 import { db } from './db';
-import { eq, and, sql, isNull, not } from 'drizzle-orm';
+import { eq, and, sql, isNull, not, gte } from 'drizzle-orm';
 import { scrypt, randomBytes } from "crypto";
 import { promisify } from "util";
 
@@ -1544,10 +1544,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Get doctor details
   app.get("/api/doctors/:id/details", async (req, res) => {
+    if (!req.user) return res.sendStatus(401);
     try {
       const doctorId = parseInt(req.params.id);
-      
-      // Get doctor details
       const details = await storage.getDoctorDetails(doctorId);
       
       if (!details) {
@@ -1589,6 +1588,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error updating doctor details:", error);
       res.status(500).json({ message: "Failed to update doctor details" });
+    }
+  });
+
+  // Clinic admin: configure avg consultation time per doctor
+  app.patch("/api/clinics/:clinicId/doctors/:doctorId/consultation-time", async (req, res) => {
+    if (!req.user || req.user.role !== "clinic_admin") return res.sendStatus(403);
+    try {
+      const clinicId = parseInt(req.params.clinicId);
+      const doctorId = parseInt(req.params.doctorId);
+      const { consultationMinutes } = z.object({
+        consultationMinutes: z.number().int().min(1).max(120),
+      }).parse(req.body);
+
+      await storage.updateDoctorDetails(doctorId, { consultationDuration: consultationMinutes });
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      await db
+        .update(doctorSchedules)
+        .set({ averageConsultationTime: consultationMinutes })
+        .where(
+          and(
+            eq(doctorSchedules.doctorId, doctorId),
+            eq(doctorSchedules.clinicId, clinicId),
+            eq(doctorSchedules.isActive, true),
+            gte(doctorSchedules.date, today)
+          )
+        );
+
+      res.json({ success: true, consultationMinutes });
+    } catch (error) {
+      console.error("Error updating consultation time:", error);
+      res.status(400).json({ message: error instanceof Error ? error.message : "Failed to update" });
     }
   });
 
@@ -1789,16 +1821,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid schedule ID" });
       }
 
-      await storage.completeSchedule(scheduleId);
-
-      // Get all appointments for this schedule that are not completed or cancelled
-      const appointments = await storage.getAppointmentsBySchedule(scheduleId);
-      const affectedAppointments = appointments.filter(apt => 
-        !['completed', 'cancel'].includes(apt.status || '')
+      // Capture waiting patients BEFORE any status changes
+      const allAppointments = await storage.getAppointmentsBySchedule(scheduleId);
+      const waitingAppointments = allAppointments.filter(apt =>
+        !['completed', 'no_show', 'cancel'].includes(apt.status || '')
       );
 
-      // Notify patients about schedule completion
-      for (const appointment of affectedAppointments) {
+      // Refund paid patients first, then cancel remaining + mark complete
+      try {
+        const refundResult = await walletService.processScheduleCancellationRefunds(
+          scheduleId,
+          'Schedule completed by clinic admin',
+          req.user.id
+        );
+        if (refundResult.refundedAppointments > 0) {
+          console.log(`Refunded ${refundResult.refundedAppointments} appointments (₹${refundResult.totalRefundAmount}) on schedule completion`);
+        }
+      } catch (refundError) {
+        console.error('Refund processing failed during schedule completion:', refundError);
+      }
+
+      await storage.completeSchedule(scheduleId);
+
+      // Notify all patients who were still waiting
+      for (const appointment of waitingAppointments) {
         if (appointment.patientId) {
           await notificationService.createNotification({
             userId: appointment.patientId,
@@ -2042,8 +2088,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'Invalid schedule ID' });
       }
 
+      // Process refunds BEFORE deleting — once deleted, scheduleId is nulled on appointments
+      try {
+        const refundResult = await walletService.processScheduleCancellationRefunds(
+          scheduleId,
+          'Schedule was deleted by clinic admin',
+          req.user.id
+        );
+        if (refundResult.refundedAppointments > 0) {
+          console.log(`Refunded ${refundResult.refundedAppointments} appointments (₹${refundResult.totalRefundAmount}) for deleted schedule ${scheduleId}`);
+        }
+      } catch (refundError) {
+        console.error('Refund processing failed during schedule deletion:', refundError);
+        // Continue with deletion even if refunds fail
+      }
+
       const result = await storage.deleteDoctorSchedule(scheduleId);
-      
+
       // Send notifications to patients about cancelled appointments
       if (result.cancelledAppointments.length > 0) {
         console.log(`Sending notifications for ${result.cancelledAppointments.length} cancelled appointments`);

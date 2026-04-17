@@ -3,6 +3,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { createServer } from "net";
+import { storage } from "./storage";
 
 // Function to find an available port
 async function findAvailablePort(startPort: number): Promise<number> {
@@ -88,4 +89,13 @@ const port = await findAvailablePort(desiredPort);
   server.listen(port, "0.0.0.0", () => {
     log(`serving on port ${port}${port !== desiredPort ? ` (fallback from ${desiredPort})` : ''}`);
   });
+
+  // Periodically expire stale walk-in token reservations (every 60 seconds)
+  setInterval(async () => {
+    try {
+      await storage.expireStaleReservations();
+    } catch (err) {
+      console.error('Error expiring stale reservations:', err);
+    }
+  }, 60_000);
 })();

@@ -93,43 +93,46 @@ export class WalletService {
     } = transactionData;
     
     try {
-      // Get or create wallet
+      // Get or create wallet (outside tx — just to obtain wallet.id)
       const wallet = await this.getOrCreateWallet(patientId);
-      const currentBalance = parseFloat(wallet.balance);
-      
-      // Calculate new balance
-      let newBalance: number;
-      let totalEarned = parseFloat(wallet.totalEarned);
-      let totalSpent = parseFloat(wallet.totalSpent);
-      
-      // Determine if this is a debit or credit transaction
+
+      // Determine credit vs debit (pure logic, no DB)
       const isCredit = [
         'refund_schedule_cancel',
-        'refund_doctor_absent', 
+        'refund_doctor_absent',
         'partial_refund',
         'admin_credit',
         'wallet_topup'
       ].includes(transactionType);
-      
-      if (isCredit) {
-        newBalance = currentBalance + amount;
-        if (transactionType.includes('refund')) {
-          totalEarned += amount;
-        }
-      } else {
-        // Debit transaction
-        if (currentBalance < amount) {
-          throw new Error('Insufficient wallet balance');
-        }
-        newBalance = currentBalance - amount;
-        if (transactionType === 'appointment_payment') {
-          totalSpent += amount;
-        }
-      }
-      
-      // Start database transaction
+
+      // All balance work happens INSIDE the transaction with a row-level lock
       return await db.transaction(async (tx) => {
-        // Create wallet transaction record
+        // Lock the wallet row to prevent concurrent balance modifications
+        const [lockedWallet] = await tx.select()
+          .from(patientWallets)
+          .where(eq(patientWallets.id, wallet.id))
+          .for('update');
+
+        const currentBalance = parseFloat(lockedWallet.balance);
+        let totalEarned = parseFloat(lockedWallet.totalEarned);
+        let totalSpent = parseFloat(lockedWallet.totalSpent);
+        let newBalance: number;
+
+        if (isCredit) {
+          newBalance = currentBalance + amount;
+          if (transactionType.includes('refund')) {
+            totalEarned += amount;
+          }
+        } else {
+          if (currentBalance < amount) {
+            throw new Error('Insufficient wallet balance');
+          }
+          newBalance = currentBalance - amount;
+          if (transactionType === 'appointment_payment') {
+            totalSpent += amount;
+          }
+        }
+
         const [transaction] = await tx.insert(walletTransactions)
           .values({
             walletId: wallet.id,
@@ -147,8 +150,7 @@ export class WalletService {
             metadata: metadata ? JSON.stringify(metadata) : null
           })
           .returning();
-        
-        // Update wallet balance
+
         await tx.update(patientWallets)
           .set({
             balance: newBalance.toFixed(2),
@@ -157,12 +159,12 @@ export class WalletService {
             updatedAt: new Date()
           })
           .where(eq(patientWallets.id, wallet.id));
-        
+
         console.log(`Processed ${transactionType} transaction: ₹${amount} for patient ${patientId}. New balance: ₹${newBalance}`);
-        
+
         return transaction;
       });
-      
+
     } catch (error) {
       console.error('Error processing wallet transaction:', error);
       throw error;
@@ -425,8 +427,8 @@ export class WalletService {
             eq(appointments.isRefundEligible, true),
             eq(appointments.hasBeenRefunded, false),
             eq(appointments.isPaid, true),
-            // Only refund waiting patients — not completed/cancelled/no-show
-            eq(appointments.status, 'token_started')
+            // Refund all waiting patients (token_started, hold, pause, scheduled)
+            sql`${appointments.status} NOT IN ('completed', 'no_show', 'cancel')`
           )
         );
       
