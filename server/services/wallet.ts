@@ -221,7 +221,7 @@ export class WalletService {
             eq(appointments.hasBeenRefunded, false),
             eq(appointments.isPaid, true),
             // Only refund appointments that haven't been completed
-            sql`${appointments.status} NOT IN ('completed', 'no_show')`
+            sql`${appointments.status} NOT IN ('completed', 'no_show', 'expired')`
           )
         );
       
@@ -428,7 +428,7 @@ export class WalletService {
             eq(appointments.hasBeenRefunded, false),
             eq(appointments.isPaid, true),
             // Refund all waiting patients (token_started, hold, pause, scheduled)
-            sql`${appointments.status} NOT IN ('completed', 'no_show', 'cancel')`
+            sql`${appointments.status} NOT IN ('completed', 'no_show', 'cancel', 'expired')`
           )
         );
       

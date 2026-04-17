@@ -774,7 +774,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         "hold": ["in_progress", "cancel", "no_show"], // Patient not arrived, can start or cancel
         "cancel": [], // Terminal state
         "no_show": [], // Terminal state
-        "completed": [] // Terminal state
+        "completed": [], // Terminal state
+        "expired": [] // Terminal state — walk-in reservation expired
       };
 
       if (!validTransitions[currentStatus]?.includes(status)) {

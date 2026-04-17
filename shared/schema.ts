@@ -98,7 +98,8 @@ export const appointmentStatuses = [
   "pause",         // Temporarily paused appointment (was in progress)
   "cancel",        // Appointment cancelled
   "no_show",       // Patient didn't show up (not eligible for refund)
-  "completed"      // Appointment completed
+  "completed",     // Appointment completed
+  "expired"        // Walk-in reservation expired without confirmation — placeholder to fill queue gap
 ] as const;
 
 export type AppointmentStatus = typeof appointmentStatuses[number];

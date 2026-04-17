@@ -1032,11 +1032,15 @@ export default function AttenderDashboard() {
                                                     }
                                                   </td>
                                                   <td className="py-4 px-4">
-                                                    <ETADisplay 
-                                                      appointmentId={appointment.id} 
-                                                      tokenNumber={appointment.tokenNumber}
-                                                      className="text-xs"
-                                                    />
+                                                    {appointment.status === "expired" ? (
+                                                      <span className="text-xs text-muted-foreground">—</span>
+                                                    ) : (
+                                                      <ETADisplay
+                                                        appointmentId={appointment.id}
+                                                        tokenNumber={appointment.tokenNumber}
+                                                        className="text-xs"
+                                                      />
+                                                    )}
                                                   </td>
                                                   <td className="py-4 px-4">
                                                     <Badge
@@ -1047,6 +1051,7 @@ export default function AttenderDashboard() {
                                                         appointment.status === "pause" ? "destructive" :
                                                         appointment.status === "cancel" ? "destructive" :
                                                         appointment.status === "no_show" ? "destructive" :
+                                                        appointment.status === "expired" ? "destructive" :
                                                         appointment.status === "token_started" ? "outline" :
                                                         "outline"
                                                       }
@@ -1059,6 +1064,7 @@ export default function AttenderDashboard() {
                                                       appointment.status === "cancel" ? "Cancelled" :
                                                       appointment.status === "no_show" ? "No Show" :
                                                       appointment.status === "completed" ? "Completed" :
+                                                      appointment.status === "expired" ? "Expired" :
                                                       "Unknown"}
                                                     </Badge>
                                                     {appointment.statusNotes && (
