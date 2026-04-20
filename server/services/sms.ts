@@ -1,15 +1,13 @@
+// SMS service — My Dreams Technology provider with mock fallback for development
 import { randomInt } from 'crypto';
 
-// SMS Provider Interface
 interface SMSProvider {
   sendSMS(to: string, message: string): Promise<void>;
 }
 
-// Mock SMS Provider for development
 class MockSMSProvider implements SMSProvider {
   async sendSMS(to: string, message: string): Promise<void> {
     console.log(`[MOCK SMS] Sending to ${to}: ${message}`);
-    // In development, log the OTP to console
     const otpMatch = message.match(/\b\d{6}\b/);
     if (otpMatch) {
       console.log(`[MOCK SMS] OTP Code: ${otpMatch[0]}`);
@@ -17,95 +15,85 @@ class MockSMSProvider implements SMSProvider {
   }
 }
 
-// Twilio SMS Provider (requires environment variables)
-class TwilioSMSProvider implements SMSProvider {
-  private twilioClient: any;
-  private fromNumber: string;
+class MyDreamsTechSMSProvider implements SMSProvider {
+  private readonly apiKey: string;
+  private readonly senderId: string;
+  private readonly templateId: string;
+  private readonly endpoint = 'http://app.mydreamstechnology.in/vb/apikey.php';
 
   constructor() {
-    const accountSid = process.env.TWILIO_ACCOUNT_SID;
-    const authToken = process.env.TWILIO_AUTH_TOKEN;
-    this.fromNumber = process.env.TWILIO_PHONE_NUMBER || '';
-
-    if (accountSid && authToken) {
-      // Only import Twilio if credentials are provided
-      try {
-        const twilio = require('twilio');
-        this.twilioClient = twilio(accountSid, authToken);
-      } catch (error) {
-        console.error('Twilio SDK not installed. Please run: npm install twilio');
-        throw new Error('Twilio SDK not available');
-      }
-    } else {
-      throw new Error('Twilio credentials not configured');
-    }
+    this.apiKey = process.env.MDT_SMS_API_KEY || 'z2dPfGJmu1UOWev9';
+    this.senderId = process.env.MDT_SMS_SENDER_ID || 'PLATRR';
+    this.templateId = process.env.MDT_SMS_TEMPLATE_ID || '1707176121738738158';
   }
 
   async sendSMS(to: string, message: string): Promise<void> {
+    const params = new URLSearchParams({
+      apikey: this.apiKey,
+      senderid: this.senderId,
+      number: to,
+      message,
+      templateid: this.templateId,
+    });
+
+    const url = `${this.endpoint}?${params.toString()}`;
+    const response = await fetch(url);
+    const text = await response.text();
+
+    let success = false;
     try {
-      await this.twilioClient.messages.create({
-        body: message,
-        from: this.fromNumber,
-        to: to
-      });
-      console.log(`SMS sent successfully to ${to}`);
-    } catch (error) {
-      console.error('Failed to send SMS via Twilio:', error);
-      throw new Error('Failed to send SMS');
+      const json = JSON.parse(text);
+      success = json?.status?.toLowerCase() === 'success';
+    } catch {
+      success = text.trim().toUpperCase() === 'SENT';
     }
+
+    if (!success) {
+      console.error(`[MDT SMS] Failed for ${to}: ${text}`);
+      throw new Error(`SMS delivery failed: ${text}`);
+    }
+    console.log(`[MDT SMS] Sent to ${to}`);
   }
 }
 
-// SMS Service class
 class SMSService {
   private provider: SMSProvider;
 
   constructor() {
-    // Use Twilio in production if configured, otherwise use mock
-    if (process.env.NODE_ENV === 'production' && process.env.TWILIO_ACCOUNT_SID) {
-      try {
-        this.provider = new TwilioSMSProvider();
-        console.log('SMS Service: Using Twilio provider');
-      } catch (error) {
-        console.warn('Twilio not configured, falling back to mock provider');
-        this.provider = new MockSMSProvider();
-      }
-    } else {
+    if (process.env.MDT_SMS_MOCK === 'true') {
       this.provider = new MockSMSProvider();
-      console.log('SMS Service: Using mock provider (development mode)');
+      console.log('SMS Service: Using mock provider');
+    } else {
+      this.provider = new MyDreamsTechSMSProvider();
+      console.log('SMS Service: Using My Dreams Technology provider');
     }
   }
 
-  // Generate a 6-digit OTP
   generateOTP(): string {
     return randomInt(100000, 999999).toString();
   }
 
-  // Send OTP to phone number
   async sendOTP(phoneNumber: string, otp: string): Promise<void> {
-    const message = `Your ClinicFlow verification code is: ${otp}. This code will expire in 10 minutes.`;
+    // Must match registered DLT template exactly (template ID: 1707176121738738158)
+    const message = `${otp} is your OTP to login. Valid for 10 minutes. Don't share this OTP with anyone. More details visit www.plattr.co.in - PLATTR`;
     await this.provider.sendSMS(phoneNumber, message);
   }
 
-  // Send appointment reminder
   async sendAppointmentReminder(phoneNumber: string, doctorName: string, appointmentTime: string): Promise<void> {
     const message = `Reminder: You have an appointment with Dr. ${doctorName} at ${appointmentTime}. Please arrive 10 minutes early.`;
     await this.provider.sendSMS(phoneNumber, message);
   }
 
-  // Send appointment confirmation
   async sendAppointmentConfirmation(phoneNumber: string, doctorName: string, appointmentTime: string, tokenNumber: number): Promise<void> {
     const message = `Your appointment with Dr. ${doctorName} is confirmed for ${appointmentTime}. Your token number is ${tokenNumber}.`;
     await this.provider.sendSMS(phoneNumber, message);
   }
 
-  // Send doctor arrival notification
   async sendDoctorArrivalNotification(phoneNumber: string, doctorName: string): Promise<void> {
     const message = `Dr. ${doctorName} has arrived and consultations have started. Please be ready when your token is called.`;
     await this.provider.sendSMS(phoneNumber, message);
   }
 
-  // Send token progress notification
   async sendTokenProgressNotification(phoneNumber: string, currentToken: number, yourToken: number): Promise<void> {
     const tokensAway = yourToken - currentToken;
     const message = `Current token: ${currentToken}. Your token: ${yourToken}. You are ${tokensAway} tokens away. Please be ready.`;
@@ -113,5 +101,4 @@ class SMSService {
   }
 }
 
-// Export singleton instance
 export const smsService = new SMSService();
