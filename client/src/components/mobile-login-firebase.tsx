@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { firebaseAuth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -149,10 +149,11 @@ export function MobileLoginFirebase() {
         if (!res.ok) {
           throw new Error(result.message || 'Failed to verify OTP');
         }
+        queryClient.setQueryData(["/api/user"], result);
       }
 
       toast({ title: "Success!", description: "Login successful" });
-      setTimeout(() => navigate('/'), 500);
+      navigate('/');
     } catch (error) {
       toast({
         title: "Error",
