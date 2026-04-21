@@ -12,6 +12,9 @@ interface ETADisplayProps {
 }
 
 function getStageInfo(status: string, doctorHasArrived: boolean, avgConsultationTime?: number) {
+  if (status === "expired") {
+    return { label: "Expired", variant: "destructive" as const, description: "Walk-in reservation expired", isLive: false };
+  }
   if (status === "token_started" && !doctorHasArrived) {
     return { label: "Scheduled", variant: "outline" as const, description: "Based on scheduled start time", isLive: false };
   }

@@ -148,7 +148,7 @@ export interface IStorage {
   getAttendersByRole(): Promise<User[]>;
   updateAppointmentStatus(
     appointmentId: number, 
-    status: "scheduled" | "in_progress" | "hold" | "pause" | "cancel" | "no_show" | "completed", 
+    status: "scheduled" | "in_progress" | "hold" | "pause" | "cancel" | "no_show" | "completed" | "expired",
     statusNotes?: string
   ): Promise<Appointment>;
   updateDoctorAvailability(
@@ -349,13 +349,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   async completeSchedule(scheduleId: number): Promise<void> {
-    await db
-      .update(doctorSchedules)
-      .set({
-        scheduleStatus: 'completed',
-        completedAt: sql`CURRENT_TIMESTAMP`
-      })
-      .where(eq(doctorSchedules.id, scheduleId));
+    await db.transaction(async (tx) => {
+      // Cancel any remaining non-terminal appointments (walk-ins, unpaid, etc.)
+      // Exclude 'expired' — those are already terminal placeholder records
+      await tx.update(appointments)
+        .set({ status: 'cancel', statusNotes: 'Schedule completed' })
+        .where(and(
+          eq(appointments.scheduleId, scheduleId),
+          sql`${appointments.status} NOT IN ('completed', 'no_show', 'cancel', 'expired')`
+        ));
+
+      await tx.update(doctorSchedules)
+        .set({ scheduleStatus: 'completed', completedAt: sql`CURRENT_TIMESTAMP` })
+        .where(eq(doctorSchedules.id, scheduleId));
+    });
   }
 
   async closeScheduleBooking(scheduleId: number): Promise<void> {
@@ -2613,7 +2620,7 @@ export class DatabaseStorage implements IStorage {
       console.log('Last appointment in any state:', lastAppointment);
 
       // If all appointments are in a non-active state, queue hasn't started yet
-      const inactiveStatuses = ['scheduled', 'cancel', 'no_show'];
+      const inactiveStatuses = ['scheduled', 'cancel', 'no_show', 'expired'];
       if (inactiveStatuses.includes(lastAppointment.status)) {
         return {
           currentToken: 0,
@@ -2693,7 +2700,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateDoctorDetails(
-    doctorId: number, 
+    doctorId: number,
     details: Partial<{
       consultationFee: number | string;
       consultationDuration: number;
@@ -2702,10 +2709,22 @@ export class DatabaseStorage implements IStorage {
       registrationNumber: string;
     }>
   ): Promise<DoctorDetail> {
-    // Convert consultationFee to string if it's a number
     const updatedDetails = { ...details };
     if (typeof updatedDetails.consultationFee === 'number') {
       updatedDetails.consultationFee = updatedDetails.consultationFee.toString();
+    }
+
+    const existing = await this.getDoctorDetails(doctorId);
+    if (!existing) {
+      const [inserted] = await db.insert(doctorDetails).values({
+        doctorId,
+        consultationFee: (updatedDetails.consultationFee as string) ?? "0",
+        consultationDuration: updatedDetails.consultationDuration ?? 15,
+        qualifications: updatedDetails.qualifications,
+        experience: updatedDetails.experience,
+        registrationNumber: updatedDetails.registrationNumber,
+      }).returning();
+      return inserted;
     }
 
     const [updated] = await db
@@ -2877,9 +2896,29 @@ export class DatabaseStorage implements IStorage {
       }
     });
 
-    // Add current token count to each schedule based on its own appointments
+    // Also count pending (non-expired) reservations per schedule
+    const scheduleIds = schedules.map(s => s.id);
+    const pendingReservations = scheduleIds.length > 0
+      ? await db.select({ scheduleId: tokenReservations.scheduleId, count: count() })
+          .from(tokenReservations)
+          .where(and(
+            inArray(tokenReservations.scheduleId, scheduleIds),
+            eq(tokenReservations.status, "pending"),
+            gt(tokenReservations.expiresAt, new Date())
+          ))
+          .groupBy(tokenReservations.scheduleId)
+      : [];
+
+    const pendingReservationCount = new Map<number, number>();
+    pendingReservations.forEach(r => {
+      pendingReservationCount.set(r.scheduleId, r.count);
+    });
+
+    // Add current token count to each schedule (appointments + pending reservations)
     schedules.forEach(schedule => {
-      schedule.currentTokenCount = scheduleAppointmentCount.get(schedule.id) || 0;
+      const apptCount = scheduleAppointmentCount.get(schedule.id) || 0;
+      const resCount = pendingReservationCount.get(schedule.id) || 0;
+      schedule.currentTokenCount = apptCount + resCount;
     });
 
     // Calculate available slots - exclude completed schedules and closed bookings
@@ -3258,8 +3297,8 @@ export class DatabaseStorage implements IStorage {
           lt(appointments.tokenNumber, patientToken),
           gte(appointments.date, startOfDay),
           lte(appointments.date, endOfDay),
-          // Only count active appointments (not cancelled)
-          not(eq(appointments.status, "cancel"))
+          // Only count active appointments (not cancelled or expired placeholders)
+          sql`${appointments.status} NOT IN ('cancel', 'expired')`
         )
       );
     
@@ -5029,9 +5068,49 @@ export class DatabaseStorage implements IStorage {
   // --- Token Reservation Methods ---
 
   async expireStaleReservations(): Promise<void> {
-    await db.update(tokenReservations)
-      .set({ status: "expired" })
-      .where(and(eq(tokenReservations.status, "pending"), lt(tokenReservations.expiresAt, new Date())));
+    const stale = await db.select()
+      .from(tokenReservations)
+      .where(and(
+        eq(tokenReservations.status, "pending"),
+        lt(tokenReservations.expiresAt, new Date())
+      ));
+
+    for (const reservation of stale) {
+      // Guard: skip if an appointment already exists for this token (e.g. confirmed just at boundary)
+      const [existing] = await db.select({ id: appointments.id })
+        .from(appointments)
+        .where(and(
+          eq(appointments.scheduleId, reservation.scheduleId),
+          eq(appointments.tokenNumber, reservation.tokenNumber),
+          ne(appointments.status, "cancel")
+        ));
+
+      if (!existing) {
+        const [schedule] = await db.select()
+          .from(doctorSchedules)
+          .where(eq(doctorSchedules.id, reservation.scheduleId));
+
+        if (schedule) {
+          await db.insert(appointments).values({
+            doctorId: schedule.doctorId,
+            clinicId: schedule.clinicId,
+            scheduleId: reservation.scheduleId,
+            date: new Date(schedule.date + 'T00:00:00.000Z'),
+            tokenNumber: reservation.tokenNumber,
+            guestName: 'Walk-in (expired)',
+            isWalkIn: true,
+            status: 'expired',
+            isPaid: false,
+            isRefundEligible: false,
+            hasBeenRefunded: false,
+          });
+        }
+      }
+
+      await db.update(tokenReservations)
+        .set({ status: "expired" })
+        .where(eq(tokenReservations.id, reservation.id));
+    }
   }
 
   async reserveNextToken(scheduleId: number, reservedByUserId: number): Promise<TokenReservation> {

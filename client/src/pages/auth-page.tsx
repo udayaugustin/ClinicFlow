@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { z } from "zod";
 import React, { useState, useEffect, useRef } from "react";
 import { Phone, Lock, User, Mail, Loader2, AlertCircle } from "lucide-react";
@@ -353,13 +353,15 @@ function MobileLoginForm() {
         throw new Error(result.message || 'Failed to verify OTP');
       }
 
+      // Update auth cache so the app recognises the session immediately
+      queryClient.setQueryData(["/api/user"], result);
+
       toast({
         title: "Success!",
         description: "Login successful",
       });
 
-      // Navigate to home after successful login
-      setTimeout(() => navigate('/'), 500);
+      navigate('/');
     } catch (error) {
       toast({
         title: "Error",
