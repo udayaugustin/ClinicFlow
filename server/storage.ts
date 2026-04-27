@@ -343,6 +343,8 @@ export class DatabaseStorage implements IStorage {
       .set({
         isPaused: false,
         pauseReason: null,
+        cancelReason: null,
+        isActive: true,
         resumedAt: sql`CURRENT_TIMESTAMP`
       })
       .where(eq(doctorSchedules.id, scheduleId));
