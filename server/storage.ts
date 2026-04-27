@@ -5188,7 +5188,7 @@ export class DatabaseStorage implements IStorage {
       guestName,
       guestPhone: guestPhone || null,
       isWalkIn: true,
-      status: "scheduled",
+      status: "token_started",
       isPaid: false,
       isRefundEligible: false,
       hasBeenRefunded: false,
