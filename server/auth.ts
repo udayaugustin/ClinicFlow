@@ -210,6 +210,21 @@ export function setupAuth(app: Express) {
     }
   });
 
+  // Check if a phone number is registered (used by Firebase flow before sending OTP)
+  app.post("/api/auth/check-phone", async (req, res) => {
+    try {
+      let { phone } = req.body;
+      if (!phone) return res.status(400).json({ message: "Phone number is required" });
+      phone = phone.replace(/\D/g, '');
+      if (phone.length > 10) phone = phone.slice(-10);
+      const user = await storage.getUserByPhone(phone);
+      if (!user) return res.status(404).json({ message: "No account found with this phone number" });
+      return res.status(200).json({ exists: true });
+    } catch (error) {
+      return res.status(500).json({ message: "Failed to check phone" });
+    }
+  });
+
   // OTP Authentication endpoints
   app.post("/api/auth/request-otp", async (req, res) => {
     try {

@@ -1032,7 +1032,7 @@ export default function AttenderDashboard() {
                                                     }
                                                   </td>
                                                   <td className="py-4 px-4">
-                                                    {appointment.status === "expired" ? (
+                                                    {["expired", "completed", "cancel", "no_show"].includes(appointment.status) ? (
                                                       <span className="text-xs text-muted-foreground">—</span>
                                                     ) : (
                                                       <ETADisplay

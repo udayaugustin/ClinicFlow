@@ -173,7 +173,7 @@ class NotificationService {
       WHERE a.doctor_id = ${currentAppointment.doctorId}
       AND a.clinic_id = ${currentAppointment.clinicId}
       AND DATE(a.date) = DATE(${new Date(currentAppointment.date).toISOString()})
-      AND a.status = 'scheduled'
+      AND a.status = 'token_started'
       AND a.patient_id IS NOT NULL
       ORDER BY a.token_number ASC
     `);
@@ -247,7 +247,7 @@ class NotificationService {
       AND a.clinic_id = ${clinicId}
       AND DATE(a.date) = DATE(${date.toISOString()})
       AND a.schedule_id = ${scheduleId}
-      AND a.status = 'scheduled'
+      AND a.status = 'token_started'
       AND a.patient_id IS NOT NULL
       ORDER BY a.token_number ASC
     `;

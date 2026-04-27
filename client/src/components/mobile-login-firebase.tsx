@@ -87,7 +87,12 @@ export function MobileLoginFirebase() {
       }
 
       if (useFirebase) {
-        // Use Firebase Auth
+        // Check registration before sending via Firebase
+        const checkRes = await apiRequest('POST', '/api/auth/check-phone', { phone: phoneNumber });
+        if (!checkRes.ok) {
+          const checkResult = await checkRes.json();
+          throw new Error(checkResult.message || 'No account found with this phone number');
+        }
         await firebaseAuth.sendOTP(phoneNumber);
         toast({
           title: "OTP Sent!",
