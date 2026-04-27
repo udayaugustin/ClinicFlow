@@ -12,8 +12,23 @@ interface ETADisplayProps {
 }
 
 function getStageInfo(status: string, doctorHasArrived: boolean, avgConsultationTime?: number) {
+  if (status === "completed") {
+    return { label: "Completed", variant: "secondary" as const, description: "Consultation completed", isLive: false };
+  }
+  if (status === "no_show") {
+    return { label: "No Show", variant: "destructive" as const, description: "Patient did not show up", isLive: false };
+  }
+  if (status === "cancel") {
+    return { label: "Cancelled", variant: "destructive" as const, description: "Appointment cancelled", isLive: false };
+  }
   if (status === "expired") {
     return { label: "Expired", variant: "destructive" as const, description: "Walk-in reservation expired", isLive: false };
+  }
+  if (status === "hold") {
+    return { label: "On Hold", variant: "outline" as const, description: "Appointment on hold", isLive: false };
+  }
+  if (status === "pause") {
+    return { label: "Paused", variant: "outline" as const, description: "Schedule paused", isLive: false };
   }
   if (status === "token_started" && !doctorHasArrived) {
     return { label: "Scheduled", variant: "outline" as const, description: "Based on scheduled start time", isLive: false };
