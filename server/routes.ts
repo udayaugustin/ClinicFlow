@@ -2028,8 +2028,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Schedule not found' });
       }
 
+      // Clear cancelReason when re-activating a cancelled schedule
+      const updateData: any = { ...validData };
+      if (validData.isActive === true && currentSchedule.cancelReason) {
+        updateData.cancelReason = null;
+      }
+
       // Update the schedule
-      const schedule = await storage.updateDoctorSchedule(scheduleId, validData);
+      const schedule = await storage.updateDoctorSchedule(scheduleId, updateData);
       if (!schedule) {
         return res.status(404).json({ message: 'Schedule not found' });
       }
