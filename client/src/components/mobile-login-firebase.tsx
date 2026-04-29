@@ -14,7 +14,7 @@ import { Phone, Lock, Loader2, AlertCircle, Smartphone } from "lucide-react";
 
 // Mobile OTP Login schemas
 const mobileLoginRequestSchema = z.object({
-  phone: z.string().min(10, "Please enter a valid phone number"),
+  phone: z.string().length(10, "Enter a valid 10-digit phone number").regex(/^\d+$/, "Only digits allowed"),
 });
 
 const mobileLoginVerifySchema = z.object({
@@ -79,12 +79,8 @@ export function MobileLoginFirebase() {
   const handleRequestOTP = async (data: MobileLoginRequestData) => {
     setIsLoading(true);
     try {
-      let phoneNumber = data.phone;
-      // Ensure phone number has country code
-      if (!phoneNumber.startsWith('+')) {
-        // Default to US if no country code
-        phoneNumber = '+1' + phoneNumber.replace(/\D/g, '');
-      }
+      // Always prepend +91 — user enters 10 digits only
+      const phoneNumber = `+91${data.phone}`;
 
       if (useFirebase) {
         // Use Firebase Auth
@@ -194,12 +190,22 @@ export function MobileLoginFirebase() {
                 <FormItem>
                   <FormLabel>Phone Number</FormLabel>
                   <FormControl>
-                    <Input
-                      type="tel"
-                      placeholder="+1234567890"
-                      {...field}
-                      disabled={isLoading}
-                    />
+                    <div className="flex">
+                      <span className="flex items-center px-3 border border-r-0 rounded-l-md bg-muted text-sm text-muted-foreground select-none">+91</span>
+                      <Input
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="Enter 10-digit number"
+                        className="rounded-l-none"
+                        maxLength={10}
+                        {...field}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                          field.onChange(val);
+                        }}
+                        disabled={isLoading}
+                      />
+                    </div>
                   </FormControl>
                   <FormMessage />
                 </FormItem>

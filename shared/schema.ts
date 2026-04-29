@@ -163,7 +163,8 @@ export const doctorSchedules = pgTable("doctor_schedules", {
   completedAt: timestamp("completed_at"),
   bookingClosedAt: timestamp("booking_closed_at"),
   // ETA calculation fields
-  averageConsultationTime: integer("average_consultation_time").default(15), // in minutes
+  averageConsultationTime: integer("average_consultation_time").default(15), // admin-configured, never overwritten by system
+  learnedConsultationTime: integer("learned_consultation_time"), // system-computed from actual consultations (≥3 samples)
   actualArrivalTime: timestamp("actual_arrival_time"), // when doctor actually arrives
   createdBy: integer("created_by").references(() => users.id), // Track who created the schedule
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),

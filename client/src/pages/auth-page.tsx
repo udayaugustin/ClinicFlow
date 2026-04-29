@@ -261,7 +261,7 @@ function RegisterForm() {
 
 // Mobile OTP Login schemas
 const mobileLoginRequestSchema = z.object({
-  phone: z.string().min(10, "Please enter a valid phone number"),
+  phone: z.string().length(10, "Enter a valid 10-digit phone number").regex(/^\d+$/, "Only digits allowed"),
 });
 
 const mobileLoginVerifySchema = z.object({
@@ -313,7 +313,7 @@ function MobileLoginForm() {
   const handleRequestOTP = async (data: MobileLoginRequestData) => {
     setIsLoading(true);
     try {
-      const res = await apiRequest('POST', '/api/auth/request-otp', data);
+      const res = await apiRequest('POST', '/api/auth/request-otp', { phone: `+91${data.phone}` });
       const result = await res.json();
 
       if (!res.ok) {
@@ -325,8 +325,8 @@ function MobileLoginForm() {
         description: "Check your phone for the verification code",
       });
 
-      setPhone(data.phone);
-      verifyForm.setValue('phone', data.phone);
+      setPhone(`+91${data.phone}`);
+      verifyForm.setValue('phone', `+91${data.phone}`);
       verifyForm.setValue('otp', '');
       setOtpDigits(['', '', '', '', '', '']);
       setStep('verify');
@@ -419,12 +419,22 @@ function MobileLoginForm() {
               <FormItem>
                 <FormLabel>Phone Number</FormLabel>
                 <FormControl>
-                  <Input
-                    type="tel"
-                    placeholder="+1234567890"
-                    {...field}
-                    disabled={isLoading}
-                  />
+                  <div className="flex">
+                    <span className="flex items-center px-3 border border-r-0 rounded-l-md bg-muted text-sm text-muted-foreground select-none">+91</span>
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="Enter 10-digit number"
+                      className="rounded-l-none"
+                      maxLength={10}
+                      {...field}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                        field.onChange(val);
+                      }}
+                      disabled={isLoading}
+                    />
+                  </div>
                 </FormControl>
                 <FormMessage />
               </FormItem>

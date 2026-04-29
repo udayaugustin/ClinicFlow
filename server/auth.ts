@@ -256,7 +256,7 @@ export function setupAuth(app: Express) {
       // Update last OTP sent time
       await storage.updateLastOtpSentAt(phone);
 
-      // Send OTP via SMS
+      // Send OTP via SMS — MDT expects plain 10-digit number (no country code prefix)
       await smsService.sendOTP(phone, otp);
 
       res.json({ message: "OTP sent successfully" });
@@ -357,7 +357,7 @@ export function setupAuth(app: Express) {
         verificationAttempts: 0
       });
 
-      // Send OTP via SMS
+      // Send OTP via SMS — MDT expects plain 10-digit number (no country code prefix)
       await smsService.sendOTP(phone, otp);
 
       res.json({ message: "OTP sent successfully" });

@@ -1348,10 +1348,10 @@ export class DatabaseStorage implements IStorage {
         .where(
           and(
             eq(appointments.clinicId, clinicId),
-            gte(appointments.date, startDate),
-            lte(appointments.date, endDate),
-            // Exclude cancelled schedules - these need separate refund handling
-            sql`schedule.cancel_reason IS NULL`,
+            sql`DATE(${appointments.date}) >= DATE(${startDate.toISOString()})`,
+            sql`DATE(${appointments.date}) <= DATE(${endDate.toISOString()})`,
+            // Exclude still-cancelled schedules (cancel_reason set AND isActive false)
+            sql`NOT (schedule.cancel_reason IS NOT NULL AND schedule.is_active = false)`,
             // Exclude all appointments with cancelled/canceled status (any variation)
             sql`${appointments.status} NOT ILIKE '%cancel%'`
           )
@@ -2882,8 +2882,8 @@ export class DatabaseStorage implements IStorage {
         and(
           eq(appointments.doctorId, doctorId),
           sql`DATE(${appointments.date}) = DATE(${date.toISOString()})`,
-          // Only count active appointments (exclude cancelled ones)
-          ne(appointments.status, "cancel")
+          // Exclude cancelled and expired placeholder appointments from token count
+          sql`${appointments.status} NOT IN ('cancel', 'expired')`
         )
       );
   

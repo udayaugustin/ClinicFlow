@@ -3445,6 +3445,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Clinic not found" });
       }
 
+      // Set end to end of day so all appointments on the end date are included
+      end.setUTCHours(23, 59, 59, 999);
+
       // Get export data for the clinic
       const exportData = await storage.getSuperAdminExportData(
         Number(clinicId),

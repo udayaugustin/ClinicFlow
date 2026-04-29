@@ -22,7 +22,7 @@ function getStageInfo(status: string, doctorHasArrived: boolean, avgConsultation
     return { label: "Updated", variant: "secondary" as const, description: "Updated for doctor arrival", isLive: false };
   }
   if (status === "in_progress") {
-    return { label: "Updated", variant: "secondary" as const, description: "Updated for doctor arrival", isLive: false };
+    return { label: "In Progress", variant: "default" as const, description: "Currently in consultation", isLive: true };
   }
   return {
     label: "Live",
