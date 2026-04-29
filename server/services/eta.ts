@@ -17,6 +17,16 @@ export interface ETACalculationResult {
 
 export class ETAService {
   private static DEFAULT_CONSULTATION_TIME = 15; // Default 15 minutes per consultation
+  private static IST_OFFSET_MINUTES = 330; // UTC+5:30
+
+  // Builds a UTC Date for a schedule's start/end time string ("HH:MM" in IST) on a given date.
+  private static parseScheduleTime(timeStr: string, scheduleDate: Date): Date {
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    const d = new Date(scheduleDate);
+    const utcMinutes = hours * 60 + minutes - this.IST_OFFSET_MINUTES;
+    d.setUTCHours(Math.floor(utcMinutes / 60), utcMinutes % 60, 0, 0);
+    return d;
+  }
 
   /**
    * Returns the effective average consultation time for ETA calculations.
@@ -99,10 +109,8 @@ export class ETAService {
     const { startTime } = schedule[0];
     const avgTime = this.getEffectiveAvgTime(schedule[0].averageConsultationTime, schedule[0].learnedConsultationTime);
 
-    // Parse schedule start time
-    const [hours, minutes] = startTime.split(':').map(Number);
-    const baseTime = new Date(scheduleDate);
-    baseTime.setHours(hours, minutes, 0, 0);
+    // Parse schedule start time (stored as IST "HH:MM", convert to UTC)
+    const baseTime = this.parseScheduleTime(startTime, scheduleDate);
     
     // Calculate ETA: scheduleStartTime + (tokenNumber - 1) * avgConsultTime
     // If schedule start time is already past, use current time as base
@@ -420,9 +428,7 @@ export class ETAService {
           .limit(1);
         
         if (schedule.length > 0) {
-          const [hours, minutes] = schedule[0].startTime.split(':').map(Number);
-          const scheduleStart = new Date(schedule[0].date);
-          scheduleStart.setHours(hours, minutes, 0, 0);
+          const scheduleStart = this.parseScheduleTime(schedule[0].startTime, new Date(schedule[0].date));
           actualStartTime = addMinutes(scheduleStart, (completedAppointment[0].tokenNumber - 1) * this.DEFAULT_CONSULTATION_TIME);
           console.log(`📍 Estimated start time based on schedule: ${format(actualStartTime, 'HH:mm')}`);
         } else {
@@ -724,9 +730,9 @@ export class ETAService {
         if (patientsAhead > 0) {
           liveEstimatedStartTime = addMinutes(now, patientsAhead * avgConsultationTime);
         } else {
-          // No one ahead — use stored value, but never show a past time
-          const stored = estimatedStartTime ? new Date(estimatedStartTime) : null;
-          liveEstimatedStartTime = (stored && stored > now) ? stored : now;
+          // No one ahead — use schedule start time (IST-aware), not the stale stored value
+          const scheduleStart = this.parseScheduleTime(schedule[0].startTime, new Date(schedule[0].date));
+          liveEstimatedStartTime = scheduleStart > now ? scheduleStart : now;
         }
       }
     }
@@ -894,9 +900,7 @@ export class ETAService {
     if (actualArrivalTime) {
       baseTime = new Date(actualArrivalTime);
     } else {
-      const [hours, minutes] = startTime.split(':').map(Number);
-      baseTime = new Date(date);
-      baseTime.setHours(hours, minutes, 0, 0);
+      baseTime = this.parseScheduleTime(startTime, new Date(date));
     }
 
     // Get all non-completed appointments

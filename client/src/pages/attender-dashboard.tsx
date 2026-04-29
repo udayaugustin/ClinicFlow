@@ -902,7 +902,7 @@ export default function AttenderDashboard() {
                                           <Button
                                             variant={getPresenceData(doctorData.doctor.id, schedule.id).hasArrived ? "default" : "outline"}
                                             className="gap-2"
-                                            disabled={getPresenceData(doctorData.doctor.id, schedule.id).hasArrived}
+                                            disabled={getPresenceData(doctorData.doctor.id, schedule.id).hasArrived || schedule.scheduleStatus === 'completed'}
                                             onClick={() => handleToggleDoctorArrival(
                                               doctorData.doctor.id,
                                               schedule.clinicId || doctorData.clinicId || user?.clinicId,
@@ -935,6 +935,7 @@ export default function AttenderDashboard() {
                                             variant="outline"
                                             size="sm"
                                             className="gap-2"
+                                            disabled={schedule.scheduleStatus === 'completed'}
                                             onClick={() => handleToggleBooking(schedule.id, schedule.bookingStatus)}
                                           >
                                             {schedule.bookingStatus === 'closed' ? 'Open Booking' : 'Close Booking'}
@@ -943,6 +944,7 @@ export default function AttenderDashboard() {
                                               <Button
                                                 variant="outline"
                                                 size="sm"
+                                                disabled={schedule.scheduleStatus === 'completed'}
                                                 onClick={() => handleToggleSchedulePause(schedule.id, !schedule.isPaused)}
                                               >
                                                 {schedule.isPaused ? "Resume Schedule" : "Pause Schedule"}
@@ -951,6 +953,7 @@ export default function AttenderDashboard() {
                                                 variant="outline"
                                                 size="sm"
                                                 className="hover:bg-red-500 hover:text-white"
+                                                disabled={schedule.scheduleStatus === 'completed'}
                                                 onClick={() => handleCancelSchedule(schedule.id)}
                                               >
                                                 Cancel Schedule
@@ -960,10 +963,11 @@ export default function AttenderDashboard() {
                                               variant="outline"
                                               size="sm"
                                               className="gap-2"
+                                              disabled={schedule.scheduleStatus === 'completed'}
                                               onClick={() => openWalkInDialog(
-                                                doctorData.doctor.id, 
-                                                doctorData.doctor.name, 
-                                                schedule.clinicId, 
+                                                doctorData.doctor.id,
+                                                doctorData.doctor.name,
+                                                schedule.clinicId,
                                                 schedule.id
                                               )}
                                             >
