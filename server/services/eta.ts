@@ -727,13 +727,10 @@ export class ETAService {
             )
           );
         const patientsAhead = aheadCount[0]?.count || 0;
-        if (patientsAhead > 0) {
-          liveEstimatedStartTime = addMinutes(now, patientsAhead * avgConsultationTime);
-        } else {
-          // No one ahead — use schedule start time (IST-aware), not the stale stored value
-          const scheduleStart = this.parseScheduleTime(schedule[0].startTime, new Date(schedule[0].date));
-          liveEstimatedStartTime = scheduleStart > now ? scheduleStart : now;
-        }
+        // Base from schedule start time (IST-aware) — not 'now' — since nothing has started yet
+        const scheduleStart = this.parseScheduleTime(schedule[0].startTime, new Date(schedule[0].date));
+        const baseTime = scheduleStart > now ? scheduleStart : now;
+        liveEstimatedStartTime = addMinutes(baseTime, patientsAhead * avgConsultationTime);
       }
     }
 
