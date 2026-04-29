@@ -2277,51 +2277,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Send notifications to patients if the doctor has arrived
       if (hasArrived) {
-        console.log('Doctor has arrived, sending notifications to patients and updating appointment statuses');
+        console.log('Doctor has arrived, sending notifications to patients');
         try {
-          // First, update appointment statuses from "token_started" to "in_progress"
-          const tokenStartedAppointments = await db
-            .select()
-            .from(appointments)
-            .where(
-              and(
-                eq(appointments.doctorId, doctorId),
-                eq(appointments.clinicId, parseInt(clinicId)),
-                sql`DATE(${appointments.date}) = DATE(${dateObj.toISOString()})`,
-                eq(appointments.status, "token_started")
-              )
-            );
-
-          // Update each token_started appointment to in_progress
-          for (const appointment of tokenStartedAppointments) {
-            await storage.updateAppointmentStatus(
-              appointment.id,
-              "in_progress",
-              "Doctor has arrived - appointment started"
-            );
-
-            // Send notification with updated ETA time
-            if (appointment.patientId) {
-              let etaMessage = "Doctor has arrived at the clinic.";
-              try {
-                const etaData = await ETAService.getAppointmentETA(appointment.id);
-                if (etaData?.estimatedStartTime) {
-                  const { format } = await import("date-fns");
-                  const etaTime = format(new Date(etaData.estimatedStartTime), "h:mm a");
-                  etaMessage = `Doctor has arrived. Your updated ETA: ${etaTime}`;
-                }
-              } catch (etaErr) {
-                console.error("Error getting ETA for notification:", etaErr);
-              }
-              await notificationService.generateStatusNotification(
-                appointment,
-                "in_progress",
-                etaMessage
-              );
-            }
-          }
-
-          // Then send doctor arrival notifications
+          // Send doctor arrival notifications — attender must start each token individually
           await notificationService.notifyDoctorArrival(
             doctorId,
             parseInt(clinicId),
@@ -3450,6 +3408,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!clinic) {
         return res.status(404).json({ message: "Clinic not found" });
       }
+
+      // Set end to end of day so all appointments on the end date are included
+      end.setUTCHours(23, 59, 59, 999);
 
       // Get export data for the clinic
       const exportData = await storage.getSuperAdminExportData(

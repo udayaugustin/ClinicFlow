@@ -19,6 +19,64 @@ export class ETAService {
   private static DEFAULT_CONSULTATION_TIME = 15; // Default 15 minutes per consultation
 
   /**
+   * Returns the effective average consultation time for ETA calculations.
+   * Priority: learnedConsultationTime (system-computed, ≥3 samples) >
+   *           averageConsultationTime (admin-configured) > DEFAULT (15 min).
+   * The two columns are never mixed: the system only writes learnedConsultationTime
+   * and the admin only controls averageConsultationTime.
+   */
+  private static getEffectiveAvgTime(
+    configuredAvg: number | null | undefined,
+    learnedAvg: number | null | undefined
+  ): number {
+    if (learnedAvg && learnedAvg > 0) {
+      console.log(`[ETA] using learned avg: ${learnedAvg} min`);
+      return learnedAvg;
+    }
+    const result = configuredAvg || this.DEFAULT_CONSULTATION_TIME;
+    console.log(`[ETA] using configured avg: ${result} min`);
+    return result;
+  }
+
+  /**
+   * Computes the actual average from completed appointments and persists it
+   * to learnedConsultationTime (only when ≥ 3 valid samples exist).
+   * Never touches averageConsultationTime.
+   */
+  private static async updateLearnedAvg(scheduleId: number): Promise<number | null> {
+    const completed = await db
+      .select({ actualStartTime: appointments.actualStartTime, actualEndTime: appointments.actualEndTime })
+      .from(appointments)
+      .where(
+        and(
+          eq(appointments.scheduleId, scheduleId),
+          eq(appointments.status, "completed"),
+          not(isNull(appointments.actualStartTime)),
+          not(isNull(appointments.actualEndTime))
+        )
+      );
+
+    const durations = completed
+      .map(a => differenceInMinutes(new Date(a.actualEndTime!), new Date(a.actualStartTime!)))
+      .filter(d => d >= 1 && d <= 60);
+
+    if (durations.length < 3) {
+      console.log(`[ETA] ${durations.length} sample(s) — not enough to update learned avg (need 3)`);
+      return null;
+    }
+
+    const learned = Math.round(durations.reduce((s, d) => s + d, 0) / durations.length);
+    console.log(`[ETA] Updating learned avg to ${learned} min (${durations.length} samples: [${durations.join(', ')}])`);
+
+    await db
+      .update(doctorSchedules)
+      .set({ learnedConsultationTime: learned })
+      .where(eq(doctorSchedules.id, scheduleId));
+
+    return learned;
+  }
+
+  /**
    * Calculate initial ETA for a new appointment booking
    * Formula: ETA = scheduleStartTime + (tokenNumber - 1) * avgConsultTime
    */
@@ -38,9 +96,9 @@ export class ETAService {
       throw new Error("Schedule not found");
     }
 
-    const { startTime, averageConsultationTime } = schedule[0];
-    const avgTime = averageConsultationTime || this.DEFAULT_CONSULTATION_TIME;
-    
+    const { startTime } = schedule[0];
+    const avgTime = this.getEffectiveAvgTime(schedule[0].averageConsultationTime, schedule[0].learnedConsultationTime);
+
     // Parse schedule start time
     const [hours, minutes] = startTime.split(':').map(Number);
     const baseTime = new Date(scheduleDate);
@@ -77,8 +135,7 @@ export class ETAService {
 
     if (!schedule.length) return;
 
-    const { averageConsultationTime } = schedule[0];
-    const avgTime = averageConsultationTime || this.DEFAULT_CONSULTATION_TIME;
+    const avgTime = this.getEffectiveAvgTime(schedule[0].averageConsultationTime, schedule[0].learnedConsultationTime);
 
     // Get all pending appointments for this schedule
     const pendingAppointments = await db
@@ -199,7 +256,7 @@ export class ETAService {
 
     if (!schedule.length) return;
 
-    const avgTime = schedule[0].averageConsultationTime || this.DEFAULT_CONSULTATION_TIME;
+    const avgTime = this.getEffectiveAvgTime(schedule[0].averageConsultationTime, schedule[0].learnedConsultationTime);
 
     // Get current in_progress appointment with its actual start time
     const currentConsulting = await db
@@ -425,18 +482,19 @@ export class ETAService {
       }
     }
 
-    // Calculate new average (default to 15 if no valid data)
-    const newAverageTime = validAppointments > 0 
-      ? Math.round(totalDuration / validAppointments) 
-      : this.DEFAULT_CONSULTATION_TIME;
+    // Persist learned avg to learnedConsultationTime (only if ≥ 3 samples).
+    // Never touches averageConsultationTime (the admin-configured value).
+    const learnedAvg = await this.updateLearnedAvg(scheduleId);
 
-    console.log(`📈 New average consultation time: ${newAverageTime} minutes (from ${consultationTimes.join(', ')} minutes)`);
+    // Fetch schedule to get effective avg for the ETA update that follows
+    const scheduleForAvg = await db
+      .select({ averageConsultationTime: doctorSchedules.averageConsultationTime, learnedConsultationTime: doctorSchedules.learnedConsultationTime })
+      .from(doctorSchedules)
+      .where(eq(doctorSchedules.id, scheduleId))
+      .limit(1);
+    const newAverageTime = this.getEffectiveAvgTime(scheduleForAvg[0]?.averageConsultationTime, scheduleForAvg[0]?.learnedConsultationTime);
 
-    // Update schedule with new average
-    await db
-      .update(doctorSchedules)
-      .set({ averageConsultationTime: newAverageTime })
-      .where(eq(doctorSchedules.id, scheduleId));
+    console.log(`📈 Effective avg for ETA: ${newAverageTime} min (learned: ${learnedAvg ?? 'not enough samples yet'})`);
 
     // Get current in_progress appointment with actual start time
     const currentConsulting = await db
@@ -541,7 +599,7 @@ export class ETAService {
 
     if (!schedule.length) return null;
 
-    const avgConsultationTime = schedule[0].averageConsultationTime || this.DEFAULT_CONSULTATION_TIME;
+    const avgConsultationTime = this.getEffectiveAvgTime(schedule[0].averageConsultationTime, schedule[0].learnedConsultationTime);
 
     // Check if doctor has arrived for this schedule and date
     const { doctorDailyPresence } = await import("@shared/schema");
@@ -736,17 +794,15 @@ export class ETAService {
       }
     }
 
-    const newAverageTime = validAppointments > 0 
-      ? Math.round(totalDuration / validAppointments) 
-      : this.DEFAULT_CONSULTATION_TIME;
+    await this.updateLearnedAvg(scheduleId);
+    const scheduleForForce = await db
+      .select({ averageConsultationTime: doctorSchedules.averageConsultationTime, learnedConsultationTime: doctorSchedules.learnedConsultationTime })
+      .from(doctorSchedules)
+      .where(eq(doctorSchedules.id, scheduleId))
+      .limit(1);
+    const newAverageTime = this.getEffectiveAvgTime(scheduleForForce[0]?.averageConsultationTime, scheduleForForce[0]?.learnedConsultationTime);
 
-    console.log(`📈 Calculated average: ${newAverageTime} minutes from [${consultationTimes.join(', ')}]`);
-
-    // Update schedule average
-    await db
-      .update(doctorSchedules)
-      .set({ averageConsultationTime: newAverageTime })
-      .where(eq(doctorSchedules.id, scheduleId));
+    console.log(`📈 Effective avg: ${newAverageTime} min from [${consultationTimes.join(', ')}]`);
 
     // Get current in_progress appointment with actual start time
     const currentConsulting = await db
@@ -830,8 +886,8 @@ export class ETAService {
 
     if (!schedule.length) return;
 
-    const { startTime, actualArrivalTime, averageConsultationTime, date } = schedule[0];
-    const avgTime = averageConsultationTime || this.DEFAULT_CONSULTATION_TIME;
+    const { startTime, actualArrivalTime, date } = schedule[0];
+    const avgTime = this.getEffectiveAvgTime(schedule[0].averageConsultationTime, schedule[0].learnedConsultationTime);
 
     // Determine base time (doctor arrival or schedule start)
     let baseTime: Date;

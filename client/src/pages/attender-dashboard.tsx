@@ -1034,6 +1034,8 @@ export default function AttenderDashboard() {
                                                   <td className="py-4 px-4">
                                                     {["expired", "completed", "cancel", "no_show"].includes(appointment.status) ? (
                                                       <span className="text-xs text-muted-foreground">—</span>
+                                                    ) : appointment.status === "in_progress" ? (
+                                                      <span className="text-xs text-blue-600 font-medium">In consultation</span>
                                                     ) : (
                                                       <ETADisplay
                                                         appointmentId={appointment.id}
@@ -1155,11 +1157,18 @@ export default function AttenderDashboard() {
                 </div>
                 <div>
                   <Label>Phone Number (optional)</Label>
-                  <Input
-                    placeholder="Enter phone number"
-                    value={walkInFormValues.guestPhone}
-                    onChange={e => setWalkInFormValues(v => ({ ...v, guestPhone: e.target.value }))}
-                  />
+                  <div className="flex">
+                    <span className="flex items-center px-3 border border-r-0 rounded-l-md bg-muted text-sm text-muted-foreground select-none">+91</span>
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="Enter 10-digit number"
+                      className="rounded-l-none"
+                      maxLength={10}
+                      value={walkInFormValues.guestPhone}
+                      onChange={e => setWalkInFormValues(v => ({ ...v, guestPhone: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
+                    />
+                  </div>
                 </div>
               </div>
 

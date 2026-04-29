@@ -1,16 +1,14 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Label } from "./ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Input } from "./ui/input";
-import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { useToast } from "../hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { Download, Calendar, Hospital, FileSpreadsheet } from "lucide-react";
+import { Download, Calendar, Hospital, FileSpreadsheet, ChevronDown, Search } from "lucide-react";
 import React from "react";
 
 interface Clinic {
@@ -34,9 +32,23 @@ interface ExportData {
 
 export function SuperAdminExportReports() {
   const [selectedClinic, setSelectedClinic] = useState<string>("");
-  const [startDate, setStartDate] = useState<string>(""); // Start empty like clinic admin
-  const [endDate, setEndDate] = useState<string>(""); // Start empty like clinic admin
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
   const [isExporting, setIsExporting] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
   const { toast } = useToast();
 
   // Fetch all clinics
@@ -244,28 +256,72 @@ export function SuperAdminExportReports() {
         </CardHeader>
         <CardContent className="space-y-6">
           {/* Hospital Selection */}
-          <div className="space-y-2">
-            <Label htmlFor="clinic-select">Select Hospital</Label>
-            <Select
-              value={selectedClinic}
-              onValueChange={setSelectedClinic}
-              disabled={loadingClinics}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder={loadingClinics ? "Loading hospitals..." : "Choose a hospital"} />
-              </SelectTrigger>
-              <SelectContent>
-                {clinics.map((clinic) => (
-                  <SelectItem key={clinic.id} value={clinic.id.toString()}>
-                    <div className="flex items-center">
-                      <Hospital className="mr-2 h-4 w-4" />
-                      <span>{clinic.name}</span>
-                      <span className="text-sm text-gray-500 ml-2">({clinic.city}, {clinic.state})</span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="space-y-2" ref={dropdownRef}>
+            <Label>Select Hospital</Label>
+            <div className="relative">
+              {/* Trigger button */}
+              <button
+                type="button"
+                className="w-full flex items-center justify-between px-3 py-2 border border-input rounded-md bg-background text-sm hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
+                onClick={() => { setDropdownOpen(o => !o); setSearchQuery(""); }}
+                disabled={loadingClinics}
+              >
+                <span className="flex items-center gap-2 truncate">
+                  {selectedClinic
+                    ? (() => {
+                        const c = clinics.find(c => c.id.toString() === selectedClinic);
+                        return c ? <><Hospital className="h-4 w-4 shrink-0 text-muted-foreground" />{c.name} <span className="text-muted-foreground">({c.city}, {c.state})</span></> : "Choose a hospital";
+                      })()
+                    : <span className="text-muted-foreground">{loadingClinics ? "Loading hospitals..." : "Choose a hospital"}</span>
+                  }
+                </span>
+                <ChevronDown className="h-4 w-4 shrink-0 opacity-50 ml-2" />
+              </button>
+
+              {/* Dropdown panel */}
+              {dropdownOpen && (
+                <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-lg">
+                  {/* Search input */}
+                  <div className="flex items-center border-b px-3 py-2 gap-2">
+                    <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <input
+                      autoFocus
+                      className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                      placeholder="Search hospital..."
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                    />
+                  </div>
+                  {/* Results list */}
+                  <div className="max-h-60 overflow-y-auto py-1">
+                    {clinics
+                      .filter(c =>
+                        `${c.name} ${c.city} ${c.state}`.toLowerCase().includes(searchQuery.toLowerCase())
+                      )
+                      .map(clinic => (
+                        <div
+                          key={clinic.id}
+                          className={`flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-accent hover:text-accent-foreground ${selectedClinic === clinic.id.toString() ? "bg-accent" : ""}`}
+                          onMouseDown={() => {
+                            setSelectedClinic(clinic.id.toString());
+                            setDropdownOpen(false);
+                            setSearchQuery("");
+                          }}
+                        >
+                          <Hospital className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          <span>{clinic.name}</span>
+                          <span className="text-muted-foreground">({clinic.city}, {clinic.state})</span>
+                        </div>
+                      ))}
+                    {clinics.filter(c =>
+                      `${c.name} ${c.city} ${c.state}`.toLowerCase().includes(searchQuery.toLowerCase())
+                    ).length === 0 && (
+                      <p className="px-3 py-2 text-sm text-muted-foreground">No hospital found.</p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Date Range Selection */}
