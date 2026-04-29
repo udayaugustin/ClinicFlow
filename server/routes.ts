@@ -1743,6 +1743,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid request body" });
       }
 
+      const [sched] = await db.select({ scheduleStatus: doctorSchedules.scheduleStatus }).from(doctorSchedules).where(eq(doctorSchedules.id, scheduleId)).limit(1);
+      if (!sched || sched.scheduleStatus === 'completed') {
+        return res.status(400).json({ error: "Cannot modify a completed schedule" });
+      }
+
       await storage.pauseSchedule(scheduleId, pauseReason, new Date(date));
 
       // Get all appointments for this schedule that are scheduled or in progress
@@ -1780,6 +1785,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     try {
       const scheduleId = parseInt(req.params.id);
+      const [sched] = await db.select({ scheduleStatus: doctorSchedules.scheduleStatus }).from(doctorSchedules).where(eq(doctorSchedules.id, scheduleId)).limit(1);
+      if (!sched || sched.scheduleStatus === 'completed') {
+        return res.status(400).json({ error: "Cannot modify a completed schedule" });
+      }
       await storage.resumeSchedule(scheduleId);
 
       // Get all appointments for this schedule that are in paused status
@@ -1875,6 +1884,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid schedule ID" });
       }
 
+      const [sched] = await db.select({ scheduleStatus: doctorSchedules.scheduleStatus }).from(doctorSchedules).where(eq(doctorSchedules.id, scheduleId)).limit(1);
+      if (!sched || sched.scheduleStatus === 'completed') {
+        return res.status(400).json({ error: "Cannot modify a completed schedule" });
+      }
+
       await storage.closeScheduleBooking(scheduleId);
       res.json({ message: "Booking closed for schedule successfully" });
     } catch (error) {
@@ -1891,6 +1905,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const scheduleId = parseInt(req.params.id);
       if (isNaN(scheduleId)) {
         return res.status(400).json({ error: "Invalid schedule ID" });
+      }
+
+      const [sched] = await db.select({ scheduleStatus: doctorSchedules.scheduleStatus }).from(doctorSchedules).where(eq(doctorSchedules.id, scheduleId)).limit(1);
+      if (!sched || sched.scheduleStatus === 'completed') {
+        return res.status(400).json({ error: "Cannot modify a completed schedule" });
       }
 
       await storage.openScheduleBooking(scheduleId);
@@ -2426,6 +2445,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!req.user || !['attender', 'clinic_admin'].includes(req.user.role)) return res.sendStatus(403);
     try {
       const scheduleId = parseInt(req.params.scheduleId);
+      const [sched] = await db.select({ scheduleStatus: doctorSchedules.scheduleStatus }).from(doctorSchedules).where(eq(doctorSchedules.id, scheduleId)).limit(1);
+      if (!sched || sched.scheduleStatus === 'completed') {
+        return res.status(400).json({ error: "Cannot add walk-in to a completed schedule" });
+      }
       const reservation = await storage.reserveNextToken(scheduleId, req.user.id);
       res.status(201).json(reservation);
     } catch (error) {
