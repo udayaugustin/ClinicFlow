@@ -82,7 +82,9 @@ export default function AdminLogin() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 to-indigo-100 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md">
+      <div className="flex flex-col items-center w-full max-w-md">
+      <img src="/logo.svg" alt="Clinik" className="h-14 w-auto mb-6" />
+      <Card className="w-full">
         <CardHeader>
           <Link href="/">
             <Button variant="ghost" size="sm" className="mb-4">
@@ -169,6 +171,7 @@ export default function AdminLogin() {
           </Form>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }

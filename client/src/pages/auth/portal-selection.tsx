@@ -37,7 +37,9 @@ export default function PortalSelection() {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
       <div className="w-full max-w-6xl">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">Welcome to ClinicFlow</h1>
+          <div className="flex justify-center mb-6">
+            <img src="/logo.svg" alt="Clinik" className="h-16 w-auto" />
+          </div>
           <p className="text-lg text-gray-600">Please select your portal to continue</p>
         </div>
 

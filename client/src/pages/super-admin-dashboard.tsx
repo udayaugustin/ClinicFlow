@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { DashboardHeader } from "@/components/dashboard-header";
-import { PlusCircle, Hospital, User, UserCog, Building2, Activity, Edit, Eye, Trash2, MapPin, Phone, Mail, Clock, Loader2, FileSpreadsheet, CreditCard, Search, Calendar, Stethoscope, RefreshCw, Settings, FileText } from "lucide-react";
+import { PlusCircle, Hospital, User, UserCog, Building2, Activity, Edit, Eye, Trash2, MapPin, Phone, Mail, Clock, Loader2, FileSpreadsheet, CreditCard, Search, Calendar, Stethoscope, RefreshCw, Settings, FileText, Shield } from "lucide-react";
 import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -1406,41 +1406,41 @@ export default function SuperAdminDashboard() {
               </Card>
 
               {/* Total Doctors */}
-              <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+              <Card className="bg-gradient-to-br from-sky-50 to-sky-100 border-sky-200">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-green-600 text-sm font-medium">Total Doctors</p>
-                      <p className="text-3xl font-bold text-green-700">{dashboardMetrics?.totalDoctors || 0}</p>
+                      <p className="text-sky-600 text-sm font-medium">Total Doctors</p>
+                      <p className="text-3xl font-bold text-sky-700">{dashboardMetrics?.totalDoctors || 0}</p>
                     </div>
-                    <Stethoscope className="h-10 w-10 text-green-500" />
+                    <Stethoscope className="h-10 w-10 text-sky-500" />
                   </div>
                 </CardContent>
               </Card>
 
               {/* Total Patients */}
-              <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+              <Card className="bg-gradient-to-br from-indigo-50 to-indigo-100 border-indigo-200">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-purple-600 text-sm font-medium">Total Patients</p>
-                      <p className="text-3xl font-bold text-purple-700">{dashboardMetrics?.totalPatients || 0}</p>
+                      <p className="text-indigo-600 text-sm font-medium">Total Patients</p>
+                      <p className="text-3xl font-bold text-indigo-700">{dashboardMetrics?.totalPatients || 0}</p>
                     </div>
-                    <User className="h-10 w-10 text-purple-500" />
+                    <User className="h-10 w-10 text-indigo-500" />
                   </div>
                 </CardContent>
               </Card>
 
               {/* Total Appointments */}
-              <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
+              <Card className="bg-gradient-to-br from-cyan-50 to-cyan-100 border-cyan-200">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-orange-600 text-sm font-medium">Total Appointments</p>
-                      <p className="text-3xl font-bold text-orange-700">{dashboardMetrics?.totalAppointments || 0}</p>
-                      <p className="text-orange-500 text-xs mt-1">Last 6 months</p>
+                      <p className="text-cyan-600 text-sm font-medium">Total Appointments</p>
+                      <p className="text-3xl font-bold text-cyan-700">{dashboardMetrics?.totalAppointments || 0}</p>
+                      <p className="text-cyan-500 text-xs mt-1">Last 6 months</p>
                     </div>
-                    <Calendar className="h-10 w-10 text-orange-500" />
+                    <Calendar className="h-10 w-10 text-cyan-500" />
                   </div>
                 </CardContent>
               </Card>
@@ -1466,20 +1466,20 @@ export default function SuperAdminDashboard() {
                     <span className="text-lg font-bold text-blue-600">{dashboardMetrics?.recentAppointments || 0}</span>
                   </div>
                   
-                  <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+                  <div className="flex items-center justify-between p-3 bg-sky-50 rounded-lg">
                     <div className="flex items-center gap-3">
-                      <div className="w-2 h-2 bg-green-600 rounded-full"></div>
+                      <div className="w-2 h-2 bg-sky-600 rounded-full"></div>
                       <span className="text-sm font-medium text-gray-700">Completed Tokens</span>
                     </div>
-                    <span className="text-lg font-bold text-green-600">{dashboardMetrics?.completedAppointments || 0}</span>
+                    <span className="text-lg font-bold text-sky-600">{dashboardMetrics?.completedAppointments || 0}</span>
                   </div>
-                  
-                  <div className="flex items-center justify-between p-3 bg-purple-50 rounded-lg">
+
+                  <div className="flex items-center justify-between p-3 bg-indigo-50 rounded-lg">
                     <div className="flex items-center gap-3">
-                      <div className="w-2 h-2 bg-purple-600 rounded-full"></div>
+                      <div className="w-2 h-2 bg-indigo-600 rounded-full"></div>
                       <span className="text-sm font-medium text-gray-700">New Patient Registrations</span>
                     </div>
-                    <span className="text-lg font-bold text-purple-600">{dashboardMetrics?.newRegistrations || 0}</span>
+                    <span className="text-lg font-bold text-indigo-600">{dashboardMetrics?.newRegistrations || 0}</span>
                   </div>
                 </CardContent>
               </Card>
@@ -1487,27 +1487,27 @@ export default function SuperAdminDashboard() {
               {/* Staff Management Cards */}
               <div className="space-y-6">
                 {/* Total Clinic Admins */}
-                <Card className="bg-gradient-to-br from-indigo-50 to-indigo-100 border-indigo-200">
+                <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
                   <CardContent className="p-6">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-indigo-600 text-sm font-medium">Total Clinic Admins</p>
-                        <p className="text-3xl font-bold text-indigo-700">{dashboardMetrics?.totalClinicAdmins || 0}</p>
+                        <p className="text-blue-600 text-sm font-medium">Total Clinic Admins</p>
+                        <p className="text-3xl font-bold text-blue-700">{dashboardMetrics?.totalClinicAdmins || 0}</p>
                       </div>
-                      <UserCog className="h-10 w-10 text-indigo-500" />
+                      <UserCog className="h-10 w-10 text-blue-500" />
                     </div>
                   </CardContent>
                 </Card>
 
                 {/* Total Attenders */}
-                <Card className="bg-gradient-to-br from-teal-50 to-teal-100 border-teal-200">
+                <Card className="bg-gradient-to-br from-sky-50 to-sky-100 border-sky-200">
                   <CardContent className="p-6">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-teal-600 text-sm font-medium">Total Attenders</p>
-                        <p className="text-3xl font-bold text-teal-700">{dashboardMetrics?.totalAttenders || 0}</p>
+                        <p className="text-sky-600 text-sm font-medium">Total Attenders</p>
+                        <p className="text-3xl font-bold text-sky-700">{dashboardMetrics?.totalAttenders || 0}</p>
                       </div>
-                      <User className="h-10 w-10 text-teal-500" />
+                      <User className="h-10 w-10 text-sky-500" />
                     </div>
                   </CardContent>
                 </Card>
@@ -1534,30 +1534,30 @@ export default function SuperAdminDashboard() {
                     <span className="text-sm font-medium">Manage Clinics</span>
                   </Button>
                   
-                  <Button 
-                    variant="outline" 
-                    className="h-20 flex flex-col items-center justify-center gap-2 border-2 border-dashed border-purple-300 hover:border-purple-500 hover:bg-purple-50"
+                  <Button
+                    variant="outline"
+                    className="h-20 flex flex-col items-center justify-center gap-2 border-2 border-dashed border-blue-300 hover:border-blue-500 hover:bg-blue-50"
                     onClick={() => setSelectedMenuItem("patient-details")}
                   >
-                    <Search className="h-6 w-6 text-purple-600" />
+                    <Search className="h-6 w-6 text-blue-600" />
                     <span className="text-sm font-medium">Search Patients</span>
                   </Button>
-                  
-                  <Button 
-                    variant="outline" 
-                    className="h-20 flex flex-col items-center justify-center gap-2 border-2 border-dashed border-green-300 hover:border-green-500 hover:bg-green-50"
+
+                  <Button
+                    variant="outline"
+                    className="h-20 flex flex-col items-center justify-center gap-2 border-2 border-dashed border-blue-300 hover:border-blue-500 hover:bg-blue-50"
                     onClick={() => setSelectedMenuItem("export-reports")}
                   >
-                    <FileSpreadsheet className="h-6 w-6 text-green-600" />
+                    <FileSpreadsheet className="h-6 w-6 text-blue-600" />
                     <span className="text-sm font-medium">Export Reports</span>
                   </Button>
-                  
-                  <Button 
-                    variant="outline" 
-                    className="h-20 flex flex-col items-center justify-center gap-2 border-2 border-dashed border-orange-300 hover:border-orange-500 hover:bg-orange-50"
+
+                  <Button
+                    variant="outline"
+                    className="h-20 flex flex-col items-center justify-center gap-2 border-2 border-dashed border-blue-300 hover:border-blue-500 hover:bg-blue-50"
                     onClick={() => setSelectedMenuItem("refund")}
                   >
-                    <CreditCard className="h-6 w-6 text-orange-600" />
+                    <CreditCard className="h-6 w-6 text-blue-600" />
                     <span className="text-sm font-medium">Manage Refunds</span>
                   </Button>
                 </div>
@@ -1574,13 +1574,11 @@ export default function SuperAdminDashboard() {
       {/* Gmail-style Left Sidebar */}
       <div className="w-64 bg-white shadow-lg border-r border-gray-200 flex flex-col">
         {/* Header */}
-        <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-blue-700">
-          <div className="flex items-center">
-            <Building2 className="h-7 w-7 text-white mr-3" />
-            <div>
-              <h1 className="text-lg font-bold text-white">Clinik</h1>
-              <p className="text-blue-100 text-xs">Super Admin</p>
-            </div>
+        <div className="px-4 py-3 border-b border-blue-800 bg-gradient-to-r from-blue-700 to-blue-800 flex items-center gap-3">
+          <Shield className="h-5 w-5 text-white shrink-0" />
+          <div>
+            <p className="text-white text-sm font-semibold leading-tight">Super Admin</p>
+            <p className="text-blue-200 text-xs">System Management</p>
           </div>
         </div>
 
