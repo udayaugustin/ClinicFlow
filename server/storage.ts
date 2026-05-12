@@ -5078,7 +5078,7 @@ export class DatabaseStorage implements IStorage {
       ));
 
     for (const reservation of stale) {
-      // Guard: skip if an appointment already exists for this token (e.g. confirmed just at boundary)
+      // Guard: skip if an appointment already exists for this token (confirmed at boundary)
       const [existing] = await db.select({ id: appointments.id })
         .from(appointments)
         .where(and(
@@ -5088,25 +5088,14 @@ export class DatabaseStorage implements IStorage {
         ));
 
       if (!existing) {
-        const [schedule] = await db.select()
-          .from(doctorSchedules)
-          .where(eq(doctorSchedules.id, reservation.scheduleId));
-
-        if (schedule) {
-          await db.insert(appointments).values({
-            doctorId: schedule.doctorId,
-            clinicId: schedule.clinicId,
-            scheduleId: reservation.scheduleId,
-            date: new Date(schedule.date + 'T00:00:00.000Z'),
-            tokenNumber: reservation.tokenNumber,
-            guestName: 'Walk-in (expired)',
-            isWalkIn: true,
-            status: 'expired',
-            isPaid: false,
-            isRefundEligible: false,
-            hasBeenRefunded: false,
-          });
-        }
+        // Shift all queued appointments after the expired slot up by one token
+        await db.update(appointments)
+          .set({ tokenNumber: sql`${appointments.tokenNumber} - 1` })
+          .where(and(
+            eq(appointments.scheduleId, reservation.scheduleId),
+            gt(appointments.tokenNumber, reservation.tokenNumber),
+            inArray(appointments.status, ['token_started', 'scheduled', 'in_progress', 'hold', 'pause'])
+          ));
       }
 
       await db.update(tokenReservations)
