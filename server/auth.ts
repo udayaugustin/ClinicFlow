@@ -95,6 +95,7 @@ export function setupAuth(app: Express) {
   app.post("/api/register", async (req, res, next) => {
     try {
       const data = { ...req.body };
+      if (data.email === "") data.email = null;
       const parsed = insertUserSchema.parse(data);
 
       const existingUser = await storage.getUserByUsername(parsed.username);

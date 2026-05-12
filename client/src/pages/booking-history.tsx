@@ -487,10 +487,10 @@ export default function BookingHistoryPage() {
                     <table className="w-full">
                       <thead>
                         <tr className="border-b">
-                          <th className="text-left py-4 px-4">Token #</th>
-                          <th className="text-left py-4 px-4">Doctor</th>
-                          <th className="text-left py-4 px-4">Date & Time</th>
-                          <th className="text-left py-4 px-4">Status</th>
+                          <th className="text-left py-3 px-2 sm:py-4 sm:px-4">Token #</th>
+                          <th className="text-left py-3 px-2 sm:py-4 sm:px-4">Doctor</th>
+                          <th className="text-left py-3 px-2 sm:py-4 sm:px-4">Date & Time</th>
+                          <th className="text-left py-3 px-2 sm:py-4 sm:px-4">Status</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -500,24 +500,25 @@ export default function BookingHistoryPage() {
                           || apt.status === "no_show"
                         ).map((appointment) => (
                           <tr key={appointment.id} className="border-b">
-                            <td className="py-4 px-4">
+                            <td className="py-3 px-2 sm:py-4 sm:px-4">
                               {String(appointment.tokenNumber).padStart(3, '0')}
                             </td>
-                            <td className="py-4 px-4">
+                            <td className="py-3 px-2 sm:py-4 sm:px-4">
                               <div>
-                                <div className="font-medium">{appointment.doctor.name}</div>
-                                <div className="text-sm text-muted-foreground">
+                                <div className="font-medium text-sm sm:text-base">{appointment.doctor.name}</div>
+                                <div className="text-xs sm:text-sm text-muted-foreground">
                                   {appointment.doctor.specialty}
                                 </div>
                               </div>
                             </td>
-                            <td className="py-4 px-4">
-                              {format(new Date(appointment.date), "PPP p")}
+                            <td className="py-3 px-2 sm:py-4 sm:px-4 text-sm whitespace-nowrap">
+                              <span className="hidden sm:inline">{format(new Date(appointment.date), "PPP p")}</span>
+                              <span className="sm:hidden">{format(new Date(appointment.date), "d MMM yy, h:mm a")}</span>
                             </td>
-                            <td className="py-4 px-4">
-                              <AppointmentStatusBadge 
+                            <td className="py-3 px-2 sm:py-4 sm:px-4">
+                              <AppointmentStatusBadge
                                 status={appointment.status}
-                                statusNotes={appointment.statusNotes} 
+                                statusNotes={appointment.statusNotes}
                               />
                             </td>
                           </tr>

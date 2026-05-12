@@ -741,7 +741,7 @@ export default function AttenderDashboard() {
       <TooltipProvider>
         <main className="container mx-auto px-4 py-8">
           <div className="flex items-center justify-between mb-6">
-            <h1 className="text-2xl font-bold">Today's Doctor Appointments</h1>
+            <h1 className="text-lg sm:text-2xl font-bold">Today's Doctor Appointments</h1>
             <NavigationButtons showBack={false} />
           </div>
 
@@ -765,7 +765,7 @@ export default function AttenderDashboard() {
                     value={selectedDoctorId}
                     onValueChange={(value) => setSelectedDoctorId(value)}
                   >
-                    <SelectTrigger className="w-[200px]">
+                    <SelectTrigger className="w-full sm:w-[200px]">
                       <SelectValue placeholder="Select a doctor" />
                     </SelectTrigger>
                     <SelectContent>
@@ -873,7 +873,7 @@ export default function AttenderDashboard() {
                                 >
                                   <Card>
                                     <CardHeader className="pb-0">
-                                      <div className="flex justify-between items-center">
+                                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                                         <div>
                                           <CardTitle className="flex items-center gap-2">
                                             <Building className="h-5 w-5" />
@@ -898,7 +898,7 @@ export default function AttenderDashboard() {
                                             </div>
                                           )}
                                         </div>
-                                        <div className="flex gap-2 items-center mt-2">
+                                        <div className="flex flex-wrap gap-2 items-center">
                                           <Button
                                             variant={getPresenceData(doctorData.doctor.id, schedule.id).hasArrived ? "default" : "outline"}
                                             className="gap-2"
@@ -978,7 +978,107 @@ export default function AttenderDashboard() {
                                       </div>
                                     </CardHeader>
                                     <CardContent className="pt-4">
-                                      <div className="overflow-x-auto">
+                                      {/* Mobile card view */}
+                                      <div className="md:hidden space-y-3">
+                                        {scheduleAppointments.length === 0 ? (
+                                          <p className="text-center py-8 text-muted-foreground">
+                                            No appointments scheduled for {format(selectedDate, "d MMM, yyyy")}
+                                          </p>
+                                        ) : (
+                                          scheduleAppointments.map((appointment) => (
+                                            <div
+                                              key={appointment.id}
+                                              className={`border rounded-lg p-3 ${appointment.status === "in_progress" ? "bg-blue-50 border-blue-200" : "bg-white"}`}
+                                            >
+                                              <div className="flex items-start justify-between mb-2">
+                                                <div className="flex items-start gap-2 min-w-0">
+                                                  <span className="text-sm font-bold text-blue-600 shrink-0">#{appointment.tokenNumber}</span>
+                                                  <div className="min-w-0">
+                                                    {appointment.isWalkIn ? (
+                                                      <div>
+                                                        <div className="font-medium text-sm truncate">{appointment.guestName}</div>
+                                                        <Badge variant="outline" className="mt-0.5 text-xs">Walk-in</Badge>
+                                                      </div>
+                                                    ) : appointment.isOnBehalf ? (
+                                                      <div>
+                                                        <div className="font-medium text-sm truncate">{appointment.guestName}</div>
+                                                        <Badge variant="secondary" className="mt-0.5 text-xs">On behalf</Badge>
+                                                        {appointment.patient?.name && (
+                                                          <div className="text-xs text-muted-foreground">by {appointment.patient.name}</div>
+                                                        )}
+                                                      </div>
+                                                    ) : (
+                                                      <div className="font-medium text-sm truncate">{appointment.patient?.name}</div>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                                <div className="ml-2 shrink-0 flex items-center gap-1">
+                                                  <Badge
+                                                    className="text-xs"
+                                                    variant={
+                                                      appointment.status === "completed" ? "outline" :
+                                                      appointment.status === "in_progress" ? "default" :
+                                                      appointment.status === "hold" ? "secondary" :
+                                                      ["pause", "cancel", "no_show", "expired"].includes(appointment.status) ? "destructive" :
+                                                      "outline"
+                                                    }
+                                                  >
+                                                    {appointment.status === "token_started" ? "Token Started" :
+                                                    appointment.status === "scheduled" ? "Scheduled" :
+                                                    appointment.status === "in_progress" ? "In Progress" :
+                                                    appointment.status === "hold" ? "On Hold" :
+                                                    appointment.status === "pause" ? "Paused" :
+                                                    appointment.status === "cancel" ? "Cancelled" :
+                                                    appointment.status === "no_show" ? "No Show" :
+                                                    appointment.status === "completed" ? "Completed" :
+                                                    appointment.status === "expired" ? "Expired" :
+                                                    "Unknown"}
+                                                  </Badge>
+                                                  {appointment.statusNotes && (
+                                                    <Tooltip>
+                                                      <TooltipTrigger asChild>
+                                                        <InfoIcon className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                                                      </TooltipTrigger>
+                                                      <TooltipContent>
+                                                        <p>{appointment.statusNotes}</p>
+                                                      </TooltipContent>
+                                                    </Tooltip>
+                                                  )}
+                                                </div>
+                                              </div>
+                                              <div className="flex flex-wrap gap-3 text-xs text-muted-foreground mb-2">
+                                                {appointment.actualStartTime && (
+                                                  <span>In: {format(new Date(appointment.actualStartTime), "hh:mm a")}</span>
+                                                )}
+                                                {appointment.actualEndTime && (
+                                                  <span>Out: {format(new Date(appointment.actualEndTime), "hh:mm a")}</span>
+                                                )}
+                                                {appointment.status === "in_progress" ? (
+                                                  <span className="text-blue-600 font-medium">In consultation</span>
+                                                ) : !["expired", "completed", "cancel", "no_show"].includes(appointment.status) && (
+                                                  <ETADisplay
+                                                    appointmentId={appointment.id}
+                                                    tokenNumber={appointment.tokenNumber}
+                                                    className="text-xs"
+                                                  />
+                                                )}
+                                              </div>
+                                              <div className="pt-2 border-t">
+                                                <AppointmentActions
+                                                  appointment={appointment}
+                                                  onMarkAsStarted={() => handleMarkInProgress(appointment.id)}
+                                                  onMarkAsCompleted={() => handleMarkAsCompleted(appointment.id)}
+                                                  onHold={() => handleHoldAppointment(appointment.id)}
+                                                  onNoShow={() => handleNoShowAppointment(appointment.id)}
+                                                />
+                                              </div>
+                                            </div>
+                                          ))
+                                        )}
+                                      </div>
+
+                                      {/* Desktop table view */}
+                                      <div className="hidden md:block overflow-x-auto">
                                         <table className="w-full">
                                           <thead>
                                             <tr className="border-b">
@@ -1000,8 +1100,8 @@ export default function AttenderDashboard() {
                                               </tr>
                                             ) : (
                                               scheduleAppointments.map((appointment) => (
-                                                <tr 
-                                                  key={appointment.id} 
+                                                <tr
+                                                  key={appointment.id}
                                                   className={`border-b ${appointment.status === "in_progress" ? "bg-blue-50" : ""}`}
                                                 >
                                                   <td className="py-4 px-4">{appointment.tokenNumber}</td>
@@ -1024,14 +1124,14 @@ export default function AttenderDashboard() {
                                                     )}
                                                   </td>
                                                   <td className="py-4 px-4">
-                                                    {appointment.actualStartTime ? 
-                                                      format(new Date(appointment.actualStartTime), "hh:mm a") : 
+                                                    {appointment.actualStartTime ?
+                                                      format(new Date(appointment.actualStartTime), "hh:mm a") :
                                                       "-"
                                                     }
                                                   </td>
                                                   <td className="py-4 px-4">
-                                                    {appointment.actualEndTime ? 
-                                                      format(new Date(appointment.actualEndTime), "hh:mm a") : 
+                                                    {appointment.actualEndTime ?
+                                                      format(new Date(appointment.actualEndTime), "hh:mm a") :
                                                       "-"
                                                     }
                                                   </td>
