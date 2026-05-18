@@ -23,11 +23,12 @@ export async function setupVite(app: Express, server: Server) {
   // Dynamic imports so vite and its plugins are never loaded in production
   const { createServer: createViteServer, createLogger } = await import("vite");
   const { default: react } = await import("@vitejs/plugin-react");
+  const { default: themePlugin } = await import("@replit/vite-plugin-shadcn-theme-json");
   const viteLogger = createLogger();
 
   const vite = await createViteServer({
     root: path.resolve(__dirname, "..", "client"),
-    plugins: [react()],
+    plugins: [react(), themePlugin()],
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "..", "client", "src"),

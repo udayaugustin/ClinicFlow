@@ -100,7 +100,7 @@ export function LeafletMap({
           ` : ''}
           ${hospital.distance ? `
             <div style="color: #059669; font-size: 12px; margin-bottom: 4px; font-weight: 500;">
-              📏 ${hospital.distance.toFixed(1)} km away
+              📏 ~${hospital.distance.toFixed(1)} km (aerial)
             </div>
           ` : ''}
           ${hospital.phone ? `

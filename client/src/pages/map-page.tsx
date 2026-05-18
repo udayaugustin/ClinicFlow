@@ -281,15 +281,29 @@ export default function MapPage() {
                 ) : clinicsCount > 0 ? (
                   <div className="space-y-3">
                     {nearbyClinics.slice(0, 5).map((clinic) => (
-                      <div key={clinic.id} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div key={clinic.id} className="flex items-center justify-between p-3 border rounded-lg gap-3">
                         <div>
                           <h4 className="font-medium">{clinic.name}</h4>
                           <p className="text-sm text-muted-foreground">{clinic.address}, {clinic.city}</p>
-                          <p className="text-xs text-green-600 font-medium">{clinic.distance.toFixed(1)} km away</p>
+                          <p className="text-xs text-green-600 font-medium">~{clinic.distance.toFixed(1)} km (aerial)</p>
                         </div>
-                        <Button variant="outline" size="sm" onClick={() => navigate(`/patient/clinics/${clinic.id}`)}>
-                          View Doctors
-                        </Button>
+                        <div className="flex flex-col gap-1 shrink-0">
+                          <Button variant="outline" size="sm" onClick={() => navigate(`/patient/clinics/${clinic.id}`)}>
+                            View Doctors
+                          </Button>
+                          {clinic.latitude && clinic.longitude && (
+                            <Button variant="outline" size="sm" asChild>
+                              <a
+                                href={`https://www.google.com/maps/dir/?api=1&destination=${clinic.latitude},${clinic.longitude}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                <Navigation className="mr-1 h-3 w-3" />
+                                Directions
+                              </a>
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     ))}
                     {clinicsCount > 5 && (
