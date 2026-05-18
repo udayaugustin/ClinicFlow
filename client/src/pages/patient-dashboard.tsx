@@ -412,7 +412,7 @@ export default function PatientDashboard() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <CardTitle className="text-lg">{result.name}</CardTitle>
                       <Badge className="bg-green-600 text-white text-xs">
-                        {result.distance.toFixed(1)} km away
+                        ~{result.distance.toFixed(1)} km (aerial)
                       </Badge>
                     </div>
                     <p className="text-sm text-gray-600 mt-1">{result.address}, {result.city}</p>
@@ -423,13 +423,27 @@ export default function PatientDashboard() {
                     )}
                   </div>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => toggleExpanded(`nearby-clinic-${result.id}`)}
-                >
-                  {isExpanded ? <ChevronDown /> : <ChevronRight />}
-                </Button>
+                <div className="flex items-center gap-1 shrink-0">
+                  {result.latitude && result.longitude && (
+                    <Button variant="outline" size="sm" asChild>
+                      <a
+                        href={`https://www.google.com/maps/dir/?api=1&destination=${result.latitude},${result.longitude}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <Navigation className="mr-1 h-3 w-3" />
+                        Directions
+                      </a>
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => toggleExpanded(`nearby-clinic-${result.id}`)}
+                  >
+                    {isExpanded ? <ChevronDown /> : <ChevronRight />}
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             {isExpanded && (
@@ -486,7 +500,7 @@ export default function PatientDashboard() {
                   <CardTitle className="text-lg">{result.name}</CardTitle>
                   {result.distance !== null && result.distance !== undefined && (
                     <Badge className="bg-green-600 text-white text-xs">
-                      {result.distance.toFixed(1)} km away
+                      ~{result.distance.toFixed(1)} km (aerial)
                     </Badge>
                   )}
                   {result.type === 'specialty' && (
@@ -496,13 +510,27 @@ export default function PatientDashboard() {
                     <Badge variant="secondary">{result.doctors.length} doctors</Badge>
                   )}
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => toggleExpanded(result.id)}
-                >
-                  {isExpanded ? <ChevronDown /> : <ChevronRight />}
-                </Button>
+                <div className="flex items-center gap-1 shrink-0">
+                  {result.latitude && result.longitude && (
+                    <Button variant="outline" size="sm" asChild>
+                      <a
+                        href={`https://www.google.com/maps/dir/?api=1&destination=${result.latitude},${result.longitude}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <Navigation className="mr-1 h-3 w-3" />
+                        Directions
+                      </a>
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => toggleExpanded(result.id)}
+                  >
+                    {isExpanded ? <ChevronDown /> : <ChevronRight />}
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             {isExpanded && result.doctors && (
@@ -842,12 +870,14 @@ export default function PatientDashboard() {
                     name: clinic.name,
                     address: `${clinic.address}, ${clinic.city}`,
                     imageUrl: clinic.imageUrl || undefined,
-                    specialties: []
+                    specialties: [],
+                    latitude: clinic.latitude,
+                    longitude: clinic.longitude,
                   }} />
                   <Badge 
                     className="absolute top-2 right-2 bg-green-600 text-white"
                   >
-                    {clinic.distance.toFixed(1)} km away
+                    ~{clinic.distance.toFixed(1)} km (aerial)
                   </Badge>
                 </div>
               ))}

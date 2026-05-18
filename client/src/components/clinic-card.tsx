@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Building2, MapPin } from "lucide-react";
+import { Building2, MapPin, Navigation } from "lucide-react";
 import { Link } from "wouter";
 import React from "react";
 
@@ -11,10 +11,18 @@ interface ClinicCardProps {
     address: string;
     imageUrl?: string;
     specialties?: string[];
+    latitude?: number | string | null;
+    longitude?: number | string | null;
   };
 }
 
+function getDirectionsUrl(lat?: number | string | null, lng?: number | string | null) {
+  if (!lat || !lng) return null;
+  return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+}
+
 export function ClinicCard({ clinic }: ClinicCardProps) {
+  const directionsUrl = getDirectionsUrl(clinic.latitude, clinic.longitude);
   return (
     <Card className="overflow-hidden hover:shadow-md transition-shadow">
       <CardHeader className="p-0">
@@ -55,13 +63,21 @@ export function ClinicCard({ clinic }: ClinicCardProps) {
             )}
           </div>
         </div>
-        <div className="mt-6">
+        <div className="mt-6 flex flex-col gap-2">
           <Button asChild className="w-full">
             <Link href={`/patient/clinics/${clinic.id}`}>
               <Building2 className="mr-2 h-4 w-4" />
               View Doctors
             </Link>
           </Button>
+          {directionsUrl && (
+            <Button asChild variant="outline" className="w-full">
+              <a href={directionsUrl} target="_blank" rel="noopener noreferrer">
+                <Navigation className="mr-2 h-4 w-4" />
+                Get Directions
+              </a>
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>
