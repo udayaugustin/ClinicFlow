@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { Geolocation } from '@capacitor/geolocation';
 
 interface GeolocationState {
   status: 'idle' | 'requesting' | 'granted' | 'denied' | 'error';
@@ -34,7 +36,7 @@ export function useGeolocation(options: GeolocationOptions = {}) {
     bestPosition: null
   });
 
-  const requestLocation = useCallback((attemptNumber: number = 1) => {
+  const requestLocation = useCallback(async (attemptNumber: number = 1) => {
     if (!state.isSupported) {
       setState(prev => ({
         ...prev,
@@ -44,12 +46,54 @@ export function useGeolocation(options: GeolocationOptions = {}) {
       return;
     }
 
-    setState(prev => ({ 
-      ...prev, 
-      status: 'requesting', 
-      error: null, 
-      attempt: attemptNumber 
+    setState(prev => ({
+      ...prev,
+      status: 'requesting',
+      error: null,
+      attempt: attemptNumber
     }));
+
+    // Use Capacitor native geolocation on Android/iOS for better GPS accuracy
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const permission = await Geolocation.requestPermissions();
+        if (permission.location !== 'granted') {
+          setState(prev => ({
+            ...prev,
+            status: 'denied',
+            error: 'Location access denied. Please enable location permissions in your device settings.'
+          }));
+          return;
+        }
+        const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout });
+        const syntheticPosition = {
+          coords: {
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            accuracy: pos.coords.accuracy,
+            altitude: pos.coords.altitude,
+            altitudeAccuracy: pos.coords.altitudeAccuracy,
+            heading: pos.coords.heading,
+            speed: pos.coords.speed,
+          },
+          timestamp: pos.timestamp,
+        } as GeolocationPosition;
+        setState(prev => ({
+          ...prev,
+          status: 'granted',
+          position: syntheticPosition,
+          bestPosition: syntheticPosition,
+          error: null,
+        }));
+      } catch (err: any) {
+        setState(prev => ({
+          ...prev,
+          status: 'error',
+          error: err?.message || 'Failed to get location on device.'
+        }));
+      }
+      return;
+    }
 
     const positionOptions: PositionOptions = {
       enableHighAccuracy,

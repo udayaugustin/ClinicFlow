@@ -1,6 +1,10 @@
 # Environment variables
 .env
 
+# Firebase service account key — never commit this
+server/firebase-service-account.json
+android/app/google-services.json
+
 # Dependencies
 node_modules/
 dist/

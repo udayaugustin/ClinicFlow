@@ -7,6 +7,7 @@ import {
 import { insertUserSchema, User as SelectUser, InsertUser } from "@shared/schema";
 import { getQueryFn, apiRequest, queryClient } from "../lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { registerFcmToken } from "@/lib/firebase";
 
 type AuthContextType = {
   user: SelectUser | null;
@@ -59,6 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           title: "Login successful",
           description: `Welcome back, ${(data.user || data).name}!`,
         });
+        registerFcmToken();
       }
     },
     onError: (error: Error) => {

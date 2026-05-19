@@ -16,6 +16,7 @@ import {
   walletTransactions,
   appointmentRefunds,
   tokenReservations,
+  deviceTokens,
   type User,
   type AttenderDoctor,
   type InsertUser,
@@ -2112,6 +2113,42 @@ export class DatabaseStorage implements IStorage {
 
       if (!updated) {
         throw new Error('Appointment not found');
+      }
+
+      // Send push notification to patient on key status changes
+      if (updated.patientId && (status === 'in_progress' || status === 'completed')) {
+        const { sendPushToUser } = await import('./firebase-admin');
+        if (status === 'in_progress') {
+          sendPushToUser(
+            updated.patientId,
+            'Your turn has started',
+            `Token #${updated.tokenNumber} — please proceed to the consultation room.`,
+            { route: '/appointments' }
+          );
+        } else if (status === 'completed') {
+          // Notify the next scheduled patient
+          const nextPatient = await db
+            .select()
+            .from(appointments)
+            .where(
+              and(
+                eq(appointments.scheduleId, updated.scheduleId),
+                eq(appointments.status, 'scheduled'),
+                gt(appointments.tokenNumber, updated.tokenNumber)
+              )
+            )
+            .orderBy(appointments.tokenNumber)
+            .limit(1);
+
+          if (nextPatient.length > 0 && nextPatient[0].patientId) {
+            sendPushToUser(
+              nextPatient[0].patientId,
+              'Your turn is coming up',
+              `Token #${nextPatient[0].tokenNumber} — please be ready.`,
+              { route: '/appointments' }
+            );
+          }
+        }
       }
 
       return updated;

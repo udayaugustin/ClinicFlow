@@ -191,6 +191,14 @@ export const notifications = pgTable("notifications", {
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
+export const deviceTokens = pgTable("device_tokens", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  token: text("token").notNull().unique(),
+  platform: varchar("platform", { length: 20 }).notNull().default("android"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+});
+
 export const otpVerifications = pgTable("otp_verifications", {
   id: serial("id").primaryKey(),
   phone: varchar("phone", { length: 20 }).notNull(),
