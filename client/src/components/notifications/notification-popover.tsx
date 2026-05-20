@@ -37,7 +37,7 @@ export function NotificationPopover() {
     if (!Capacitor.isNativePlatform()) return;
 
     const foregroundListener = PushNotifications.addListener('pushNotificationReceived', () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
     });
 
     const tapListener = PushNotifications.addListener('pushNotificationActionPerformed', () => {

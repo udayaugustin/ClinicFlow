@@ -124,8 +124,7 @@ export async function registerFcmToken(): Promise<void> {
     }
     if (permStatus.receive !== 'granted') return;
 
-    await PushNotifications.register();
-
+    // Register listener BEFORE calling register() to avoid missing the registration event
     PushNotifications.addListener('registration', async ({ value: token }) => {
       await fetch('/api/notifications/register-token', {
         method: 'POST',
@@ -133,6 +132,8 @@ export async function registerFcmToken(): Promise<void> {
         body: JSON.stringify({ token, platform: Capacitor.getPlatform() }),
       });
     });
+
+    await PushNotifications.register();
   } catch (err) {
     console.error('FCM token registration failed:', err);
   }

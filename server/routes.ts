@@ -2634,10 +2634,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/notifications/register-token', async (req, res) => {
     if (!req.user) return res.sendStatus(401);
     const { token, platform } = req.body;
-    if (!token) return res.status(400).json({ message: 'token is required' });
+    const allowedPlatforms = ['android', 'ios', 'web'];
+    if (!token || typeof token !== 'string' || token.trim() === '') {
+      return res.status(400).json({ message: 'token must be a non-empty string' });
+    }
+    if (platform && !allowedPlatforms.includes(platform)) {
+      return res.status(400).json({ message: `platform must be one of: ${allowedPlatforms.join(', ')}` });
+    }
     try {
       await db.insert(deviceTokens)
-        .values({ userId: req.user.id, token, platform: platform || 'android' })
+        .values({ userId: req.user.id, token: token.trim(), platform: platform || 'android' })
         .onConflictDoUpdate({
           target: deviceTokens.token,
           set: { userId: req.user.id, createdAt: new Date() },

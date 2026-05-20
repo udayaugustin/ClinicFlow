@@ -37,15 +37,6 @@ export function useGeolocation(options: GeolocationOptions = {}) {
   });
 
   const requestLocation = useCallback(async (attemptNumber: number = 1) => {
-    if (!state.isSupported) {
-      setState(prev => ({
-        ...prev,
-        status: 'error',
-        error: 'Geolocation is not supported by this browser.'
-      }));
-      return;
-    }
-
     setState(prev => ({
       ...prev,
       status: 'requesting',
@@ -54,6 +45,7 @@ export function useGeolocation(options: GeolocationOptions = {}) {
     }));
 
     // Use Capacitor native geolocation on Android/iOS for better GPS accuracy
+    // Must check native platform BEFORE browser support guard
     if (Capacitor.isNativePlatform()) {
       try {
         const permission = await Geolocation.requestPermissions();
@@ -65,7 +57,7 @@ export function useGeolocation(options: GeolocationOptions = {}) {
           }));
           return;
         }
-        const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout });
+        const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy, timeout });
         const syntheticPosition = {
           coords: {
             latitude: pos.coords.latitude,
@@ -92,6 +84,15 @@ export function useGeolocation(options: GeolocationOptions = {}) {
           error: err?.message || 'Failed to get location on device.'
         }));
       }
+      return;
+    }
+
+    if (!state.isSupported) {
+      setState(prev => ({
+        ...prev,
+        status: 'error',
+        error: 'Geolocation is not supported by this browser.'
+      }));
       return;
     }
 

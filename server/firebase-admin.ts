@@ -59,9 +59,17 @@ export async function sendPushToUser(
       },
     });
 
-    // Remove tokens that are no longer valid
+    // Remove only tokens that are permanently invalid (not temporary failures)
+    const permanentlyInvalidCodes = [
+      'messaging/registration-token-not-registered',
+      'messaging/invalid-registration-token',
+    ];
     const invalidTokens = response.responses
-      .map((r, i) => (!r.success ? tokens[i].token : null))
+      .map((r, i) => {
+        if (r.success) return null;
+        const code = (r.error as any)?.code;
+        return permanentlyInvalidCodes.includes(code) ? tokens[i].token : null;
+      })
       .filter(Boolean) as string[];
 
     if (invalidTokens.length > 0) {

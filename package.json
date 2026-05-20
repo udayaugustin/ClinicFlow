@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx server/index.ts",
     "build": "vite build && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
-    "build:android": "vite build && npx cap sync && npx cap build android",
+    "build:android": "cross-env CAPACITOR_BUILD=1 vite build && npx cap sync && npx cap build android",
     "start": "NODE_ENV=production node dist/index.js",
     "check": "tsc",
     "db:push": "drizzle-kit push",

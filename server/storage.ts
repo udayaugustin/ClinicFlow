@@ -2078,13 +2078,21 @@ export class DatabaseStorage implements IStorage {
     statusNotes?: string
   ): Promise<Appointment> {
     try {
-      const updateData: Partial<typeof appointments.$inferInsert> = { 
-        status 
+      const updateData: Partial<typeof appointments.$inferInsert> = {
+        status
       };
-      
+
       if (statusNotes !== undefined) {
         updateData.statusNotes = statusNotes;
       }
+
+      // Fetch previous status before update to guard against duplicate notifications
+      const [existing] = await db
+        .select({ status: appointments.status })
+        .from(appointments)
+        .where(eq(appointments.id, appointmentId))
+        .limit(1);
+      const previousStatus = existing?.status;
 
       // Add timestamp updates based on status
       const now = new Date();
@@ -2116,7 +2124,8 @@ export class DatabaseStorage implements IStorage {
       }
 
       // Send push notification to patient on key status changes
-      if (updated.patientId && (status === 'in_progress' || status === 'completed')) {
+      // Guard: only notify if status actually changed (prevents duplicates on retries)
+      if (updated.patientId && previousStatus !== status && (status === 'in_progress' || status === 'completed')) {
         const { sendPushToUser } = await import('./firebase-admin');
         if (status === 'in_progress') {
           sendPushToUser(
@@ -2126,14 +2135,14 @@ export class DatabaseStorage implements IStorage {
             { route: '/appointments' }
           );
         } else if (status === 'completed') {
-          // Notify the next scheduled patient
+          // Notify the next waiting patient (any waiting status)
           const nextPatient = await db
             .select()
             .from(appointments)
             .where(
               and(
                 eq(appointments.scheduleId, updated.scheduleId),
-                eq(appointments.status, 'scheduled'),
+                inArray(appointments.status, ['scheduled', 'token_started']),
                 gt(appointments.tokenNumber, updated.tokenNumber)
               )
             )

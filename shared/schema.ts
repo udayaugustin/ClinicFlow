@@ -1,5 +1,5 @@
 import { relations, sql } from "drizzle-orm";
-import { boolean, decimal, integer, pgTable, serial, text, timestamp, varchar, date } from "drizzle-orm/pg-core";
+import { boolean, decimal, index, integer, pgTable, serial, text, timestamp, varchar, date } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -197,7 +197,7 @@ export const deviceTokens = pgTable("device_tokens", {
   token: text("token").notNull().unique(),
   platform: varchar("platform", { length: 20 }).notNull().default("android"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
-});
+}, (t) => [index("device_tokens_user_id_idx").on(t.userId)]);
 
 export const otpVerifications = pgTable("otp_verifications", {
   id: serial("id").primaryKey(),
