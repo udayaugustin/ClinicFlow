@@ -1,3 +1,5 @@
+import { Capacitor } from '@capacitor/core';
+import { PushNotifications } from '@capacitor/push-notifications';
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -110,3 +112,29 @@ export class FirebaseAuthService {
 
 // Export singleton instance
 export const firebaseAuth = new FirebaseAuthService();
+
+// Register FCM push token with the backend (native Android/iOS only)
+export async function registerFcmToken(): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return;
+
+  try {
+    let permStatus = await PushNotifications.checkPermissions();
+    if (permStatus.receive === 'prompt') {
+      permStatus = await PushNotifications.requestPermissions();
+    }
+    if (permStatus.receive !== 'granted') return;
+
+    // Register listener BEFORE calling register() to avoid missing the registration event
+    PushNotifications.addListener('registration', async ({ value: token }) => {
+      await fetch('/api/notifications/register-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, platform: Capacitor.getPlatform() }),
+      });
+    });
+
+    await PushNotifications.register();
+  } catch (err) {
+    console.error('FCM token registration failed:', err);
+  }
+}

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Clinik</string>
+    <string name="title_activity_main">Clinik</string>
+    <string name="package_name">com.wisright.clinikflow</string>
+    <string name="custom_url_scheme">com.wisright.clinikflow</string>
+</resources>

@@ -4,7 +4,7 @@ import cors from 'cors';
 import { storage, getTokens } from './storage';
 import { createSessionMiddleware, setupAuth } from './auth';
 import { insertAppointmentSchema, insertAttenderDoctorSchema, insertClinicSchema, insertUserSchema, type AttenderDoctor, type User } from "../shared/schema";
-import { insertDoctorDetailSchema, appointments, doctorSchedules } from "../shared/schema";
+import { insertDoctorDetailSchema, appointments, doctorSchedules, deviceTokens } from "../shared/schema";
 import { z } from "zod";
 import { notificationService } from './services/notification';
 import { ETAService } from './services/eta';
@@ -2631,6 +2631,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Notification Endpoints
 
   // Get unread notifications for the authenticated user
+  app.post('/api/notifications/register-token', async (req, res) => {
+    if (!req.user) return res.sendStatus(401);
+    const { token, platform } = req.body;
+    const allowedPlatforms = ['android', 'ios', 'web'];
+    if (!token || typeof token !== 'string' || token.trim() === '') {
+      return res.status(400).json({ message: 'token must be a non-empty string' });
+    }
+    if (platform && !allowedPlatforms.includes(platform)) {
+      return res.status(400).json({ message: `platform must be one of: ${allowedPlatforms.join(', ')}` });
+    }
+    try {
+      await db.insert(deviceTokens)
+        .values({ userId: req.user.id, token: token.trim(), platform: platform || 'android' })
+        .onConflictDoUpdate({
+          target: deviceTokens.token,
+          set: { userId: req.user.id, createdAt: new Date() },
+        });
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error registering device token:', error);
+      res.status(500).json({ message: 'Failed to register device token' });
+    }
+  });
+
   app.get('/api/notifications', async (req, res) => {
     if (!req.user) return res.sendStatus(401);
     try {

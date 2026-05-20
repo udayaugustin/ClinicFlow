@@ -10,6 +10,9 @@ import {
 } from '@/components/ui/popover';
 import { formatDistanceToNow } from 'date-fns';
 import { apiRequest } from '@/lib/queryClient';
+import { Capacitor } from '@capacitor/core';
+import { PushNotifications } from '@capacitor/push-notifications';
+import { useLocation } from 'wouter';
 
 type Notification = {
   id: number;
@@ -27,6 +30,25 @@ export function NotificationPopover() {
   const queryClient = useQueryClient();
   const hasActiveAppointmentsRef = useRef<boolean>(false);
   const visibilityChangeListenerAdded = useRef<boolean>(false);
+  const [, navigate] = useLocation();
+
+  // Native push notification listeners (Android/iOS via Capacitor)
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    const foregroundListener = PushNotifications.addListener('pushNotificationReceived', () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    });
+
+    const tapListener = PushNotifications.addListener('pushNotificationActionPerformed', () => {
+      navigate('/appointments');
+    });
+
+    return () => {
+      foregroundListener.then(l => l.remove());
+      tapListener.then(l => l.remove());
+    };
+  }, [queryClient, navigate]);
   
   // Get whether the user has any active appointments today
   const { data: appointments } = useQuery({

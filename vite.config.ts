@@ -8,7 +8,7 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [
     react(),
     runtimeErrorOverlay(),
@@ -29,8 +29,9 @@ export default defineConfig({
     },
   },
   root: path.resolve(__dirname, "client"),
+  base: mode === 'capacitor' ? "./" : "/",
   build: {
     outDir: path.resolve(__dirname, "dist/public"),
     emptyOutDir: true,
   },
-});
+}));
