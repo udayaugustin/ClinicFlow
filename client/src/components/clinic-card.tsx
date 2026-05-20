@@ -16,13 +16,18 @@ interface ClinicCardProps {
   };
 }
 
-function getDirectionsUrl(lat?: number | string | null, lng?: number | string | null) {
-  if (!lat || !lng) return null;
-  return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+function getDirectionsUrl(lat?: number | string | null, lng?: number | string | null, address?: string) {
+  if (lat && lng) {
+    return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+  }
+  if (address) {
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+  }
+  return null;
 }
 
 export function ClinicCard({ clinic }: ClinicCardProps) {
-  const directionsUrl = getDirectionsUrl(clinic.latitude, clinic.longitude);
+  const directionsUrl = getDirectionsUrl(clinic.latitude, clinic.longitude, clinic.address);
   return (
     <Card className="overflow-hidden hover:shadow-md transition-shadow">
       <CardHeader className="p-0">
