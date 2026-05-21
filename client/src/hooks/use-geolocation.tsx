@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
 
@@ -35,6 +35,9 @@ export function useGeolocation(options: GeolocationOptions = {}) {
     attempt: 0,
     bestPosition: null
   });
+
+  const hasAutoRequested = useRef(false);
+  const requestLocationRef = useRef<(attempt?: number) => void>(() => {});
 
   const requestLocation = useCallback(async (attemptNumber: number = 1) => {
     setState(prev => ({
@@ -189,23 +192,39 @@ export function useGeolocation(options: GeolocationOptions = {}) {
     );
   }, [enableHighAccuracy, timeout, maximumAge, minAccuracy, maxAttempts, state.isSupported, state.bestPosition]);
 
-  // Auto-check permission status and request location if enabled
+  // Keep ref in sync with latest requestLocation so the effect below can call it
+  // without needing it in the dependency array (avoids infinite re-trigger loop)
   useEffect(() => {
-    if (!state.isSupported || !autoRequest) return;
+    requestLocationRef.current = requestLocation;
+  });
 
-    // Check current permission status
+  // Auto-request location on mount when autoRequest is enabled.
+  // Fires when permission is 'granted' (browser) OR 'prompt' (WebView — auto-granted
+  // by the native onPermissionRequest handler). Falls back to a direct request when
+  // navigator.permissions is unavailable (older Android WebViews).
+  useEffect(() => {
+    if (!state.isSupported || !autoRequest || hasAutoRequested.current) return;
+
+    hasAutoRequested.current = true;
+
     if ('permissions' in navigator) {
-      navigator.permissions.query({ name: 'geolocation' }).then((permissionStatus) => {
-        console.log('🔐 Geolocation permission status:', permissionStatus.state);
-        
-        if (permissionStatus.state === 'granted') {
-          requestLocation();
-        }
-      }).catch((err) => {
-        console.warn('Could not query geolocation permission:', err);
-      });
+      navigator.permissions
+        .query({ name: 'geolocation' })
+        .then((permissionStatus) => {
+          console.log('🔐 Geolocation permission status:', permissionStatus.state);
+          if (permissionStatus.state !== 'denied') {
+            requestLocationRef.current(1);
+          }
+        })
+        .catch(() => {
+          // permissions API threw — try requesting directly
+          requestLocationRef.current(1);
+        });
+    } else {
+      // No permissions API (e.g. Flutter WebView) — request directly
+      requestLocationRef.current(1);
     }
-  }, [state.isSupported, autoRequest, requestLocation]);
+  }, [state.isSupported, autoRequest]);
 
   const clearError = useCallback(() => {
     setState(prev => ({ ...prev, error: null }));
