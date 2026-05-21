@@ -456,18 +456,18 @@ export default function DoctorSchedulesPage() {
   return (
     <div className="container mx-auto py-4">
       <NavHeader />
-      <div className="flex justify-between items-center my-6">
+      <div className="flex flex-col gap-4 my-6">
         <div className="flex items-center gap-4">
           <h1 className="text-3xl font-bold">Doctor Schedules</h1>
           <NavigationButtons />
         </div>
-        <div className="flex items-center space-x-4">
-          <Label htmlFor="doctor-select">Select Doctor:</Label>
+        <div className="flex flex-wrap items-center gap-3">
+          <Label htmlFor="doctor-select" className="shrink-0">Select Doctor:</Label>
           <Select
             value={selectedDoctor?.toString() || ""}
             onValueChange={(value) => setSelectedDoctor(Number(value))}
           >
-            <SelectTrigger className="w-[200px]">
+            <SelectTrigger className="w-full sm:w-[200px]">
               <SelectValue placeholder="Select doctor" />
             </SelectTrigger>
             <SelectContent>
