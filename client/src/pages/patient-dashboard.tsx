@@ -868,7 +868,7 @@ export default function PatientDashboard() {
                   <ClinicCard clinic={{
                     id: clinic.id.toString(),
                     name: clinic.name,
-                    address: `${clinic.address}, ${clinic.city}`,
+                    address: [clinic.address, clinic.city].filter(Boolean).join(', ') || null,
                     imageUrl: clinic.imageUrl || undefined,
                     specialties: [],
                     latitude: clinic.latitude,

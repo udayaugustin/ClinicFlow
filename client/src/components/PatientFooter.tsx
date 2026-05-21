@@ -1,5 +1,6 @@
 import React from 'react';
-import { Phone, Mail, MapPin, Clock, Shield, FileText, HelpCircle, Info, RefreshCw, Building2 } from 'lucide-react';
+import { Link } from 'wouter';
+import { Phone, Mail, Shield, FileText, HelpCircle, Info, RefreshCw, Building2 } from 'lucide-react';
 
 const PatientFooter: React.FC = () => {
   return (
@@ -34,36 +35,28 @@ const PatientFooter: React.FC = () => {
             <h4 className="text-lg font-semibold text-white">Quick Links</h4>
             <ul className="space-y-2">
               <li>
-                <a 
-                  href="/patient/dashboard" 
+                <Link
+                  href="/patient/dashboard"
                   className="text-gray-300 hover:text-blue-400 text-sm transition-colors duration-200"
                 >
                   Find Doctors
-                </a>
+                </Link>
               </li>
               <li>
-                <a 
-                  href="/patient/appointments" 
+                <Link
+                  href="/appointments"
                   className="text-gray-300 hover:text-blue-400 text-sm transition-colors duration-200"
                 >
                   My Appointments
-                </a>
+                </Link>
               </li>
               <li>
-                <a 
-                  href="/patient/profile" 
+                <Link
+                  href="/profile"
                   className="text-gray-300 hover:text-blue-400 text-sm transition-colors duration-200"
                 >
                   My Profile
-                </a>
-              </li>
-              <li>
-                <a 
-                  href="/emergency" 
-                  className="text-gray-300 hover:text-red-400 text-sm transition-colors duration-200"
-                >
-                  Emergency Services
-                </a>
+                </Link>
               </li>
             </ul>
           </div>
@@ -73,40 +66,40 @@ const PatientFooter: React.FC = () => {
             <h4 className="text-lg font-semibold text-white">Policies & Legal</h4>
             <ul className="space-y-2">
               <li>
-                <a 
-                  href="/policies/terms-conditions" 
+                <Link
+                  href="/policies/terms-conditions"
                   className="text-gray-300 hover:text-blue-400 text-sm transition-colors duration-200 flex items-center space-x-2"
                 >
                   <FileText className="h-3 w-3" />
                   <span>Terms & Conditions</span>
-                </a>
+                </Link>
               </li>
               <li>
-                <a 
-                  href="/policies/privacy-policy" 
+                <Link
+                  href="/policies/privacy-policy"
                   className="text-gray-300 hover:text-blue-400 text-sm transition-colors duration-200 flex items-center space-x-2"
                 >
                   <Shield className="h-3 w-3" />
                   <span>Privacy Policy</span>
-                </a>
+                </Link>
               </li>
               <li>
-                <a 
-                  href="/policies/cancellation-refund" 
+                <Link
+                  href="/policies/cancellation-refund"
                   className="text-gray-300 hover:text-blue-400 text-sm transition-colors duration-200 flex items-center space-x-2"
                 >
                   <RefreshCw className="h-3 w-3" />
                   <span>Cancellation & Refund</span>
-                </a>
+                </Link>
               </li>
               <li>
-                <a 
-                  href="/policies/additional-policies" 
+                <Link
+                  href="/policies/additional-policies"
                   className="text-gray-300 hover:text-blue-400 text-sm transition-colors duration-200 flex items-center space-x-2"
                 >
                   <FileText className="h-3 w-3" />
                   <span>Disclaimer Policies</span>
-                </a>
+                </Link>
               </li>
             </ul>
           </div>
@@ -116,38 +109,30 @@ const PatientFooter: React.FC = () => {
             <h4 className="text-lg font-semibold text-white">Support & Help</h4>
             <ul className="space-y-2">
               <li>
-                <a 
-                  href="/help/faqs" 
+                <Link
+                  href="/help/faqs"
                   className="text-gray-300 hover:text-blue-400 text-sm transition-colors duration-200 flex items-center space-x-2"
                 >
                   <HelpCircle className="h-3 w-3" />
                   <span>FAQs</span>
-                </a>
+                </Link>
               </li>
               <li>
-                <a 
-                  href="/policies/about-us" 
+                <Link
+                  href="/policies/about-us"
                   className="text-gray-300 hover:text-blue-400 text-sm transition-colors duration-200 flex items-center space-x-2"
                 >
                   <Info className="h-3 w-3" />
                   <span>About Us</span>
-                </a>
+                </Link>
               </li>
               <li>
-                <a 
-                  href="/contact-us" 
+                <Link
+                  href="/contact-us"
                   className="text-gray-300 hover:text-blue-400 text-sm transition-colors duration-200"
                 >
                   Contact Support
-                </a>
-              </li>
-              <li>
-                <a 
-                  href="/feedback" 
-                  className="text-gray-300 hover:text-blue-400 text-sm transition-colors duration-200"
-                >
-                  Feedback
-                </a>
+                </Link>
               </li>
             </ul>
           </div>
@@ -159,29 +144,9 @@ const PatientFooter: React.FC = () => {
       {/* Bottom Bar */}
       <div className="bg-gray-800 py-4">
         <div className="container mx-auto px-4">
-          <div className="flex flex-col md:flex-row justify-between items-center">
+          <div className="flex justify-center items-center">
             <div className="text-sm text-gray-400">
               © 2024 Clinik. All rights reserved.
-            </div>
-            <div className="flex space-x-6 mt-2 md:mt-0">
-              <a 
-                href="/sitemap" 
-                className="text-xs text-gray-400 hover:text-blue-400 transition-colors duration-200"
-              >
-                Sitemap
-              </a>
-              <a 
-                href="/accessibility" 
-                className="text-xs text-gray-400 hover:text-blue-400 transition-colors duration-200"
-              >
-                Accessibility
-              </a>
-              <a 
-                href="/security" 
-                className="text-xs text-gray-400 hover:text-blue-400 transition-colors duration-200"
-              >
-                Security
-              </a>
             </div>
           </div>
         </div>

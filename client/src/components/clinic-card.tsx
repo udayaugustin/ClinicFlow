@@ -8,7 +8,7 @@ interface ClinicCardProps {
   clinic: {
     id: string;
     name: string;
-    address: string;
+    address?: string | null;
     imageUrl?: string;
     specialties?: string[];
     latitude?: number | string | null;
@@ -16,18 +16,24 @@ interface ClinicCardProps {
   };
 }
 
-function getDirectionsUrl(lat?: number | string | null, lng?: number | string | null, address?: string) {
+function getDirectionsUrl(
+  lat?: number | string | null,
+  lng?: number | string | null,
+  address?: string | null,
+  name?: string,
+) {
   if (lat && lng) {
     return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
   }
-  if (address) {
-    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+  const query = address || name;
+  if (query) {
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
   }
   return null;
 }
 
 export function ClinicCard({ clinic }: ClinicCardProps) {
-  const directionsUrl = getDirectionsUrl(clinic.latitude, clinic.longitude, clinic.address);
+  const directionsUrl = getDirectionsUrl(clinic.latitude, clinic.longitude, clinic.address, clinic.name);
   return (
     <Card className="overflow-hidden hover:shadow-md transition-shadow">
       <CardHeader className="p-0">
